@@ -1,0 +1,22 @@
+pluginManagement {
+    // 公共构建约定（Java 17、Spring Boot BOM、Lombok、编译参数），见 gradle/build-logic
+    includeBuild('gradle/build-logic')
+}
+
+rootProject.name = 'lemon-ecom'
+
+// 依赖方向：lemon-admin → lemon-modules/* → lemon-framework → lemon-common
+include 'lemon-common'
+include 'lemon-framework'
+[
+    'system',     // 系统管理：用户、角色、菜单、部门、字典、登录认证
+    'monitor',    // 系统监控：在线用户、日志、服务与缓存监控、定时任务
+    'workflow',   // 流程中心：Flowable 集成、流程模型、待办审批
+    'dashboard',  // 首页工作台
+    'wms',        // 仓库管理
+    'scm',        // 供应链管理
+    'fin',        // 财务管理
+    'ai',         // 智能：大模型客户端、模型配置与用量、AI 问数（只依赖 framework）
+    'ecom',       // 跨境电商：店铺、在线商品、平台订单、头程货件、物流、结算、广告、退货、补货、利润分析
+].each { include "lemon-modules:lemon-${it}" }
+include 'lemon-admin'

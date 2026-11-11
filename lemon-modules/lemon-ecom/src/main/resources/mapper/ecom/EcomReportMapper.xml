@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomReportMapper">
+
+    <!-- 订单费用（本位币）：佣金 + 配送费 + 其他 -->
+    <sql id="feesBase">(COALESCE(o.platform_fee, 0) + COALESCE(o.fulfillment_fee, 0) + COALESCE(o.other_fee, 0)) * o.exchange_rate</sql>
+    <sql id="refundBase">COALESCE(o.refund_amount, 0) * o.exchange_rate</sql>
+
+    <sql id="orderRange">
+        o.status &lt;&gt; 'CANCELLED'
+        <if test="begin != null">AND o.order_time &gt;= #{begin}</if>
+        <if test="end != null">AND o.order_time &lt; #{end}</if>
+        <if test="storeId != null">AND o.store_id = #{storeId}</if>
+    </sql>
+
+    <select id="selectTotals" resultType="map">
+        SELECT COUNT(*) AS orders, COALESCE(SUM(o.total_base), 0) AS sales, COALESCE(SUM(o.profit), 0) AS profit,
+               COALESCE(SUM(<include refid="refundBase"/>), 0) AS refund,
+               COALESCE(SUM(<include refid="feesBase"/>), 0) AS fees,
+               COALESCE(SUM(o.cost_amount), 0) AS cost
+        FROM ecom_order o
+        WHERE <include refid="orderRange"/>
+    </select>
+
+    <select id="selectOrderCounts" resultType="map">
+        SELECT SUM(CASE WHEN o.local_status = 'PENDING' THEN 1 ELSE 0 END) AS pending,
+               SUM(CASE WHEN o.local_status = 'EXCEPTION' THEN 1 ELSE 0 END) AS exception,
+               SUM(CASE WHEN o.ship_by &lt; #{now} AND o.local_status IN ('PENDING', 'EXCEPTION', 'OUTBOUND') THEN 1 ELSE 0 END) AS overdue
+        FROM ecom_order o
+        WHERE o.status &lt;&gt; 'CANCELLED'
+    </select>
+
+    <select id="countInTransitInbounds" resultType="long">
+        SELECT COUNT(*) FROM ecom_inbound WHERE status = 'SHIPPED'
+    </select>
+
+    <select id="selectTrend" resultType="com.lemon.erp.modules.ecom.dto.EcomReports$TrendRow">
+        SELECT CAST(o.order_time AS DATE) AS day, COUNT(*) AS orders, COALESCE(SUM(o.total_base), 0) AS sales, COALESCE(SUM(o.profit), 0) AS profit
+        FROM ecom_order o
+        WHERE <include refid="orderRange"/>
+        GROUP BY CAST(o.order_time AS DATE)
+        ORDER BY day
+    </select>
+
+    <select id="selectByStore" resultType="com.lemon.erp.modules.ecom.dto.EcomReports$StoreRow">
+        SELECT s.id AS store_id, s.name AS store_name, s.platform, s.marketplace,
+               COUNT(o.id) AS orders,
+               COALESCE((SELECT SUM(oi.qty) FROM ecom_order_item oi JOIN ecom_order o2 ON o2.id = oi.order_id
+                         WHERE o2.store_id = s.id AND o2.status &lt;&gt; 'CANCELLED'
+                         <if test="begin != null">AND o2.order_time &gt;= #{begin}</if>
+                         <if test="end != null">AND o2.order_time &lt; #{end}</if>), 0) AS qty,
+               COALESCE(SUM(o.total_base), 0) AS sales,
+               COALESCE(SUM(<include refid="feesBase"/>), 0) AS fees,
+               COALESCE(SUM(<include refid="refundBase"/>), 0) AS refund,
+               COALESCE(SUM(o.cost_amount), 0) AS cost,
+               COALESCE(SUM(o.shipping_cost), 0) AS shipping,
+               COALESCE(SUM(o.profit), 0) AS profit
+        FROM ecom_store s
+        LEFT JOIN ecom_order o ON o.store_id = s.id AND <include refid="orderRange"/>
+        <where>
+            <if test="storeId != null">s.id = #{storeId}</if>
+        </where>
+        GROUP BY s.id, s.name, s.platform, s.marketplace
+        ORDER BY sales DESC, s.id
+    </select>
+
+    <!-- 按平台 SKU：订单级的费用、退款、物流成本按本行金额占订单金额的比例分摊 -->
+    <select id="selectBySku" resultType="com.lemon.erp.modules.ecom.dto.EcomReports$SkuRow">
+        SELECT o.store_id, s.name AS store_name, oi.seller_sku, MAX(oi.platform_item_id) AS platform_item_id, MAX(oi.title) AS title,
+               MAX(m.code) AS material_code, MAX(m.name) AS material_name,
+               COUNT(DISTINCT o.id) AS orders, SUM(oi.qty) AS qty,
+               SUM(x.line_fc * o.exchange_rate) AS sales,
+               SUM(x.share * <include refid="feesBase"/>) AS fees,
+               SUM(x.share * <include refid="refundBase"/>) AS refund,
+               SUM(COALESCE(oi.cost, 0)) AS cost,
+               SUM(x.share * COALESCE(o.shipping_cost, 0)) AS shipping,
+               SUM(x.line_fc * o.exchange_rate - x.share * (<include refid="feesBase"/> + <include refid="refundBase"/> + COALESCE(o.shipping_cost, 0)) - COALESCE(oi.cost, 0)) AS profit
+        FROM ecom_order_item oi
+        JOIN ecom_order o ON o.id = oi.order_id
+        JOIN ecom_store s ON s.id = o.store_id
+        LEFT JOIN wms_material m ON m.id = oi.material_id
+        JOIN (SELECT oi2.id,
+                     (oi2.amount + COALESCE(oi2.shipping, 0) + COALESCE(oi2.tax, 0) - COALESCE(oi2.discount, 0)) AS line_fc,
+                     CASE WHEN o3.total_amount &gt; 0 THEN (oi2.amount + COALESCE(oi2.shipping, 0) + COALESCE(oi2.tax, 0) - COALESCE(oi2.discount, 0)) / o3.total_amount ELSE 0 END AS share
+              FROM ecom_order_item oi2 JOIN ecom_order o3 ON o3.id = oi2.order_id) x ON x.id = oi.id
+        WHERE <include refid="orderRange"/>
+        <if test="keyword != null and keyword != ''">
+            AND (oi.seller_sku LIKE CONCAT('%', #{keyword}, '%') OR oi.title LIKE CONCAT('%', #{keyword}, '%')
+                 OR m.code LIKE CONCAT('%', #{keyword}, '%') OR m.name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        GROUP BY o.store_id, s.name, oi.seller_sku
+        ORDER BY sales DESC
+    </select>
+
+    <select id="selectByCountry" resultType="com.lemon.erp.modules.ecom.dto.EcomReports$CountryRow">
+        SELECT COALESCE(o.ship_country, '') AS country, COUNT(*) AS orders,
+               COALESCE((SELECT SUM(oi.qty) FROM ecom_order_item oi WHERE oi.order_id IN
+                         (SELECT o2.id FROM ecom_order o2 WHERE COALESCE(o2.ship_country, '') = COALESCE(o.ship_country, '') AND o2.status &lt;&gt; 'CANCELLED'
+                          <if test="begin != null">AND o2.order_time &gt;= #{begin}</if>
+                          <if test="end != null">AND o2.order_time &lt; #{end}</if>
+                          <if test="storeId != null">AND o2.store_id = #{storeId}</if>)), 0) AS qty,
+               COALESCE(SUM(o.total_base), 0) AS sales, COALESCE(SUM(o.profit), 0) AS profit
+        FROM ecom_order o
+        WHERE <include refid="orderRange"/>
+        GROUP BY COALESCE(o.ship_country, '')
+        ORDER BY sales DESC
+    </select>
+
+    <select id="selectFees" resultType="com.lemon.erp.modules.ecom.dto.EcomReports$FeeRow">
+        SELECT si.item_type, COALESCE(SUM(si.amount * st.exchange_rate), 0) AS amount
+        FROM ecom_settlement_item si
+        JOIN ecom_settlement st ON st.id = si.settlement_id
+        <where>
+            <if test="begin != null">st.period_end &gt;= #{begin}</if>
+            <if test="end != null">AND st.period_start &lt;= #{end}</if>
+            <if test="storeId != null">AND st.store_id = #{storeId}</if>
+        </where>
+        GROUP BY si.item_type
+        ORDER BY si.item_type
+    </select>
+
+    <select id="selectAdSpendBySku" resultType="map">
+        SELECT a.store_id AS "storeId", s.currency, a.seller_sku AS "sellerSku", SUM(a.spend) AS spend
+        FROM ecom_ad_daily a
+        JOIN ecom_store s ON s.id = a.store_id
+        <where>
+            <if test="begin != null">a.ad_date &gt;= #{begin}</if>
+            <if test="end != null">AND a.ad_date &lt;= #{end}</if>
+            <if test="storeId != null">AND a.store_id = #{storeId}</if>
+        </where>
+        GROUP BY a.store_id, s.currency, a.seller_sku
+    </select>
+
+    <select id="selectAdSpendByStore" resultType="map">
+        SELECT a.store_id AS "storeId", s.currency, SUM(a.spend) AS spend
+        FROM ecom_ad_daily a
+        JOIN ecom_store s ON s.id = a.store_id
+        <where>
+            <if test="begin != null">a.ad_date &gt;= #{begin}</if>
+            <if test="end != null">AND a.ad_date &lt;= #{end}</if>
+            <if test="storeId != null">AND a.store_id = #{storeId}</if>
+        </where>
+        GROUP BY a.store_id, s.currency
+    </select>
+
+</mapper>

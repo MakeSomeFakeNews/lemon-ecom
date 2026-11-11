@@ -1,0 +1,380 @@
+<template>
+  <div class="table-page">
+    <a-card v-show="showSearch" :bordered="false" class="page-card">
+      <SearchForm :model="query" @search="search" @reset="resetQuery">
+        <a-form-item :label="$t('scm.customer.customer')" name="keyword">
+          <a-input v-model:value="query.keyword" :placeholder="$t('scm.customer.codeOrName')" allow-clear />
+        </a-form-item>
+        <a-form-item :label="$t('scm.customer.level')" name="level">
+          <a-select v-model:value="query.level" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.scm_customer_level)" />
+        </a-form-item>
+        <a-form-item :label="$t('scm.customer.region')" name="region">
+          <a-select v-model:value="query.region" :placeholder="$t('common.placeholder.all')" allow-clear show-search option-filter-prop="label" :options="toOptions(dict.scm_region)" />
+        </a-form-item>
+        <a-form-item :label="$t('scm.customer.channel')" name="channel">
+          <a-select v-model:value="query.channel" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.scm_channel)" />
+        </a-form-item>
+        <a-form-item :label="$t('common.field.status')" name="status">
+          <a-select v-model:value="query.status" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.sys_common_status, true)" />
+        </a-form-item>
+      </SearchForm>
+    </a-card>
+
+    <a-card :bordered="false" class="page-card table-card">
+      <TableToolbar
+        :exporter="exportAll"
+        v-model:size="size"
+        v-model:checked="checked"
+        v-model:show-search="showSearch"
+        :columns="columns"
+        @refresh="load"
+      >
+        <a-button v-perm="'scm:customer:add'" type="primary" @click="drawer.openCreate()">
+          <template #icon><PlusOutlined /></template>{{ $t('scm.customer.add') }}
+        </a-button>
+        <AiExtractButton target="scm.customer" perm="scm:customer:add" :title="$t('scm.customer.customer')" @result="ai.apply" />
+        <a-button v-perm="'scm:customer:add'" @click="importOpen = true">
+          <template #icon><ImportOutlined /></template>{{ $t('common.action.import') }}
+        </a-button>
+        <a-dropdown>
+          <a-button><DollarOutlined />{{ $t('pricing.customerPrice.batch') }} <DownOutlined /></a-button>
+          <template #overlay>
+            <a-menu @click="({ key }) => (key === 'import' ? (priceImportOpen = true) : exportPrices())">
+              <a-menu-item v-if="userStore.hasPerm('scm:customer:edit')" key="import"><ImportOutlined /> {{ $t('pricing.customerPrice.importAll') }}</a-menu-item>
+              <a-menu-item key="export"><ExportOutlined /> {{ $t('pricing.customerPrice.exportAll') }}</a-menu-item>
+            </a-menu>
+          </template>
+        </a-dropdown>
+      </TableToolbar>
+
+      <a-table
+        row-key="id"
+        :size="size"
+        :columns="tableColumns"
+        :data-source="list"
+        :loading="loading"
+        :pagination="pagination"
+        :scroll="{ x: sumWidth(tableColumns), y: '100%' }"
+        @change="onTableChange"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'name'">
+            <div>
+              {{ record.name }}
+              <a-tooltip v-if="record.mergedTo" :title="$t('scm.partnerMerge.mergedTo', { name: record.mergedToName })">
+                <a-tag :bordered="false" class="merged-tag">{{ $t('scm.partnerMerge.merged') }}</a-tag>
+              </a-tooltip>
+            </div>
+            <div class="sub-text">{{ record.code }}</div>
+            <div v-if="record.linkedSupplierName" class="sub-text">{{ $t('scm.customer.linkedSupplierOf', { name: record.linkedSupplierName }) }}</div>
+          </template>
+          <template v-else-if="column.key === 'level'">
+            <DictTag type="scm_customer_level" :value="record.level" />
+          </template>
+          <template v-else-if="column.key === 'priceLevel'">{{ levelName(record.priceLevel ?? 0) || '-' }}</template>
+          <template v-else-if="column.key === 'region'">
+            <DictTag v-if="record.region" type="scm_region" :value="record.region" />
+            <span v-else>-</span>
+          </template>
+          <template v-else-if="column.key === 'channel'">
+            <DictTag type="scm_channel" :value="record.channel || 'DIRECT'" />
+            <div v-if="record.ownerName" class="sub-text">{{ $t('scm.customer.ownerOf', { name: record.ownerName }) }}</div>
+          </template>
+          <template v-else-if="column.key === 'contact'">
+            <div>{{ record.contact || '-' }}</div>
+            <div v-if="record.phone" class="sub-text">{{ record.phone }}</div>
+          </template>
+          <template v-else-if="column.key === 'creditLimit'">{{ record.creditLimit != null ? '¥' + formatMoney(record.creditLimit) : $t('scm.customer.unlimited') }}</template>
+          <template v-else-if="column.key === 'paymentDays'">{{ record.paymentDays ? $t('scm.customer.days', { n: record.paymentDays }) : $t('scm.customer.cash') }}</template>
+          <template v-else-if="column.key === 'status'">
+            <StatusSwitch
+              :value="record.status"
+              :name="record.name"
+              :api="(s) => changePartnerStatus('customer', record.id, s)"
+              :disabled="!userStore.hasPerm('scm:customer:edit')"
+              @changed="(s) => (record.status = s)"
+            />
+          </template>
+          <template v-else-if="column.custom">{{ cfCell(record, column) }}</template>
+          <template v-else-if="column.key === 'action'">
+            <TableActions :actions="rowActions(record)" />
+          </template>
+        </template>
+      </a-table>
+    </a-card>
+
+    <FormDrawer :drawer="drawer" :create-title="$t('scm.customer.add')" :edit-title="$t('scm.customer.edit')">
+      <AiPrefillAlert :ai="ai" />
+      <a-form ref="formRef" :model="form" :rules="rules" layout="vertical">
+        <a-row :gutter="16">
+          <a-col :xs="24" :sm="12">
+            <a-form-item :label="$t('scm.customer.code')" name="code">
+              <a-input v-model:value="form.code" :maxlength="32" :placeholder="$t('scm.customer.codePlaceholder')" />
+            </a-form-item>
+          </a-col>
+          <a-col :xs="24" :sm="12">
+            <a-form-item :label="$t('scm.customer.name')" name="name" :class="ai.cls('name')">
+              <a-input v-model:value="form.name" :maxlength="128" />
+            </a-form-item>
+          </a-col>
+          <a-col :xs="24" :sm="12">
+            <a-form-item :label="$t('scm.customer.level')" name="level">
+              <a-select v-model:value="form.level" allow-clear :options="toOptions(dict.scm_customer_level)" />
+            </a-form-item>
+          </a-col>
+          <a-col :xs="24" :sm="12">
+            <a-form-item :label="$t('pricing.level.priceLevel')" name="priceLevel" :extra="$t('pricing.level.priceLevelExtra')">
+              <a-select v-model:value="form.priceLevel" :options="priceLevelOptions" />
+            </a-form-item>
+          </a-col>
+          <a-col :xs="24" :sm="12">
+            <a-form-item :label="$t('scm.customer.salesChannel')" name="channel" :extra="$t('scm.customer.channelTip')">
+              <a-radio-group v-model:value="form.channel">
+                <a-radio v-for="o in dict.scm_channel" :key="o.value" :value="o.value">{{ o.label }}</a-radio>
+              </a-radio-group>
+            </a-form-item>
+          </a-col>
+          <a-col :xs="24" :sm="12">
+            <a-form-item :label="$t('scm.customer.owner')" name="ownerId" :extra="$t('scm.customer.ownerTip')">
+              <IdentityUserSelect v-model:value="form.ownerId" :label="form.ownerName" />
+            </a-form-item>
+          </a-col>
+          <a-col :xs="24" :sm="12">
+            <a-form-item :label="$t('scm.customer.region')" name="region" :extra="$t('scm.customer.regionTip')">
+              <a-select
+                v-model:value="form.region"
+                allow-clear
+                show-search
+                option-filter-prop="label"
+                :placeholder="$t('scm.customer.regionPlaceholder')"
+                :options="optionsWithCurrent(dict.scm_region, form.region)"
+              />
+            </a-form-item>
+          </a-col>
+          <a-col :xs="24" :sm="12">
+            <a-form-item :label="$t('scm.customer.paymentDays')" name="paymentDays" :extra="$t('scm.customer.paymentDaysTip')">
+              <a-input-number v-model:value="form.paymentDays" :min="0" :max="365" :addon-after="$t('scm.customer.day')" class="full" />
+            </a-form-item>
+          </a-col>
+          <a-col :xs="24" :sm="12">
+            <a-form-item :label="$t('scm.customer.contact')" name="contact">
+              <a-input v-model:value="form.contact" :maxlength="64" />
+            </a-form-item>
+          </a-col>
+          <a-col :xs="24" :sm="12">
+            <a-form-item :label="$t('scm.customer.phone')" name="phone">
+              <a-input v-model:value="form.phone" :maxlength="32" />
+            </a-form-item>
+          </a-col>
+          <a-col :xs="24" :sm="12">
+            <a-form-item :label="$t('scm.customer.creditLimit')" name="creditLimit" :extra="$t('scm.customer.creditLimitTip')">
+              <a-input-number v-model:value="form.creditLimit" :min="0" :precision="2" prefix="¥" class="full" />
+            </a-form-item>
+          </a-col>
+          <a-col :xs="24" :sm="12">
+            <a-form-item :label="$t('scm.customer.taxNo')" name="taxNo" :class="ai.cls('taxNo')">
+              <a-input v-model:value="form.taxNo" :maxlength="32" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="24">
+            <a-form-item :label="$t('scm.customer.shipAddress')" name="address">
+              <a-input v-model:value="form.address" :maxlength="255" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="24">
+            <a-form-item :label="$t('common.field.remark')" name="remark">
+              <a-textarea v-model:value="form.remark" :rows="2" :maxlength="255" show-count />
+            </a-form-item>
+          </a-col>
+        </a-row>
+        <CustomFieldsForm :fields="cfFields" :values="form.cf || {}" :title="$t('scm.customer.extInfo')" />
+      </a-form>
+    </FormDrawer>
+
+    <ImportModal
+      v-model:open="importOpen"
+      :title="$t('scm.customer.customer')"
+      :columns="importColumns"
+      :importer="(data) => importPartner('customer', data)"
+      :sample="{ code: 'C0001', name: $t('scm.customer.sampleName'), contact: $t('scm.customer.sampleContact'), phone: '13800000000', paymentDays: 30 }"
+      @success="search"
+    />
+    <ImportModal
+      v-model:open="priceImportOpen"
+      :title="$t('pricing.customerPrice.importTitle')"
+      :columns="priceImportColumns"
+      :importer="importCustomerPrices"
+      :sample="priceImportSample"
+    />
+    <RecordExtrasModal
+      v-model:open="extrasOpen"
+      :title="extrasTitle"
+      biz-type="scm_customer"
+      :biz-id="extrasId"
+      :editable="userStore.hasPerm('scm:customer:edit')"
+    />
+    <PartnerMergeModal ref="mergeRef" type="customer" @merged="load" />
+    <CustomerPriceDrawer ref="customerPriceRef" />
+  </div>
+</template>
+
+<script setup>
+import { computed, onMounted, reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { DollarOutlined, DownOutlined, ExportOutlined, ImportOutlined, MergeCellsOutlined, PaperClipOutlined, PlusOutlined } from '@ant-design/icons-vue'
+import DictTag from '@/components/DictTag.vue'
+import FormDrawer from '@/components/FormDrawer.vue'
+import ImportModal from '@/components/ImportModal.vue'
+import RecordExtrasModal from '@/components/RecordExtrasModal.vue'
+import SearchForm from '@/components/SearchForm.vue'
+import StatusSwitch from '@/components/StatusSwitch.vue'
+import TableToolbar from '@/components/TableToolbar.vue'
+import IdentityUserSelect from '@/components/common/IdentityUserSelect.vue'
+import PartnerMergeModal from '@/components/scm/PartnerMergeModal.vue'
+import CustomerPriceDrawer from '@/components/scm/CustomerPriceDrawer.vue'
+import { usePriceLevels } from '@/components/wms/priceLevels'
+import { CUSTOMER_PRICE_COLUMNS, exportCustomerPriceRows, priceImportSample } from '@/components/scm/customerPrices'
+import { importCustomerPrices } from '@/api/scm/pricing'
+import { addPartner, changePartnerStatus, deletePartner, getPartner, pagePartner, updatePartner, importPartner } from '@/api/scm/partner'
+import { sumWidth, useColumns } from '@/composables/useColumns'
+import { useDict } from '@/composables/useDict'
+import { useFormDrawer } from '@/composables/useFormDrawer'
+import { useTable } from '@/composables/useTable'
+import { useUserStore } from '@/store/user'
+import { optionsWithCurrent, toOptions } from '@/utils/dict'
+import { formatMoney } from '@/components/scm/scm'
+import CustomFieldsForm from '@/components/common/CustomFieldsForm.vue'
+import { useCustomColumns, useCustomFields } from '@/composables/useCustomFields'
+import { useAction } from '@/composables/useAction'
+import AiExtractButton from '@/components/ai/AiExtractButton.vue'
+import AiPrefillAlert from '@/components/ai/AiPrefillAlert.vue'
+import { useAiPrefill } from '@/composables/useAiPrefill'
+
+import { STATUS_ENABLED } from '@/utils/constants'
+import TableActions from '@/components/common/TableActions.vue'
+import { actionColumn } from '@/components/common/tableActions'
+const { t } = useI18n()
+const userStore = useUserStore()
+const dict = useDict('sys_common_status', 'scm_customer_level', 'scm_channel', 'scm_region')
+
+// 价格等级（启用的价格列；当前值所在的列已停用时仍列出）与客户执行价
+const { levels, levelName } = usePriceLevels()
+const priceLevelOptions = computed(() =>
+  levels.value.filter((l) => l.status === STATUS_ENABLED || l.level === (form.value.priceLevel ?? 0)).map((l) => ({ value: l.level, label: l.name }))
+)
+const customerPriceRef = ref()
+// 执行价批量导入导出（全部客户，含客户编码列）
+const priceImportOpen = ref(false)
+const priceImportColumns = CUSTOMER_PRICE_COLUMNS(true)
+const exportPrices = () => exportCustomerPriceRows({ keyword: query.keyword || undefined })
+
+const importOpen = ref(false)
+// 附件、变更记录
+const extrasOpen = ref(false)
+const extrasId = ref()
+const extrasTitle = ref('')
+function openExtras(record) {
+  extrasId.value = record.id
+  extrasTitle.value = `${record.code} ${record.name}`
+  extrasOpen.value = true
+}
+const importColumns = [
+  { title: t('scm.customer.code'), key: 'code', required: true },
+  { title: t('scm.customer.name'), key: 'name', required: true },
+  { title: t('scm.customer.customerLevel'), key: 'level', dict: 'scm_customer_level' },
+  { title: t('scm.customer.region'), key: 'region', dict: 'scm_region' },
+  { title: t('scm.customer.contact'), key: 'contact' },
+  { title: t('scm.customer.phone'), key: 'phone' },
+  { title: t('scm.customer.shipAddress'), key: 'address' },
+  { title: t('scm.customer.taxNo'), key: 'taxNo' },
+  { title: t('scm.customer.creditLimit'), key: 'creditLimit', type: 'number' },
+  { title: t('scm.customer.paymentDaysCol'), key: 'paymentDays', type: 'int' },
+  { title: t('pricing.level.priceLevelImport'), key: 'priceLevel', type: 'int' },
+  { title: t('common.field.remark'), key: 'remark' }
+]
+
+const columns = [
+  { title: t('scm.customer.customer'), key: 'name', width: 240 },
+  { title: t('scm.customer.level'), key: 'level', width: 100, dict: 'scm_customer_level' },
+  { title: t('pricing.level.priceLevel'), key: 'priceLevel', width: 100, exportValue: (r) => levelName(r.priceLevel ?? 0) },
+  { title: t('scm.customer.region'), key: 'region', width: 110, dict: 'scm_region' },
+  { title: t('scm.customer.channel'), key: 'channel', width: 150, dict: 'scm_channel' },
+  { title: t('scm.customer.contact'), key: 'contact', width: 150 },
+  { title: t('scm.customer.creditLimit'), key: 'creditLimit', width: 130, align: 'right' },
+  { title: t('scm.customer.paymentDays'), key: 'paymentDays', width: 110 },
+  { title: t('scm.customer.address'), dataIndex: 'address', width: 220, ellipsis: true },
+  { title: t('common.field.status'), key: 'status', width: 100 },
+  { title: t('common.field.remark'), dataIndex: 'remark', width: 150, ellipsis: true },
+  actionColumn(3)
+]
+const { checked, visibleColumns } = useColumns(columns, 'scm-customer')
+const showSearch = ref(true)
+
+const query = reactive({ keyword: undefined, level: undefined, status: undefined, channel: undefined, region: undefined })
+const { list, loading, size, pagination, load, search, onTableChange, exportAll } = useTable((p) => pagePartner('customer', p), query)
+// 自定义字段：表单中填写，勾选「列表显示」的作为列
+const cf = useCustomFields('scm_customer')
+const cfFields = cf.fields
+const { columns: cfColumns, cell: cfCell } = useCustomColumns('scm_customer', list)
+const tableColumns = computed(() => {
+  const cols = visibleColumns.value
+  const action = cols.findIndex((c) => c.key === 'action')
+  return action < 0 ? [...cols, ...cfColumns.value] : [...cols.slice(0, action), ...cfColumns.value, ...cols.slice(action)]
+})
+
+function resetQuery() {
+  Object.assign(query, { keyword: undefined, level: undefined, status: undefined, channel: undefined, region: undefined })
+  search()
+}
+
+onMounted(load)
+
+const rules = {
+  code: [
+    { required: true, message: t('scm.customer.codeRequired') },
+    { pattern: /^[A-Za-z0-9_-]{1,32}$/, message: t('scm.customer.codePattern') }
+  ],
+  name: [{ required: true, whitespace: true, message: t('scm.customer.nameRequired') }]
+}
+const FIELDS = ['code', 'name', 'level', 'priceLevel', 'contact', 'phone', 'address', 'taxNo', 'creditLimit', 'paymentDays', 'remark', 'channel', 'region',
+  'ownerId']
+const drawer = useFormDrawer(
+  cf.wrap({
+    emptyForm: () => ({ id: undefined, ...Object.fromEntries(FIELDS.map((f) => [f, undefined])), paymentDays: 30, channel: 'DIRECT', priceLevel: 0 }),
+    fetch: async (record) => ({ ...(await getPartner('customer', record.id)), ownerName: record.ownerName }),
+    create: (data) => addPartner('customer', data),
+    update: (id, data) => updatePartner('customer', id, data),
+    toPayload: (f) => Object.fromEntries(FIELDS.map((k) => [k, f[k] === '' || f[k] === undefined ? null : f[k]])),
+    onSuccess: load
+  })
+)
+const { formRef, form } = drawer
+// 智能录入：名片、营业执照等识别结果打开新增表单并预填
+const ai = useAiPrefill('customer', (data) => drawer.openCreate(data), () => drawer.open.value)
+
+const remove = useAction((id) => deletePartner('customer', id), { successKey: 'common.msg.deleteSuccess', reload: () => load() })
+// 资料合并（issue #95）
+const mergeRef = ref()
+
+/** 行操作：编辑、客户价格、删除直接显示，资料、合并在「更多」中 */
+const rowActions = (record) => [
+  { type: 'edit', perm: 'scm:customer:edit', onClick: () => drawer.openEdit(record) },
+  { key: 'price', label: t('pricing.customerPrice.open'), icon: DollarOutlined, onClick: () => customerPriceRef.value.open(record) },
+  { type: 'delete', perm: 'scm:customer:remove', confirm: t('scm.customer.confirmDelete', { name: record.name }), onClick: () => remove(record.id) },
+  { key: 'extras', label: t('scm.customer.extras'), icon: PaperClipOutlined, more: true, onClick: () => openExtras(record) },
+  { key: 'merge', label: t('scm.partnerMerge.action'), icon: MergeCellsOutlined, perm: 'scm:customer:merge', show: !record.mergedTo, more: true, onClick: () => mergeRef.value.open(record) }
+]
+</script>
+
+<style scoped>
+.merged-tag {
+  margin-left: 4px;
+}
+.sub-text {
+  color: var(--app-text-3);
+  font-size: 12px;
+}
+.full {
+  width: 100%;
+}
+</style>

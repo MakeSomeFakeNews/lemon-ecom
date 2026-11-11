@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomSettlementItemMapper">
+
+    <select id="selectBySettlementId" resultType="com.lemon.erp.modules.ecom.entity.EcomSettlementItem">
+        SELECT * FROM ecom_settlement_item WHERE settlement_id = #{settlementId} ORDER BY posted_date, id
+    </select>
+
+    <insert id="insertBatch">
+        INSERT INTO ecom_settlement_item (settlement_id, posted_date, item_type, platform_order_no, seller_sku, amount, description, create_time, update_time)
+        VALUES
+        <foreach collection="items" item="i" separator=",">
+            (#{i.settlementId}, #{i.postedDate}, #{i.itemType}, #{i.platformOrderNo}, #{i.sellerSku}, #{i.amount}, #{i.description}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        </foreach>
+    </insert>
+
+    <select id="selectOrderFees" resultType="map">
+        SELECT platform_order_no AS "platformOrderNo",
+               SUM(CASE WHEN item_type = 'COMMISSION' THEN amount ELSE 0 END) AS commission,
+               SUM(CASE WHEN item_type = 'FULFILLMENT' THEN amount ELSE 0 END) AS fulfillment,
+               SUM(CASE WHEN item_type = 'REFUND' THEN amount ELSE 0 END) AS refund,
+               SUM(CASE WHEN item_type IN ('STORAGE', 'OTHER', 'ADJUSTMENT') THEN amount ELSE 0 END) AS other
+        FROM ecom_settlement_item
+        WHERE settlement_id = #{settlementId} AND platform_order_no IS NOT NULL AND platform_order_no &lt;&gt; ''
+        GROUP BY platform_order_no
+    </select>
+
+</mapper>

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomLogisticsChannelMapper">
+
+    <sql id="columns">
+        c.*, sp.name AS supplier_name, (SELECT COUNT(*) FROM ecom_logistics_rate r WHERE r.channel_id = c.id) AS rate_count
+    </sql>
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.entity.EcomLogisticsChannel">
+        SELECT <include refid="columns"/>
+        FROM ecom_logistics_channel c
+        LEFT JOIN scm_supplier sp ON sp.id = c.supplier_id
+        <where>
+            <if test="keyword != null and keyword != ''">
+                (c.code LIKE CONCAT('%', #{keyword}, '%') OR c.name LIKE CONCAT('%', #{keyword}, '%') OR c.provider LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+            <if test="status != null">AND c.status = #{status}</if>
+            <if test="transportMode != null and transportMode != ''">AND c.transport_mode = #{transportMode}</if>
+        </where>
+        ORDER BY c.status DESC, c.id
+    </select>
+
+    <select id="selectDetail" resultType="com.lemon.erp.modules.ecom.entity.EcomLogisticsChannel">
+        SELECT <include refid="columns"/>
+        FROM ecom_logistics_channel c
+        LEFT JOIN scm_supplier sp ON sp.id = c.supplier_id
+        WHERE c.id = #{id}
+    </select>
+
+</mapper>

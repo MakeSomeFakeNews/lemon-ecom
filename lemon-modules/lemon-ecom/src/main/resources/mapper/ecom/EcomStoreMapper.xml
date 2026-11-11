@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomStoreMapper">
+
+    <sql id="columns">
+        s.id, s.code, s.name, s.platform, s.marketplace, s.currency, s.timezone, s.customer_id, s.warehouse_id, s.platform_warehouse_id,
+        s.commission_rate, s.lead_days, s.safety_days, s.owner_id, s.seller_id, s.last_sync_time, s.status, s.remark, s.create_time, s.update_time,
+        CASE WHEN s.credentials IS NOT NULL AND s.credentials &lt;&gt; '' THEN 1 ELSE 0 END AS has_credentials,
+        c.name AS customer_name, w.name AS warehouse_name, pw.name AS platform_warehouse_name, u.nickname AS owner_name,
+        COALESCE(l.listing_count, 0) AS listing_count
+    </sql>
+
+    <sql id="joins">
+        FROM ecom_store s
+        LEFT JOIN scm_customer c ON c.id = s.customer_id
+        LEFT JOIN wms_warehouse w ON w.id = s.warehouse_id
+        LEFT JOIN wms_warehouse pw ON pw.id = s.platform_warehouse_id
+        LEFT JOIN sys_user u ON u.id = s.owner_id
+        LEFT JOIN (SELECT store_id, COUNT(*) AS listing_count FROM ecom_listing WHERE status &lt;&gt; 'DELETED' GROUP BY store_id) l ON l.store_id = s.id
+    </sql>
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.entity.EcomStore">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        <where>
+            <if test="keyword != null and keyword != ''">
+                (s.code LIKE CONCAT('%', #{keyword}, '%') OR s.name LIKE CONCAT('%', #{keyword}, '%') OR s.seller_id LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+            <if test="platform != null">AND s.platform = #{platform}</if>
+            <if test="status != null">AND s.status = #{status}</if>
+        </where>
+        ORDER BY s.status DESC, s.id
+    </select>
+
+    <select id="selectDetail" resultType="com.lemon.erp.modules.ecom.entity.EcomStore">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        WHERE s.id = #{id}
+    </select>
+
+</mapper>

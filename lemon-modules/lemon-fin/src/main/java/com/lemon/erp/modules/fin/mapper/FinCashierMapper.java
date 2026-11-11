@@ -1,0 +1,36 @@
+package com.lemon.erp.modules.fin.mapper;
+
+import org.apache.ibatis.annotations.Param;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.Collection;
+import java.util.List;
+import com.lemon.erp.modules.fin.dto.CashierViews;
+
+/**
+ * 出纳：现金、银行科目的日记账和资金日报，按凭证日期统计；posted 为 true 时只统计已记账凭证，否则包含未审核、未记账的
+ */
+public interface FinCashierMapper {
+
+    /** 日期之前的余额（借 - 贷），含科目期初 */
+    BigDecimal sumBefore(@Param("accountIds") Collection<Long> accountIds, @Param("date") LocalDate date, @Param("posted") boolean posted);
+
+    /** 日记账分录：[{entryId, entryDate, voucherId, voucherNo, voucherStatus, summary, accountId, accountCode, accountName, debit, credit}] */
+    List<CashierViews.JournalEntry> selectJournal(@Param("accountIds") Collection<Long> accountIds, @Param("begin") LocalDate begin,
+                                            @Param("end") LocalDate end, @Param("posted") boolean posted);
+
+    /** 凭证的全部分录（按凭证、行号排列），用于按分录配对确定对方科目：[{voucherId, entryId, accountName, debit, credit}] */
+    List<CashierViews.VoucherLine> selectVoucherLines(@Param("voucherIds") Collection<Long> voucherIds);
+
+    /** 按科目汇总期间的收入、支出和笔数：[{accountId, debit, credit, inCount, outCount}] */
+    List<CashierViews.AccountTotal> sumByAccount(@Param("accountIds") Collection<Long> accountIds, @Param("begin") LocalDate begin,
+                                           @Param("end") LocalDate end, @Param("posted") boolean posted);
+
+    /** 日期之前各科目的余额（借 - 贷），含科目期初：[{accountId, balance}] */
+    List<CashierViews.AccountTotal> balanceBefore(@Param("accountIds") Collection<Long> accountIds, @Param("date") LocalDate date,
+                                            @Param("posted") boolean posted);
+
+    /** 未生成凭证的收付款：[{kind, count, amount}] */
+    List<CashierViews.KindTotal> selectUnvouchered();
+}

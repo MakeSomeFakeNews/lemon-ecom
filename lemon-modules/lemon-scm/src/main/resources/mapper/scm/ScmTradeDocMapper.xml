@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.scm.mapper.ScmTradeDocMapper">
+
+    <sql id="viewColumns">
+        d.id, d.doc_no, d.kind, d.order_id, d.partner_id, d.warehouse_id, d.biz_date, d.total_qty, d.total_amount,
+        d.tax_amount, d.wms_doc_id, d.wms_doc_no, d.remark, d.replenish, d.discount_amount, d.discount_adjust, d.freight, d.freight_bearer, d.freight_cost,
+        d.carrier_supplier_id, d.freight_bill_id, d.freight_settle, d.freight_account_id, d.freight_partner_bill_id, d.freight_io_id, cs.name AS carrier_supplier_name, d.dept_id, d.create_by, d.create_time, d.update_time,
+        d.post_by, d.post_time, pu.nickname AS post_by_name,
+        o.order_no, o.source AS order_source, CASE WHEN o.source = 'DIRECT' THEN o.whole_discount END AS whole_discount, o.invoice_kind, COALESCE(sp.code, cu.code) AS partner_code, COALESCE(sp.name, cu.name) AS partner_name,
+        w.name AS warehouse_name, u.nickname AS create_by_name
+    </sql>
+
+    <sql id="viewJoins">
+        FROM scm_trade_doc d
+        JOIN scm_order o ON o.id = d.order_id
+        LEFT JOIN scm_supplier sp ON o.kind = 'PURCHASE' AND sp.id = d.partner_id
+        LEFT JOIN scm_customer cu ON o.kind = 'SALES' AND cu.id = d.partner_id
+        LEFT JOIN wms_warehouse w ON w.id = d.warehouse_id
+        LEFT JOIN scm_supplier cs ON cs.id = d.carrier_supplier_id
+        LEFT JOIN sys_user u ON u.id = d.create_by
+        LEFT JOIN sys_user pu ON pu.id = d.post_by
+    </sql>
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.scm.entity.ScmTradeDoc">
+        SELECT <include refid="viewColumns"/>
+        <include refid="viewJoins"/>
+        WHERE d.kind = #{kind}
+        <if test="q.docNo != null and q.docNo != ''">AND d.doc_no LIKE CONCAT('%', #{q.docNo}, '%')</if>
+        <if test="q.orderNo != null and q.orderNo != ''">AND o.order_no LIKE CONCAT('%', #{q.orderNo}, '%')</if>
+        <if test="q.orderId != null">AND d.order_id = #{q.orderId}</if>
+        <if test="q.partnerId != null">AND d.partner_id = #{q.partnerId}</if>
+        <!-- 按明细的实际仓库（明细仓库，为空取表头仓库）筛选 -->
+        <if test="q.warehouseId != null">AND EXISTS (SELECT 1 FROM scm_trade_doc_item ti
+            WHERE ti.doc_id = d.id AND COALESCE(ti.warehouse_id, d.warehouse_id) = #{q.warehouseId})</if>
+        <if test="q.beginDate != null">AND d.biz_date &gt;= #{q.beginDate}</if>
+        <if test="q.endDate != null">AND d.biz_date &lt;= #{q.endDate}</if>
+        ORDER BY d.id DESC
+    </select>
+
+    <select id="selectItemWarehouses" resultType="java.util.Map">
+        SELECT ti.doc_id AS "docId", ti.warehouse_id AS "warehouseId", w.name AS "warehouseName"
+        FROM scm_trade_doc_item ti
+        LEFT JOIN wms_warehouse w ON w.id = ti.warehouse_id
+        WHERE ti.doc_id IN <foreach collection="docIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+        GROUP BY ti.doc_id, ti.warehouse_id, w.name
+    </select>
+
+    <select id="selectDetail" resultType="com.lemon.erp.modules.scm.entity.ScmTradeDoc">
+        SELECT <include refid="viewColumns"/>
+        <include refid="viewJoins"/>
+        WHERE d.id = #{id}
+    </select>
+
+</mapper>

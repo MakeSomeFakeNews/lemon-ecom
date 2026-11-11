@@ -1,0 +1,33 @@
+{
+  "name": "lemon-web",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "i18n:check": "node scripts/check-i18n.mjs && node scripts/gen-enums.mjs --check",
+    "gen:enums": "node scripts/gen-enums.mjs"
+  },
+  "dependencies": {
+    "@ant-design/icons-vue": "^7.0.1",
+    "ant-design-vue": "^4.2.6",
+    "axios": "^1.12.0",
+    "dayjs": "^1.11.23",
+    "dompurify": "3.4.17",
+    "echarts": "^5.6.0",
+    "exceljs": "^4.4.0",
+    "jsbarcode": "3.12.3",
+    "marked": "18.1.1",
+    "pinia": "^3.0.3",
+    "qrcode": "1.5.4",
+    "vue": "^3.5.22",
+    "vue-i18n": "11.4.12",
+    "vue-router": "^4.5.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.1",
+    "vite": "^7.1.0"
+  }
+}

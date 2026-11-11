@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomInboundMapper">
+
+    <sql id="columns">
+        i.*, s.name AS store_name, fw.name AS from_warehouse_name, tw.name AS to_warehouse_name, ch.name AS channel_name, u.nickname AS create_by_name
+    </sql>
+
+    <sql id="joins">
+        FROM ecom_inbound i
+        JOIN ecom_store s ON s.id = i.store_id
+        LEFT JOIN wms_warehouse fw ON fw.id = i.from_warehouse_id
+        LEFT JOIN wms_warehouse tw ON tw.id = i.to_warehouse_id
+        LEFT JOIN ecom_logistics_channel ch ON ch.id = i.channel_id
+        LEFT JOIN sys_user u ON u.id = i.create_by
+    </sql>
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.entity.EcomInbound">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        <where>
+            <if test="storeId != null">i.store_id = #{storeId}</if>
+            <if test="status != null">AND i.status = #{status}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (i.doc_no LIKE CONCAT('%', #{keyword}, '%') OR i.shipment_id LIKE CONCAT('%', #{keyword}, '%') OR i.tracking_no LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY i.id DESC
+    </select>
+
+    <select id="selectDetail" resultType="com.lemon.erp.modules.ecom.entity.EcomInbound">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        WHERE i.id = #{id}
+    </select>
+
+</mapper>

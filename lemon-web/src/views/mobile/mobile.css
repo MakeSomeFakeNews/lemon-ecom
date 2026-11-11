@@ -1,0 +1,87 @@
+/* 移动作业页面的公共样式 */
+/* 页面根元素：占满内容区高度，底部操作栏（m-footer，放在最后）内容少时贴底、内容多时随滚动吸底 */
+.m-page {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+/* 操作栏之前的内容与操作栏留出间距（操作栏的 margin-top 是 auto） */
+.m-page > :nth-last-child(2) {
+  margin-bottom: 12px;
+}
+.m-card {
+  margin-top: 10px;
+  padding: 12px;
+  background: var(--app-card);
+  border-radius: 8px;
+  border: 2px solid transparent;
+}
+.m-click {
+  cursor: pointer;
+}
+.m-click:active {
+  background: var(--app-hover);
+}
+.m-active {
+  border-color: var(--app-primary);
+}
+.m-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+/* 一行左右两端：左侧长文字换行，右侧（日期、数量等）不换行、不被挤压 */
+.m-grow {
+  flex: 1;
+  min-width: 0;
+  word-break: break-all;
+}
+.m-nowrap {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.m-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+.m-grid > * {
+  width: 100%;
+}
+.m-field {
+  width: 100%;
+  margin-top: 8px;
+}
+.m-current {
+  margin-top: 8px;
+}
+.m-serials {
+  margin-top: 8px;
+  line-height: 28px;
+}
+.m-footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 5;
+  margin: auto -12px -12px;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  background: var(--app-card);
+  box-shadow: 0 -1px 4px rgba(0, 0, 0, 0.06);
+}
+.qty-done {
+  color: #52c41a;
+  font-weight: 500;
+}
+.qty-short {
+  color: #fa8c16;
+  font-weight: 500;
+}
+.sub-text {
+  color: var(--app-text-3);
+  font-size: 12px;
+}

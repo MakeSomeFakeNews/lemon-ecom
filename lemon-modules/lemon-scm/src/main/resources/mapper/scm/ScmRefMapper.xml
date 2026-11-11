@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 主数据被引用检查（删除物料、仓库、客户、供应商、用户、部门前），见 ReferenceChecker；返回引用处名称的消息键 -->
+<mapper namespace="com.lemon.erp.modules.scm.mapper.ScmRefMapper">
+
+    <select id="findMaterial" resultType="java.lang.String">
+        SELECT CASE
+            WHEN EXISTS (SELECT 1 FROM scm_order_item WHERE material_id = #{id}) THEN 'scm.label.purchaseSalesOrder'
+            WHEN EXISTS (SELECT 1 FROM scm_supplier_price WHERE material_id = #{id}) THEN 'scm.label.supplyPrice'
+            WHEN EXISTS (SELECT 1 FROM scm_requisition_item WHERE material_id = #{id}) THEN 'scm.label.purchaseRequisition'
+            WHEN EXISTS (SELECT 1 FROM scm_inquiry_item WHERE material_id = #{id}) THEN 'scm.label.rfq'
+            WHEN EXISTS (SELECT 1 FROM scm_quotation_item WHERE material_id = #{id}) THEN 'scm.label.salesQuotation2'
+            WHEN EXISTS (SELECT 1 FROM scm_price_list WHERE material_id = #{id}) THEN 'scm.label.salesPriceList'
+            WHEN EXISTS (SELECT 1 FROM scm_customer_price WHERE material_id = #{id}) THEN 'scm.label.customerPrice'
+            WHEN EXISTS (SELECT 1 FROM scm_trade_draft_item WHERE material_id = #{id}) THEN 'scm.label.inboundOutboundDraft'
+        END
+    </select>
+
+    <select id="findWarehouse" resultType="java.lang.String">
+        SELECT CASE
+            WHEN EXISTS (SELECT 1 FROM scm_order WHERE warehouse_id = #{id}) THEN 'scm.label.purchaseSalesOrder'
+            WHEN EXISTS (SELECT 1 FROM scm_delivery WHERE warehouse_id = #{id}) THEN 'scm.label.deliveryNotice'
+            WHEN EXISTS (SELECT 1 FROM scm_trade_draft WHERE warehouse_id = #{id}) THEN 'scm.label.inboundOutboundDraft'
+            WHEN EXISTS (SELECT 1 FROM scm_trade_draft_item WHERE warehouse_id = #{id}) THEN 'scm.label.inboundOutboundDraft'
+        END
+    </select>
+
+    <select id="findUser" resultType="java.lang.String">
+        SELECT CASE
+            WHEN EXISTS (SELECT 1 FROM scm_order WHERE create_by = #{id}) THEN 'scm.label.purchaseSalesOrder'
+            WHEN EXISTS (SELECT 1 FROM scm_trade_doc WHERE create_by = #{id}) THEN 'scm.label.inboundOutboundDocument'
+            WHEN EXISTS (SELECT 1 FROM scm_trade_draft WHERE create_by = #{id}) THEN 'scm.label.inboundOutboundDraft'
+            WHEN EXISTS (SELECT 1 FROM scm_requisition WHERE create_by = #{id}) THEN 'scm.label.purchaseRequisition'
+            WHEN EXISTS (SELECT 1 FROM scm_quotation WHERE create_by = #{id}) THEN 'scm.label.salesQuotation2'
+        END
+    </select>
+
+    <select id="findCustomer" resultType="java.lang.String">
+        SELECT CASE
+            WHEN EXISTS (SELECT 1 FROM scm_quotation WHERE customer_id = #{id}) THEN 'scm.label.salesQuotation2'
+            WHEN EXISTS (SELECT 1 FROM scm_customer_price WHERE customer_id = #{id}) THEN 'scm.label.customerPrice'
+            WHEN EXISTS (SELECT 1 FROM scm_rebate WHERE customer_id = #{id}) THEN 'scm.label.rebateAgreement'
+            WHEN EXISTS (SELECT 1 FROM scm_trade_draft WHERE kind IN ('SALES_OUT', 'SALES_RETURN') AND partner_id = #{id}) THEN 'scm.label.inboundOutboundDraft'
+        END
+    </select>
+
+    <select id="findSupplier" resultType="java.lang.String">
+        SELECT CASE
+            WHEN EXISTS (SELECT 1 FROM scm_inquiry_quote WHERE supplier_id = #{id}) THEN 'scm.label.rfqQuotation'
+            WHEN EXISTS (SELECT 1 FROM scm_requisition_item WHERE supplier_id = #{id}) THEN 'scm.label.purchaseRequisition'
+            WHEN EXISTS (SELECT 1 FROM scm_rebate WHERE supplier_id = #{id}) THEN 'scm.label.rebateAgreement'
+            WHEN EXISTS (SELECT 1 FROM scm_trade_draft WHERE kind IN ('PURCHASE_IN', 'PURCHASE_RETURN') AND partner_id = #{id}) THEN 'scm.label.inboundOutboundDraft'
+            WHEN EXISTS (SELECT 1 FROM scm_trade_draft WHERE carrier_supplier_id = #{id}) THEN 'scm.label.inboundOutboundDraft'
+        END
+    </select>
+
+    <select id="findDept" resultType="java.lang.String">
+        SELECT CASE
+            WHEN EXISTS (SELECT 1 FROM scm_order WHERE dept_id = #{id}) THEN 'scm.label.purchaseSalesOrder'
+            WHEN EXISTS (SELECT 1 FROM scm_trade_draft WHERE dept_id = #{id}) THEN 'scm.label.inboundOutboundDraft'
+        END
+    </select>
+
+    <!-- 物料分类（按编码关联，分类表只读关联） -->
+    <select id="findMaterialCategory" resultType="java.lang.String">
+        SELECT CASE
+            WHEN EXISTS (SELECT 1 FROM scm_promotion x JOIN wms_material_category c ON c.code = x.material_category WHERE c.id = #{id}) THEN 'scm.label.promotionActivity'
+            WHEN EXISTS (SELECT 1 FROM scm_rebate_item x JOIN wms_material_category c ON c.code = x.category WHERE c.id = #{id}) THEN 'scm.label.rebateAgreement'
+        END
+    </select>
+
+</mapper>

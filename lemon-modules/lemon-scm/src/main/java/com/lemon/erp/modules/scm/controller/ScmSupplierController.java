@@ -1,0 +1,134 @@
+package com.lemon.erp.modules.scm.controller;
+
+import com.lemon.erp.common.dto.StatusRequest;
+import com.lemon.erp.common.enums.EnableStatus;
+import com.lemon.erp.common.result.PageResult;
+import com.lemon.erp.common.result.R;
+import com.lemon.erp.common.validation.Create;
+import com.lemon.erp.common.validation.Update;
+import com.lemon.erp.framework.excel.ImportExecutor;
+import com.lemon.erp.framework.excel.ImportRequest;
+import com.lemon.erp.framework.excel.ImportResult;
+import com.lemon.erp.framework.log.OperLog;
+import com.lemon.erp.framework.log.OperType;
+import com.lemon.erp.modules.scm.dto.CarrierOptions;
+import com.lemon.erp.modules.scm.dto.PartnerOption;
+import com.lemon.erp.modules.scm.entity.ScmSupplier;
+import com.lemon.erp.modules.scm.model.SupplierLevel;
+import com.lemon.erp.modules.scm.service.ScmSupplierService;
+import com.lemon.erp.modules.scm.service.ScmPartnerMergeService;
+import com.lemon.erp.modules.scm.dto.PartnerMergeRequests;
+import com.lemon.erp.framework.ref.PartnerType;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/scm/supplier")
+@RequiredArgsConstructor
+public class ScmSupplierController {
+
+    private final ScmSupplierService supplierService;
+    private final ScmPartnerMergeService mergeService;
+    private final ImportExecutor importExecutor;
+
+    @GetMapping
+    @PreAuthorize("@ss.hasPerm('scm:supplier:list')")
+    public R<PageResult<ScmSupplier>> page(@RequestParam(defaultValue = "1") long current,
+                                       @RequestParam(defaultValue = "10") long size,
+                                       @RequestParam(required = false) String keyword,
+                                       @RequestParam(required = false) SupplierLevel level,
+                                       @RequestParam(required = false) EnableStatus status,
+                                       @RequestParam(required = false) Integer logistics) {
+        return R.ok(supplierService.page(current, size, keyword, level, status, logistics));
+    }
+
+    /** 登录即可访问：订单等页面的下拉，按关键字分页搜索（每页最多 50 条，滚动加载下一页）；ids 按 ID 取已选供应商的名称 */
+    @GetMapping("/options")
+    public R<List<PartnerOption>> options(@RequestParam(required = false) String keyword,
+                                          @RequestParam(required = false) List<Long> ids,
+                                          @RequestParam(defaultValue = "1") long current,
+                                          @RequestParam(defaultValue = "20") long size) {
+        return R.ok(ids != null && !ids.isEmpty() ? supplierService.optionsByIds(ids) : supplierService.options(keyword, current, size));
+    }
+
+    /** 登录即可访问：承运商下拉（采购运费、发运单），只列出物流公司，没有标记时为全部供应商 */
+    @GetMapping("/carrier-options")
+    public R<CarrierOptions> carrierOptions(@RequestParam(required = false) String keyword,
+                                            @RequestParam(defaultValue = "1") long current,
+                                            @RequestParam(defaultValue = "20") long size) {
+        return R.ok(supplierService.carrierOptions(keyword, current, size));
+    }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("@ss.hasPerm('scm:supplier:list')")
+    public R<ScmSupplier> get(@PathVariable Long id) {
+        return R.ok(supplierService.detail(id));
+    }
+
+    @PostMapping
+    @PreAuthorize("@ss.hasPerm('scm:supplier:add')")
+    @OperLog(title = "供应商管理", type = OperType.INSERT) // i18n-ignore
+    public R<Long> create(@Validated(Create.class) @RequestBody ScmSupplier supplier) {
+        supplierService.create(supplier);
+        return R.ok(supplier.getId());
+    }
+
+    /** Excel 导入：逐行按新增校验，任何一行出错整批不导入 */
+    @PostMapping("/import")
+    @PreAuthorize("@ss.hasPerm('scm:supplier:add')")
+    @OperLog(title = "供应商管理-导入", type = OperType.IMPORT) // i18n-ignore
+    public R<ImportResult> importRows(@Valid @RequestBody ImportRequest<ScmSupplier> req) {
+        return R.ok(importExecutor.run(req, supplierService::create, Create.class));
+    }
+    @PutMapping("/{id}")
+    @PreAuthorize("@ss.hasPerm('scm:supplier:edit')")
+    @OperLog(title = "供应商管理", type = OperType.UPDATE) // i18n-ignore
+    public R<Void> update(@PathVariable Long id, @Validated(Update.class) @RequestBody ScmSupplier supplier) {
+        supplierService.update(id, supplier);
+        return R.ok();
+    }
+
+    @PutMapping("/{id}/status")
+    @PreAuthorize("@ss.hasPerm('scm:supplier:edit')")
+    @OperLog(title = "供应商管理-修改状态", type = OperType.UPDATE) // i18n-ignore
+    public R<Void> changeStatus(@PathVariable Long id, @Valid @RequestBody StatusRequest req) {
+        supplierService.changeStatus(id, req.status());
+        return R.ok();
+    }
+
+    @DeleteMapping("/{ids}")
+    @PreAuthorize("@ss.hasPerm('scm:supplier:remove')")
+    @OperLog(title = "供应商管理", type = OperType.DELETE) // i18n-ignore
+    public R<Void> delete(@PathVariable List<Long> ids) {
+        supplierService.delete(ids);
+        return R.ok();
+    }
+
+    /** 合并预览：被合并资料的各类业务数据数量（影响范围），有不能自动处理的冲突时提示 */
+    @PostMapping("/merge/preview")
+    @PreAuthorize("@ss.hasPerm('scm:supplier:merge')")
+    public R<PartnerMergeRequests.Preview> mergePreview(@Valid @RequestBody PartnerMergeRequests.Merge req) {
+        return R.ok(mergeService.preview(PartnerType.SUPPLIER, req));
+    }
+
+    /** 合并：被合并资料的全部业务数据改为指向保留的资料，被合并的资料停用并标记为已合并 */
+    @PostMapping("/merge")
+    @PreAuthorize("@ss.hasPerm('scm:supplier:merge')")
+    @OperLog(title = "供应商管理-合并", type = OperType.UPDATE) // i18n-ignore
+    public R<PartnerMergeRequests.Preview> merge(@Valid @RequestBody PartnerMergeRequests.Merge req) {
+        return R.ok(mergeService.merge(PartnerType.SUPPLIER, req));
+    }
+}

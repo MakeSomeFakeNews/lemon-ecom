@@ -1,0 +1,88 @@
+# 公共配置，环境相关配置见 application-{dev,prod}.yml
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+  # 部署在 Nginx 等反向代理后时，从 X-Forwarded-For / X-Forwarded-Proto 还原真实客户端 IP 与协议。
+  # 只信任内网代理（10/8、172.16/12、192.168/16、127/8 等），防止外部伪造请求头篡改日志 IP；
+  # 代理不在内网时通过 server.tomcat.remoteip.internal-proxies 配置其地址（正则）
+  forward-headers-strategy: native
+
+spring:
+  application:
+    name: lemon-ecom
+  profiles:
+    active: dev
+  servlet:
+    multipart:
+      # 附件的实际上限见「参数设置 - 附件大小上限」（最大 100MB）
+      max-file-size: 100MB
+      max-request-size: 105MB
+
+# 工作流引擎（Flowable），只启用 BPMN 流程引擎；用户、组织架构使用系统自己的表，不使用 Flowable IDM
+flowable:
+  # 启动时自动创建 / 升级 ACT_ 开头的引擎表
+  database-schema-update: true
+  # 流程定义由「流程模型」发布，不扫描 classpath:/processes
+  check-process-definitions: false
+  # audit：保留流程、任务、变量、审批意见的历史，满足审批记录展示
+  history-level: audit
+  idm:
+    enabled: false
+  eventregistry:
+    enabled: false
+
+mybatis-plus:
+  mapper-locations: classpath*:mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+    db-config:
+      id-type: auto
+
+lemon:
+  tenant:
+    # SaaS 多租户：开启后业务数据按租户隔离，登录时需填写租户名称，平台租户可在「系统管理 - 租户管理」开通租户
+    enabled: ${LEMON_TENANT_ENABLED:false}
+  demo:
+    # 演示模式：开启后所有用户只能查看，不能新增、修改、删除（登录、退出、查询类接口不受影响）
+    enabled: ${LEMON_DEMO_ENABLED:false}
+  # 以下登录、密码相关配置是「系统管理 - 参数设置」中对应参数的默认值，在页面中修改后以页面为准
+  jwt:
+    expire-hours: 12
+  security:
+    # 密码最小长度；连续登录失败 N 次锁定账号若干分钟；密码有效天数（0 不限制，到期登录后提示修改）
+    password-min-length: 8
+    login-max-retry: 5
+    login-lock-minutes: 10
+    password-expire-days: 0
+  cache:
+    # redis | memory（memory 仅用于本地体验/测试，不支持多实例）
+    type: redis
+  upload:
+    # 上传文件存储目录，通过 /api/files/** 访问
+    path: ./uploads
+    # 业务附件（合同、简历、原始凭证等）存储目录，不公开访问，按单据权限下载
+    attachment-path: ./attachments
+  job:
+    # 定时任务调度（「系统监控 - 定时任务」中设置各任务的 Cron、启停）；false 时只能手动执行
+    enabled: true
+  user:
+    # 录用时开通的登录账号的初始密码
+    initial-password: Lemon@123
+  # 微信小程序（lemon-mp）：所有租户共用一个小程序，AppID / AppSecret 在这里配置；为空时小程序不能用微信登录
+  miniapp:
+    app-id: ${LEMON_MINIAPP_APP_ID:}
+    app-secret: ${LEMON_MINIAPP_APP_SECRET:}
+    # 审批提醒推送为订阅消息：在公众平台「订阅消息」中选用模板（如「待办审批提醒」），填写模板 ID 和标题、内容、时间对应的字段名
+    subscribe:
+      template-id: ${LEMON_MINIAPP_SUBSCRIBE_TEMPLATE_ID:}
+      # title-field: thing1
+      # content-field: thing2
+      # time-field: time3
+  # 钉钉、企业微信、飞书开放平台的接口地址（默认为官方地址，一般不用配置）；应用在「系统管理 - 第三方集成」中按租户配置
+  # im:
+  #   feishu:
+  #     api: https://open.larksuite.com            # Lark 国际版
+  #     accounts: https://accounts.larksuite.com

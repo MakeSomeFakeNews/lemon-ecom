@@ -1,0 +1,281 @@
+<template>
+  <div class="table-page">
+    <a-card v-show="showSearch" :bordered="false" class="page-card">
+      <SearchForm :model="query" @search="search" @reset="resetQuery">
+        <a-form-item :label="$t('scm.order.orderNo')" name="orderNo">
+          <a-input v-model:value="query.orderNo" :placeholder="$t('common.placeholder.inputName', { name: $t('scm.order.orderNo') })" allow-clear />
+        </a-form-item>
+        <a-form-item :label="conf.partnerLabel" name="partnerId">
+          <PartnerSelect v-model:value="query.partnerId" :type="conf.partner" :placeholder="$t('common.placeholder.all')" allow-clear />
+        </a-form-item>
+        <a-form-item :label="$t('common.field.status')" name="status">
+          <a-select v-model:value="query.status" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.scm_order_status)" />
+        </a-form-item>
+        <a-form-item :label="$t('scm.order.material')" name="keyword">
+          <a-input v-model:value="query.keyword" :placeholder="$t('scm.order.materialKeyword')" allow-clear />
+        </a-form-item>
+        <a-form-item :label="$t('scm.order.orderDate')" name="range">
+          <a-range-picker v-model:value="query.range" value-format="YYYY-MM-DD" style="width: 100%" />
+        </a-form-item>
+      </SearchForm>
+    </a-card>
+
+    <a-card :bordered="false" class="page-card table-card">
+      <TableToolbar
+        :exporter="exportAll"
+        v-model:size="size"
+        v-model:checked="checked"
+        v-model:show-search="showSearch"
+        :columns="columns"
+        @refresh="load"
+      >
+        <a-button v-perm="`scm:${kind}:add`" type="primary" @click="form.openCreate()">
+          <template #icon><PlusOutlined /></template>{{ $t('scm.order.addOrder', { kind: conf.label }) }}
+        </a-button>
+        <AiExtractButton :target="`scm.${kind}-order`" :perm="`scm:${kind}:add`" :title="conf.label" @result="ai.apply" />
+        <span v-perm="`scm:${kind}:remove`">
+          <a-popconfirm
+            :title="$t('scm.order.confirmDeleteDrafts', { n: selectedKeys.length })"
+            :disabled="!selectedKeys.length"
+            @confirm="remove(selectedKeys)"
+          >
+            <a-button danger :disabled="!selectedKeys.length">
+              <template #icon><DeleteOutlined /></template>{{ $t('common.action.batchDelete') }}
+            </a-button>
+          </a-popconfirm>
+        </span>
+      </TableToolbar>
+
+      <a-table
+        row-key="id"
+        :size="size"
+        :columns="visibleColumns"
+        :data-source="list"
+        :loading="loading"
+        :pagination="pagination"
+        :row-selection="{ ...rowSelection, getCheckboxProps: (r) => ({ disabled: r.status !== OrderStatus.DRAFT }) }"
+        :scroll="{ x: scrollX + 32, y: '100%' }"
+        @change="onTableChange"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'orderNo'">
+            <a @click="openDetail(record)">{{ record.orderNo }}</a>
+            <a-tag v-if="record.version > 1" color="blue" :bordered="false" class="source-tag">V{{ record.version }}</a-tag>
+            <a-tag v-if="record.source === OrderSource.MRP" color="purple" :bordered="false" class="source-tag">MRP</a-tag>
+            <a-tag v-else-if="record.source === OrderSource.IMPORT" color="lime" :bordered="false" class="source-tag">{{ $t('scm.order.sourceImport') }}</a-tag>
+            <a-tag v-else-if="record.source === OrderSource.DIRECT" color="blue" :bordered="false" class="source-tag">{{ $t('scm.order.sourceDirect') }}</a-tag>
+            <div v-if="record.externalNo" class="sub-text">{{ $t('scm.order.externalNoValue', { no: record.externalNo }) }}</div>
+          </template>
+          <template v-else-if="column.key === 'partner'">
+            <div>{{ record.partnerName }}</div>
+            <div class="sub-text">{{ record.partnerCode }}</div>
+          </template>
+          <template v-else-if="column.key === 'dates'">
+            <div>{{ record.orderDate }}</div>
+            <div class="sub-text">{{ $t('scm.order.deliveryValue', { date: record.deliveryDate || '-' }) }}</div>
+          </template>
+          <template v-else-if="column.key === 'totalAmount'">
+            {{ currencySymbol(record.currency) }}{{ formatMoney(record.totalAmount) }}
+            <div v-if="isForeign(record.currency)" class="sub-text">{{ record.currency }} @{{ Number(record.exchangeRate) }}</div>
+            <div v-if="Number(record.wholeDiscount)" class="sub-text">{{ $t('scm.wholeDiscount.value', { amount: currencySymbol(record.currency) + formatMoney(record.wholeDiscount) }) }}</div>
+          </template>
+          <template v-else-if="column.key === 'progress'">
+            <a-progress :percent="progress(record)" size="small" :show-info="false" :status="progress(record) >= 100 ? 'success' : 'normal'" />
+            <div class="sub-text">{{ formatQty(record.doneQty) }} / {{ formatQty(record.totalQty) }} · {{ progress(record) }}%</div>
+          </template>
+          <template v-else-if="column.key === 'status'">
+            <DictTag type="scm_order_status" :value="record.status" />
+          </template>
+          <template v-else-if="column.key === 'action'">
+            <TableActions :actions="rowActions(record)" />
+          </template>
+        </template>
+      </a-table>
+    </a-card>
+
+    <OrderForm ref="form" :kind="kind" :ai="ai" @success="onSaved" />
+    <OrderDetail
+      ref="detailRef"
+      v-model:open="detailOpen"
+      :kind="kind"
+      :order-id="detailId"
+      @edit="onEditFromDetail"
+      @trade="openTrade"
+      @changed="load"
+    />
+    <TradeDocForm v-for="t in conf.trades" :key="t" :ref="(el) => (tradeForms[t] = el)" :kind="t" @success="onTradeSaved" />
+  </div>
+</template>
+
+<script setup>
+import { onMounted, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+import { message } from 'ant-design-vue'
+import { DeleteOutlined, ExportOutlined, ImportOutlined, PlusOutlined } from '@ant-design/icons-vue'
+import DictTag from '@/components/DictTag.vue'
+import SearchForm from '@/components/SearchForm.vue'
+import TableToolbar from '@/components/TableToolbar.vue'
+import OrderDetail from './OrderDetail.vue'
+import OrderForm from './OrderForm.vue'
+import PartnerSelect from './PartnerSelect.vue'
+import TradeDocForm from './TradeDocForm.vue'
+import AiExtractButton from '@/components/ai/AiExtractButton.vue'
+import { useAiPrefill } from '@/composables/useAiPrefill'
+import { deleteOrder, pageOrder } from '@/api/scm/order'
+import { useColumns } from '@/composables/useColumns'
+import TableActions from '@/components/common/TableActions.vue'
+import { actionColumn } from '@/components/common/tableActions'
+import { useDict } from '@/composables/useDict'
+import { useTable } from '@/composables/useTable'
+import { toOptions } from '@/utils/dict'
+import { formatQty } from '@/components/wms/wms'
+import { ORDER_KINDS, formatMoney } from './scm'
+import { currencySymbol, isForeign, useCurrencies } from '@/components/fin/currency'
+
+import { OrderSource, OrderStatus } from '@/constants/enums'
+/**
+ * 采购订单 / 销售订单列表页，两个页面共用
+ */
+const props = defineProps({
+  kind: { type: String, required: true }
+})
+
+const { t } = useI18n()
+const conf = ORDER_KINDS[props.kind]
+
+const dict = useDict('scm_order_status')
+useCurrencies()
+
+// 导出（exportColumns / exportValue）：合并显示的列拆开导出，金额、数量为原始数值，见 useTable
+const columns = [
+  { title: t('scm.order.orderNo'), key: 'orderNo', width: 190 },
+  { title: conf.partnerLabel, key: 'partner', width: 200, exportValue: (r) => [r.partnerCode, r.partnerName].filter(Boolean).join(' ') },
+  {
+    title: t('scm.order.orderDeliveryDate'),
+    key: 'dates',
+    width: 140,
+    exportColumns: [
+      { title: t('scm.order.orderDate'), dataIndex: 'orderDate' },
+      { title: t('scm.order.deliveryDate'), dataIndex: 'deliveryDate' }
+    ]
+  },
+  {
+    title: t('scm.order.totalAmount'),
+    key: 'totalAmount',
+    width: 130,
+    align: 'right',
+    exportColumns: [
+      { title: t('scm.order.totalAmount'), dataIndex: 'totalAmount' },
+      { title: t('scm.order.currencyRate'), exportValue: (r) => (isForeign(r.currency) ? `${r.currency} @${Number(r.exchangeRate)}` : r.currency || '') },
+      { title: t('scm.wholeDiscount.label'), exportValue: (r) => (Number(r.wholeDiscount) ? Number(r.wholeDiscount) : '') }
+    ]
+  },
+  { title: t('common.field.status'), key: 'status', width: 120, dict: 'scm_order_status' },
+  {
+    title: props.kind === 'purchase' ? t('scm.order.inProgress') : t('scm.order.outProgress'),
+    key: 'progress',
+    width: 190,
+    exportValue: (r) => `${formatQty(r.doneQty)} / ${formatQty(r.totalQty)}`
+  },
+  { title: conf.warehouseLabel, dataIndex: 'warehouseName', width: 120 },
+  { title: t('scm.order.preparedBy'), dataIndex: 'createByName', width: 110 },
+  { title: t('common.field.remark'), dataIndex: 'remark', width: 150, ellipsis: true },
+  { title: t('common.field.createTime'), dataIndex: 'createTime', width: 170 },
+  actionColumn(2, [t('common.action.view')])
+]
+const { checked, visibleColumns, scrollX } = useColumns(columns, `scm-${props.kind}`)
+
+// 行操作：查看；草稿可编辑，已审核 / 部分完成可入库（出库）
+const rowActions = (record) => [
+  { type: 'view', onClick: () => openDetail(record) },
+  { type: 'edit', show: record.status === OrderStatus.DRAFT, perm: `scm:${props.kind}:edit`, onClick: () => form.value.openEdit(record) },
+  {
+    key: 'trade',
+    label: props.kind === 'purchase' ? t('scm.order.inbound') : t('scm.order.outbound'),
+    icon: props.kind === 'purchase' ? ImportOutlined : ExportOutlined,
+    show: [OrderStatus.APPROVED, OrderStatus.PARTIAL].includes(record.status),
+    perm: `scm:${conf.trades[0]}:add`,
+    onClick: () => openTrade(conf.trades[0], record)
+  }
+]
+const showSearch = ref(true)
+
+const emptyQuery = () => ({ orderNo: undefined, partnerId: undefined, status: undefined, keyword: undefined, range: undefined })
+const query = reactive(emptyQuery())
+const { list, loading, size, pagination, selectedKeys, rowSelection, load, search, onTableChange, exportAll } = useTable(
+  (params) => pageOrder(props.kind, params),
+  query,
+  { params: ({ range, ...rest }) => ({ ...rest, beginDate: range?.[0], endDate: range?.[1] }) }
+)
+
+function resetQuery() {
+  Object.assign(query, emptyQuery())
+  search()
+}
+
+const route = useRoute()
+const router = useRouter()
+onMounted(() => {
+  load()
+  // 从其他页面跳转过来时（?id=订单ID）直接打开订单详情
+  const id = Number(route.query.id)
+  if (id) {
+    openDetail({ id })
+    router.replace({ query: {} })
+  }
+})
+
+const progress = (r) => (Number(r.totalQty) ? Math.min(Math.round((Number(r.doneQty) / Number(r.totalQty)) * 100), 100) : 0)
+
+const form = ref()
+// 智能录入：识别结果打开新增订单并预填（从「智能录入」页面跳转，或工具栏的「AI 识别」）
+const ai = useAiPrefill(`${props.kind}-order`, (data) => form.value.openCreate(data))
+const detailRef = ref()
+const detailOpen = ref(false)
+const detailId = ref()
+const tradeForms = reactive({})
+
+function openDetail(record) {
+  detailId.value = record.id
+  detailOpen.value = true
+}
+
+function onEditFromDetail(record) {
+  form.value.openEdit(record)
+}
+
+/** 保存后打开详情，方便接着审核 */
+function onSaved(id) {
+  load()
+  // 从详情进入的编辑：返回详情并刷新
+  if (detailOpen.value && (!id || id === detailId.value)) detailRef.value?.reload()
+  else if (id) openDetail({ id })
+}
+
+function openTrade(tradeKind, order) {
+  tradeForms[tradeKind]?.openCreate(order)
+}
+
+function onTradeSaved() {
+  load()
+  if (detailOpen.value) detailRef.value?.reload()
+}
+
+async function remove(ids) {
+  await deleteOrder(props.kind, ids)
+  message.success(t('common.msg.deleteSuccess'))
+  selectedKeys.value = selectedKeys.value.filter((k) => !ids.includes(k))
+  load()
+}
+</script>
+
+<style scoped>
+.sub-text {
+  color: var(--app-text-3);
+  font-size: 12px;
+}
+.source-tag {
+  margin-left: 4px;
+}
+</style>

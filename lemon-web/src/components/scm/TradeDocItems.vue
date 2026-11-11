@@ -1,0 +1,445 @@
+<template>
+  <div>
+    <div class="items-head">
+      <span class="section-title">
+        {{ $t('scm.trade.itemsSummary', { rows: form.items.length, qty: formatQty(totalQty), amount: formatMoney(totalAmount) }) }}
+      </span>
+      <a-space>
+        <a-button v-if="inbound" size="small" :disabled="!form.warehouseId || !form.items.length" @click="putaway">{{ $t('scm.trade.suggestLocation') }}</a-button>
+        <a-button v-if="direct" size="small" type="primary" ghost @click="addRow()">
+          <template #icon><PlusOutlined /></template>{{ $t('scm.trade.addLine') }}
+        </a-button>
+      </a-space>
+    </div>
+
+    <LineItemsTable
+      class="items-table"
+      :items="form.items"
+      :columns="columns"
+      :empty-text="direct ? $t('scm.trade.emptyDirect') : form.orderId ? $t('scm.trade.noItems', { action: conf.action }) : $t('scm.trade.selectOrderFirst')"
+    >
+      <template #header="{ column }">
+        <TaxRateTitle v-if="column.key === 'taxRate'" :title="column.title" @apply="applyAllTaxRate" />
+      </template>
+      <template #cell="{ column, record }">
+        <template v-if="column.key === 'material'">
+          <template v-if="record.gift">
+            <div>{{ record.materialName }}</div>
+            <div class="sub-text">{{ record.spec }}</div>
+          </template>
+          <a-form-item v-else-if="direct" :name="lines.itemName(record, 'materialId')" :rules="requiredRule($t('scm.trade.selectMaterial'))" class="cell-item">
+            <MaterialSelect v-model:value="record.materialId" :label="record.materialLabel" @select="(m) => applyMaterial(record, m)" />
+          </a-form-item>
+          <template v-else>
+            <div>{{ record.materialCode }} {{ record.materialName }}</div>
+            <div class="sub-text">{{ record.spec }}</div>
+          </template>
+          <div class="row-tags">
+            <a-tag v-if="record.gift" color="green" :bordered="false">{{ $t('scm.trade.giftTag') }}</a-tag>
+            <a-tag v-if="record.batchEnabled === 1" color="blue" :bordered="false">{{ $t('scm.trade.batch') }}</a-tag>
+            <a-tag v-if="record.serialEnabled === 1" color="purple" :bordered="false">{{ $t('scm.trade.serialNo') }}</a-tag>
+          </div>
+        </template>
+        <template v-else-if="column.key === 'limit'">
+          <div>{{ formatQty(record.limit) }} {{ record.unit }}</div>
+          <div class="sub-text">¥{{ formatMoney(record.grossPrice ?? record.price) }} / {{ record.unit || $t('common.field.unit') }}</div>
+        </template>
+        <template v-else-if="column.key === 'warehouse'">
+          <WarehouseSelect
+            :value="record.warehouseId"
+            :placeholder="$t('scm.trade.sameAsHeader')"
+            @update:value="(v) => changeRowWarehouse(record, v)"
+          />
+        </template>
+        <template v-else-if="column.key === 'slot'">
+          <a-form-item :name="lines.itemName(record, 'slot')" :rules="requiredRule($t('scm.trade.selectSlot'))" class="cell-item">
+            <StockSlotSelect
+              v-model:value="record.slot"
+              :label="record.slotLabel"
+              :warehouse-id="rowWarehouse(record)"
+              :material-id="record.materialId"
+              :include-frozen="kind === 'purchaseReturn'"
+              @select="(s) => applySlot(record, s)"
+            />
+          </a-form-item>
+          <div v-if="record.available != null" class="sub-text">{{ $t('scm.trade.availableN', { qty: formatQty(record.available) }) }}</div>
+        </template>
+        <template v-else-if="column.key === 'location'">
+          <LocationSelect v-model:value="record.locationId" :warehouse-id="form.warehouseId" />
+        </template>
+        <template v-else-if="column.key === 'batchNo'">
+          <a-form-item
+            :name="lines.itemName(record, 'batchNo')"
+            :rules="record.batchEnabled === 1 ? requiredRule($t('scm.trade.inputBatchNo')) : []"
+            class="cell-item"
+          >
+            <a-input v-model:value="record.batchNo" :maxlength="64" :disabled="record.batchEnabled !== 1" :placeholder="$t('scm.trade.batchNo')" />
+          </a-form-item>
+          <template v-if="kind === 'purchaseIn' && record.batchEnabled === 1">
+            <a-date-picker v-model:value="record.productionDate" value-format="YYYY-MM-DD" :placeholder="$t('scm.trade.productionDate')" class="full date-row" />
+            <a-date-picker v-model:value="record.expiryDate" value-format="YYYY-MM-DD" :placeholder="$t('scm.trade.expiryDate')" class="full date-row" />
+          </template>
+        </template>
+        <template v-else-if="column.key === 'qty'">
+          <a-form-item :name="lines.itemName(record, 'qty')" :rules="requiredRule($t('scm.trade.inputQty'))" class="cell-item">
+            <a-input-number
+              v-model:value="record.qty"
+              :min="0"
+              :precision="record.serialEnabled === 1 ? 0 : 4"
+              :addon-after="record.unit || undefined"
+              class="full"
+              @change="direct && !record.gift && fillPrices([record])"
+            />
+          </a-form-item>
+        </template>
+        <template v-else-if="column.key === 'price' && record.gift">
+          <div class="promo-text">{{ $t('scm.trade.giftPrice') }}<span v-if="record.promotionName">（{{ record.promotionName }}）</span></div>
+        </template>
+        <template v-else-if="column.key === 'price'">
+          <a-form-item :name="lines.itemName(record, 'price')" :rules="requiredRule($t('scm.trade.inputPrice'))" class="cell-item">
+            <a-input-number v-model:value="record.price" :min="0" :precision="4" prefix="¥" class="full" @change="record.priceAuto = false" />
+          </a-form-item>
+          <div class="sub-text price-links">
+            <span v-if="record.priceSource && record.priceAuto">{{ priceSourceText(record.priceSource) }}</span>
+            <a v-if="record.materialId" @click="openReference(record)">{{ $t('scm.trade.priceReference') }}</a>
+          </div>
+        </template>
+        <template v-else-if="column.key === 'taxRate'">
+          <a-input-number v-model:value="record.taxRate" :min="0" :max="100" :precision="2" addon-after="%" class="full" :disabled="record.gift" />
+        </template>
+        <template v-else-if="column.key === 'amount'">
+          <div class="amount">¥{{ formatMoney(lineAmount(record.qty, record.price)) }}</div>
+          <div class="sub-text">{{ $t('scm.trade.taxRateN', { rate: Number(record.taxRate || 0) }) }}</div>
+        </template>
+        <template v-else-if="column.key === 'serialNos'">
+          <SerialInput
+            v-if="record.serialEnabled === 1"
+            v-model:value="record.serialNos"
+            :expected="record.qty ?? 0"
+            :source="conf.fromStock ? serialSource(record) : undefined"
+            :placeholder="conf.fromStock ? $t('scm.trade.selectOrScan') : $t('scm.trade.scanOrInputSerial')"
+          />
+          <span v-else class="sub-text">-</span>
+        </template>
+      </template>
+      <template #action="{ record }">
+        <a-tooltip :title="$t('scm.trade.splitTip')">
+          <a-button type="link" size="small" @click="splitRow(record)">
+            <template #icon><SplitCellsOutlined /></template>
+          </a-button>
+        </a-tooltip>
+        <a-button type="link" danger size="small" @click="lines.removeRow(record)">
+          <template #icon><DeleteOutlined /></template>
+        </a-button>
+      </template>
+    </LineItemsTable>
+    <WholeDiscountBar v-if="direct && form.items.length" v-model:value="form.wholeDiscount" :total="totalAmount" />
+    <!-- 引用订单 / 原单：明细按优惠前单价显示（不改单价），订单优惠在合计处整单扣减（退货即扣回原单的优惠），金额以保存后的单据为准；
+         采购入库可按供应商实际给的优惠修改本单的订单优惠 -->
+    <div v-if="!direct && form.items.length && (refDiscount > 0 || discountEditable)" class="ref-discount">
+      <span>{{ $t('scm.wholeDiscount.total') }} <b>¥{{ formatMoney(totalAmount) }}</b></span>
+      <span class="discount-cell">
+        <a-tooltip :title="discountHint">
+          <span class="dashed">{{ conf.returns ? $t('scm.wholeDiscount.returnShare') : $t('scm.wholeDiscount.orderShare') }}</span>
+        </a-tooltip>
+        <template v-if="discountEditable">
+          <a-input-number
+            :value="docDiscount"
+            :min="0"
+            :max="totalAmount"
+            :precision="2"
+            prefix="−¥"
+            size="small"
+            class="discount-input"
+            @update:value="(v) => (form.orderDiscount = v ?? 0)"
+          />
+          <a v-if="form.orderDiscount != null" class="reset-link" @click="form.orderDiscount = undefined">{{ $t('scm.wholeDiscount.orderDiscountReset') }}</a>
+        </template>
+        <b v-else>−¥{{ formatMoney(refDiscount) }}</b>
+      </span>
+      <span>{{ conf.returns ? $t('scm.wholeDiscount.refundAfter') : $t('scm.wholeDiscount.after') }} <b class="after">¥{{ formatMoney(afterAmount) }}</b></span>
+    </div>
+    <div v-if="discountChanged" class="discount-warn">{{ $t('scm.wholeDiscount.orderDiscountChanged', { amount: formatMoney(refDiscount) }) }}</div>
+    <PriceReference ref="referenceRef" pickable @pick="pickPrice" />
+  </div>
+</template>
+
+<script setup>
+import { computed, ref, watch } from 'vue'
+import { message } from 'ant-design-vue'
+import { useI18n } from 'vue-i18n'
+import { DeleteOutlined, PlusOutlined, SplitCellsOutlined } from '@ant-design/icons-vue'
+import LineItemsTable from '@/components/common/LineItemsTable.vue'
+import LocationSelect from '@/components/wms/LocationSelect.vue'
+import MaterialSelect from '@/components/wms/MaterialSelect.vue'
+import SerialInput from '@/components/wms/SerialInput.vue'
+import WarehouseSelect from '@/components/wms/WarehouseSelect.vue'
+import StockSlotSelect from './StockSlotSelect.vue'
+import PriceReference from './PriceReference.vue'
+import WholeDiscountBar from './WholeDiscountBar.vue'
+import TaxRateTitle from './TaxRateTitle.vue'
+import { applyTaxRate, useTaxRates } from './taxRate'
+import { defaultPrices } from '@/api/scm/pricing'
+import { useLineItems } from '@/composables/useLineItems'
+import { fillPutaway, formatQty } from '@/components/wms/wms'
+import { TRADE_KINDS, formatMoney, lineAmount, newTradeRow } from './scm'
+import { round2 } from '@/utils/number'
+
+/**
+ * 出入库单的明细：引用订单时按订单明细录入数量（可拆分库位、批次），采购入库可修改本单的订单优惠（form.orderDiscount）；
+ * 直接开单时选择商品、数量、单价、税率。草稿中已有的赠品行（gift）只读显示。
+ * 销售出库在参数开启时每行可另选仓库（为空取表头仓库）。直接修改 form.items
+ */
+const props = defineProps({
+  kind: { type: String, required: true },
+  /** 表单：partnerId、warehouseId、bizDate、items */
+  form: { type: Object, required: true },
+  /** 直接开单（不引用订单） */
+  direct: Boolean,
+  /** 明细可选仓库（仅销售出库） */
+  lineWarehouse: Boolean
+})
+const { t } = useI18n()
+
+const conf = computed(() => TRADE_KINDS[props.kind])
+const priceKind = computed(() => (conf.value.orderKind === 'sales' ? 'SALES' : 'PURCHASE'))
+/** 入库类单据（采购入库、销售退货）可按上架策略推荐库位 */
+const inbound = computed(() => props.kind === 'purchaseIn' || props.kind === 'salesReturn')
+const requiredRule = (msg) => [{ required: true, message: msg }]
+
+// 新明细的税率：表头发票类型的税率，没有时为业务参数「默认税率」（issue #82）
+const tax = useTaxRates()
+const lines = useLineItems(() => props.form.items, { newRow: () => newTradeRow(tax.fallback(props.form.invoiceKind)) })
+/** 列头「统一设置税率」：全部明细（赠品除外） */
+function applyAllTaxRate(rate) {
+  message.success(t('scm.taxRate.applied', { n: applyTaxRate(props.form.items, rate), rate }))
+}
+const addRow = (extra) => lines.addRow(extra)
+
+const columns = computed(() => {
+  const c = conf.value
+  return [
+    { title: t('scm.trade.material'), key: 'material', width: 240 },
+    ...(props.direct ? [] : [{ title: c.returns ? t('scm.trade.returnableQty') : t('scm.trade.openQty'), key: 'limit', width: 140 }]),
+    ...(props.lineWarehouse ? [{ title: t('scm.trade.warehouse'), key: 'warehouse', width: 170 }] : []),
+    ...(c.fromStock
+      ? [{ title: t('scm.trade.locationBatch'), key: 'slot', width: 230 }]
+      : [
+          { title: t('scm.trade.location'), key: 'location', width: 180 },
+          { title: t('scm.trade.batchNo'), key: 'batchNo', width: 160 }
+        ]),
+    { title: t('common.field.quantity'), key: 'qty', width: 150 },
+    ...(props.direct
+      ? [
+          { title: t('scm.trade.taxPrice'), key: 'price', width: 160 },
+          { title: t('scm.trade.taxRate'), key: 'taxRate', width: 110 },
+          { title: t('scm.trade.totalAmount'), key: 'amount', width: 120, align: 'right' }
+        ]
+      : []),
+    { title: t('scm.trade.serialNo'), key: 'serialNos', width: 240 },
+    { title: '', key: 'action', width: 80, fixed: 'right' }
+  ]
+})
+
+const totalQty = computed(() => props.form.items.reduce((sum, i) => sum + (Number(i.qty) || 0), 0))
+/** 明细合计：直接开单按录入的单价；引用订单按优惠前单价（整单优惠在合计处扣减） */
+const totalAmount = computed(() => round2(props.form.items.reduce((sum, i) => sum + lineAmount(i.qty, i.grossPrice ?? i.price), 0)))
+/** 引用订单时按成交价（已扣除整单优惠分摊）估算的金额，以及与优惠前合计的差额（订单 / 原单的整单优惠分摊） */
+const netAmount = computed(() => round2(props.form.items.reduce((sum, i) => sum + lineAmount(i.qty, i.price), 0)))
+const refDiscount = computed(() => round2(totalAmount.value - netAmount.value))
+/** 引用订单的采购入库可以修改本单的订单优惠（form.orderDiscount，为空按订单） */
+const discountEditable = computed(() => props.kind === 'purchaseIn')
+const docDiscount = computed(() => (discountEditable.value && props.form.orderDiscount != null ? Number(props.form.orderDiscount) : refDiscount.value))
+const afterAmount = computed(() => round2(totalAmount.value - docDiscount.value))
+const discountChanged = computed(() => discountEditable.value && props.form.orderDiscount != null && round2(props.form.orderDiscount) !== refDiscount.value)
+const discountHint = computed(() =>
+  conf.value.returns
+    ? t('scm.wholeDiscount.returnShareHint')
+    : t(props.kind === 'purchaseIn' ? 'scm.wholeDiscount.orderSharePurchaseHint' : 'scm.wholeDiscount.orderShareHint')
+)
+
+async function putaway() {
+  const n = await fillPutaway(props.form.warehouseId, props.form.items)
+  message.info(n ? t('scm.trade.suggestedN', { n }) : t('scm.trade.noSuggestion'))
+}
+
+// ---------------------------------------------------------------- 仓库、库位
+const rowWarehouse = (row) => (props.lineWarehouse && row.warehouseId) || props.form.warehouseId
+
+function clearSlot(row) {
+  Object.assign(row, { locationId: null, slot: undefined, slotLabel: undefined, available: undefined, serialNos: undefined })
+}
+
+function changeRowWarehouse(row, id) {
+  if (id === row.warehouseId) return
+  row.warehouseId = id
+  clearSlot(row)
+}
+
+/** 表头仓库变化：沿用表头仓库的行清空库位（整个表单被替换时，如打开草稿，不处理） */
+watch(
+  () => [props.form, props.form.warehouseId],
+  ([form], [oldForm]) => {
+    if (form !== oldForm) return
+    props.form.items.forEach((i) => !(props.lineWarehouse && i.warehouseId) && clearSlot(i))
+  }
+)
+
+function applySlot(row, slot) {
+  Object.assign(row, { locationId: slot.locationId, batchNo: slot.batchNo, slotLabel: slot.label, available: Number(slot.qty), serialNos: undefined })
+}
+
+const serialSource = (row) =>
+  row.slot
+    ? { warehouseId: rowWarehouse(row), locationId: row.locationId || undefined, materialId: row.materialId, batchNo: row.batchNo || undefined }
+    : undefined
+
+function splitRow(row) {
+  const i = props.form.items.indexOf(row)
+  lines.addRow({ ...row, key: undefined, qty: undefined, slot: undefined, slotLabel: undefined, locationId: null, batchNo: undefined, available: undefined, serialNos: undefined })
+  // addRow 加在末尾，移到原行之后
+  const added = props.form.items.pop()
+  props.form.items.splice(i + 1, 0, added)
+}
+
+// ---------------------------------------------------------------- 直接开单：商品、默认价、价格参考
+function applyMaterial(row, m) {
+  Object.assign(row, {
+    materialLabel: m.label,
+    materialCode: m.code,
+    materialName: m.name,
+    spec: m.spec,
+    unit: m.unit,
+    batchEnabled: m.batchEnabled,
+    serialEnabled: m.serialEnabled,
+    priceAuto: true,
+    batchNo: undefined
+  })
+  clearSlot(row)
+  fillPrices([row])
+}
+
+/** 按往来单位、日期带出默认价（只覆盖没有手工改过的单价） */
+async function fillPrices(rows) {
+  const targets = rows.filter((r) => r.materialId && r.priceAuto)
+  if (!targets.length || !props.form.partnerId) return
+  const list = await defaultPrices({
+    kind: priceKind.value,
+    partnerId: props.form.partnerId,
+    materialIds: targets.map((r) => r.materialId),
+    qtys: targets.map((r) => r.qty),
+    date: props.form.bizDate
+  }).catch(() => [])
+  targets.forEach((r, i) => {
+    // 默认价按行返回（与请求的物料一一对应，同一物料多行按各行数量匹配起订量）
+    const p = list?.[i]?.materialId === r.materialId ? list[i] : undefined
+    if (!p || !r.priceAuto) return
+    if (p.price == null) return
+    r.price = Number(p.price)
+    // 选了发票类型时税率按发票类型，否则按价格来源的税率（没有时保持原税率）
+    const rate = tax.sourceRate(props.form.invoiceKind, p.taxRate)
+    if (rate != null) r.taxRate = rate
+    r.priceSource = p.source
+  })
+}
+
+/** 往来单位或日期变化后重新带出默认价 */
+watch(
+  () => (props.direct ? `${props.form.partnerId}|${props.form.bizDate}` : null),
+  (v, old) => v && v !== old && fillPrices(props.form.items)
+)
+
+const priceSourceText = (source) => t(`pricing.source.${source}`)
+
+const referenceRef = ref()
+let referenceRow
+function openReference(row) {
+  referenceRow = row
+  referenceRef.value?.open({ materialId: row.materialId, materialName: row.materialLabel, partnerId: props.form.partnerId, kind: priceKind.value })
+}
+/** 价格参考中「使用此价格」 */
+function pickPrice(price) {
+  if (!referenceRow) return
+  Object.assign(referenceRow, { price, priceAuto: false, priceSource: undefined })
+}
+
+defineExpose({ addRow, fillPrices })
+</script>
+
+<style scoped>
+.full {
+  width: 100%;
+}
+.date-row {
+  margin-top: 4px;
+}
+.items-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 8px 0 12px;
+}
+.section-title {
+  font-weight: 500;
+}
+.items-table :deep(.ant-table-cell) {
+  vertical-align: top;
+}
+.cell-item {
+  margin-bottom: 0;
+}
+.row-tags {
+  margin-top: 4px;
+}
+.row-tags:empty {
+  display: none;
+}
+.sub-text {
+  color: var(--app-text-3);
+  font-size: 12px;
+}
+.price-links {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+.promo-text {
+  color: var(--ant-color-success, #52c41a);
+  font-size: 12px;
+}
+.amount {
+  font-weight: 500;
+}
+.ref-discount {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px 24px;
+  margin-top: 12px;
+}
+.ref-discount .dashed {
+  border-bottom: 1px dashed var(--app-text-3);
+  cursor: help;
+}
+.discount-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.discount-input {
+  width: 140px;
+}
+.reset-link {
+  font-size: 12px;
+}
+.discount-warn {
+  margin-top: 4px;
+  text-align: right;
+  color: var(--ant-color-warning, #faad14);
+  font-size: 12px;
+}
+.ref-discount .after {
+  font-size: 16px;
+  color: var(--ant-color-primary, #1677ff);
+}
+</style>

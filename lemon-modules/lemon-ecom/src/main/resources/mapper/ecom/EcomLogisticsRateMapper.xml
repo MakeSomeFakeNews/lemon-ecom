@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomLogisticsRateMapper">
+
+    <insert id="insertBatch">
+        INSERT INTO ecom_logistics_rate (channel_id, country, min_weight, max_weight, base_fee, per_kg, remark, create_time, update_time)
+        VALUES
+        <foreach collection="items" item="i" separator=",">
+            (#{i.channelId}, #{i.country}, #{i.minWeight}, #{i.maxWeight}, #{i.baseFee}, #{i.perKg}, #{i.remark}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        </foreach>
+    </insert>
+
+    <select id="selectCandidates" resultType="com.lemon.erp.modules.ecom.entity.EcomLogisticsRate">
+        SELECT r.*, c.code AS channel_code, c.name AS channel_name, c.provider, c.transport_mode, c.days_min, c.days_max
+        FROM ecom_logistics_rate r
+        JOIN ecom_logistics_channel c ON c.id = r.channel_id
+        WHERE c.status = 1
+          AND (r.country = #{country} OR r.country = '*')
+          AND r.min_weight &lt;= #{weight}
+          AND (r.max_weight IS NULL OR r.max_weight &gt; #{weight})
+        ORDER BY c.id, r.country DESC
+    </select>
+
+</mapper>

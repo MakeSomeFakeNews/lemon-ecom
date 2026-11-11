@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomAdDailyMapper">
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.entity.EcomAdDaily">
+        SELECT a.*, s.name AS store_name
+        FROM ecom_ad_daily a
+        JOIN ecom_store s ON s.id = a.store_id
+        <where>
+            <if test="storeId != null">a.store_id = #{storeId}</if>
+            <if test="beginDate != null">AND a.ad_date &gt;= #{beginDate}</if>
+            <if test="endDate != null">AND a.ad_date &lt;= #{endDate}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (a.campaign LIKE CONCAT('%', #{keyword}, '%') OR a.seller_sku LIKE CONCAT('%', #{keyword}, '%') OR a.platform_item_id LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY a.ad_date DESC, a.id DESC
+    </select>
+
+    <!-- 汇总：ACOS 等比率在 Java 中计算 -->
+    <select id="selectSummary" resultType="com.lemon.erp.modules.ecom.dto.EcomReports$AdRow">
+        SELECT a.store_id, s.name AS store_name,
+        <choose>
+            <when test="groupBy == 'campaign'">a.campaign,</when>
+            <when test="groupBy == 'sku'">a.seller_sku,</when>
+            <otherwise></otherwise>
+        </choose>
+        SUM(COALESCE(a.impressions, 0)) AS impressions, SUM(COALESCE(a.clicks, 0)) AS clicks, SUM(a.spend) AS spend,
+        SUM(COALESCE(a.ad_sales, 0)) AS ad_sales, SUM(COALESCE(a.ad_orders, 0)) AS ad_orders
+        FROM ecom_ad_daily a
+        JOIN ecom_store s ON s.id = a.store_id
+        <where>
+            <if test="storeId != null">a.store_id = #{storeId}</if>
+            <if test="beginDate != null">AND a.ad_date &gt;= #{beginDate}</if>
+            <if test="endDate != null">AND a.ad_date &lt;= #{endDate}</if>
+        </where>
+        GROUP BY a.store_id, s.name
+        <choose>
+            <when test="groupBy == 'campaign'">, a.campaign</when>
+            <when test="groupBy == 'sku'">, a.seller_sku</when>
+            <otherwise></otherwise>
+        </choose>
+        ORDER BY spend DESC
+    </select>
+
+</mapper>

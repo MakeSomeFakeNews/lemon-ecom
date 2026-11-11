@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomReplenishMapper">
+
+    <!-- 件数均按多件装数量折算为平台 SKU 件数；销量只统计未取消的订单 -->
+    <select id="selectRows" resultType="com.lemon.erp.modules.ecom.dto.ReplenishRow">
+        SELECT l.store_id, s.name AS store_name, s.platform, l.id AS listing_id, l.seller_sku, l.platform_item_id, l.title,
+               l.material_id, m.code AS material_code, m.name AS material_name, COALESCE(l.pack_qty, 1) AS pack_qty,
+               s.lead_days, s.safety_days,
+               COALESCE(sales.qty, 0) AS sales30,
+               COALESCE(pst.qty, 0) / COALESCE(l.pack_qty, 1) AS platform_qty,
+               COALESCE(lst.qty, 0) / COALESCE(l.pack_qty, 1) AS local_qty,
+               COALESCE(tr.qty, 0) / COALESCE(l.pack_qty, 1) AS in_transit_qty
+        FROM ecom_listing l
+        JOIN ecom_store s ON s.id = l.store_id
+        JOIN wms_material m ON m.id = l.material_id
+        LEFT JOIN (SELECT o.store_id, oi.seller_sku, SUM(oi.qty) AS qty
+                   FROM ecom_order_item oi JOIN ecom_order o ON o.id = oi.order_id
+                   WHERE o.status &lt;&gt; 'CANCELLED' AND o.order_time &gt;= #{since}
+                   GROUP BY o.store_id, oi.seller_sku) sales ON sales.store_id = l.store_id AND sales.seller_sku = l.seller_sku
+        LEFT JOIN (SELECT st.material_id, st.warehouse_id, SUM(st.qty) AS qty FROM wms_stock st GROUP BY st.material_id, st.warehouse_id) pst
+               ON pst.material_id = l.material_id AND pst.warehouse_id = s.platform_warehouse_id
+        LEFT JOIN (SELECT st.material_id, st.warehouse_id, SUM(st.qty) AS qty FROM wms_stock st GROUP BY st.material_id, st.warehouse_id) lst
+               ON lst.material_id = l.material_id AND lst.warehouse_id = s.warehouse_id
+        LEFT JOIN (SELECT i.store_id, it.material_id, SUM(it.qty - COALESCE(it.received_qty, 0)) AS qty
+                   FROM ecom_inbound_item it JOIN ecom_inbound i ON i.id = it.inbound_id
+                   WHERE i.status = 'SHIPPED' GROUP BY i.store_id, it.material_id) tr ON tr.store_id = l.store_id AND tr.material_id = l.material_id
+        WHERE l.status = 'ACTIVE' AND s.status = 1
+        <if test="storeId != null">AND l.store_id = #{storeId}</if>
+        <if test="keyword != null and keyword != ''">
+            AND (l.seller_sku LIKE CONCAT('%', #{keyword}, '%') OR l.title LIKE CONCAT('%', #{keyword}, '%')
+                 OR m.code LIKE CONCAT('%', #{keyword}, '%') OR m.name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY l.store_id, l.seller_sku
+    </select>
+
+</mapper>

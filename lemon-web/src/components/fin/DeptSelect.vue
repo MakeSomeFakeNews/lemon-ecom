@@ -1,0 +1,34 @@
+<template>
+  <a-tree-select
+    :value="value ?? undefined"
+    :tree-data="tree"
+    :field-names="{ label: 'name', value: 'id', children: 'children' }"
+    :placeholder="placeholder"
+    allow-clear
+    tree-default-expand-all
+    show-search
+    tree-node-filter-prop="name"
+    :dropdown-match-select-width="false"
+    :dropdown-style="{ minWidth: '200px', maxHeight: '400px', overflow: 'auto' }"
+    @change="(v) => emit('update:value', v ?? null)"
+  />
+</template>
+
+<script setup>
+import { onMounted, ref } from 'vue'
+import { deptTree } from '@/api/system/dept'
+import { cached } from './fin'
+import { t } from '@/locales'
+
+/** 部门选择（凭证分录辅助核算、资产使用部门、预算部门） */
+defineProps({
+  value: Number,
+  placeholder: { type: String, default: () => t('fin.deptSelect.placeholder') }
+})
+const emit = defineEmits(['update:value'])
+
+const tree = ref([])
+onMounted(async () => {
+  tree.value = await cached('dept-tree', deptTree)
+})
+</script>

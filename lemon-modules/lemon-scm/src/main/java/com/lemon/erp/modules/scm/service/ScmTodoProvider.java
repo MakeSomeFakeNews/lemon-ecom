@@ -1,0 +1,54 @@
+package com.lemon.erp.modules.scm.service;
+
+import com.lemon.erp.framework.security.PermissionService;
+import com.lemon.erp.framework.todo.TodoProvider;
+import com.lemon.erp.modules.scm.mapper.ScmTodoMapper;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
+
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * 首页待办：按权限返回本模块的待处理事项（标题为消息键）
+ */
+@Component
+@RequiredArgsConstructor
+public class ScmTodoProvider implements TodoProvider {
+
+    private static final List<Def> DEFS = List.of(
+            new Def("purchaseOverdue", "scm:purchaseIn:add", "scm.label.purchaseOrdersOverdueNotReceived", "/scm/purchase-in", "danger"),
+            new Def("salesOverdue", "scm:salesOut:add", "scm.label.salesOrdersOverdueNotShipped", "/scm/sales-out", "danger"),
+            // 进销存单据草稿（业务参数 scm.tradeDoc.draft）：有审核权限的用户看到待审核的草稿
+            new Def("purchaseInDraft", "scm:purchaseIn:post", "scm.label.purchaseInDraftsToPost", "/scm/purchase-in?tab=draft", "warning"),
+            new Def("purchaseReturnDraft", "scm:purchaseReturn:post", "scm.label.purchaseReturnDraftsToPost", "/scm/purchase-return?tab=draft", "warning"),
+            new Def("salesOutDraft", "scm:salesOut:post", "scm.label.salesOutDraftsToPost", "/scm/sales-out?tab=draft", "warning"),
+            new Def("salesReturnDraft", "scm:salesReturn:post", "scm.label.salesReturnDraftsToPost", "/scm/sales-return?tab=draft", "warning")
+    );
+
+    private final ScmTodoMapper todoMapper;
+    private final PermissionService permissionService;
+
+    @Override
+    public List<TodoItem> todos(Long userId) {
+        if (DEFS.stream().noneMatch(d -> permissionService.hasPerm(d.perm()))) {
+            return List.of();
+        }
+        LocalDate today = LocalDate.now();
+        Map<String, Object> counts = todoMapper.selectCounts(userId, today, today.plusDays(1), today.plusDays(15), today.plusDays(30));
+        List<TodoItem> items = new ArrayList<>();
+        for (Def d : DEFS) {
+            Object v = counts == null ? null : counts.get(d.key());
+            long count = v == null ? 0 : ((Number) v).longValue();
+            if (count > 0 && permissionService.hasPerm(d.perm())) {
+                items.add(new TodoItem("scm", d.title(), count, d.link(), d.level()));
+            }
+        }
+        return items;
+    }
+
+    private record Def(String key, String perm, String title, String link, String level) {
+    }
+}

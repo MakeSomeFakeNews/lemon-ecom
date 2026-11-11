@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.fin.mapper.FinBillMapper">
+
+    <!-- 往来单位按种类分别关联客户 / 供应商。withAp（应收挂接应付）：同时列出关联供应商（scm_supplier.customer_id）的应付单，
+         按关联的客户筛选，金额由 Service 取负数 -->
+    <select id="selectPageList" resultType="com.lemon.erp.modules.fin.entity.FinBill">
+        SELECT b.*, COALESCE(c.code, s.code) AS partner_code, COALESCE(c.name, s.name) AS partner_name, v.voucher_no
+        FROM fin_bill b
+        LEFT JOIN scm_customer c ON b.kind = 'AR' AND c.id = b.partner_id
+        LEFT JOIN scm_supplier s ON b.kind = 'AP' AND s.id = b.partner_id
+        LEFT JOIN fin_voucher v ON v.id = b.voucher_id
+        WHERE ((b.kind = #{q.kind}<if test="q.partnerId != null"> AND b.partner_id = #{q.partnerId}</if>)
+        <if test="withAp">
+            OR (b.kind = 'AP' AND s.customer_id IS NOT NULL<if test="q.partnerId != null"> AND s.customer_id = #{q.partnerId}</if>)
+        </if>)
+        <if test="q.status != null">AND b.status = #{q.status}</if>
+        <if test="q.keyword != null and q.keyword != ''">
+            AND (b.bill_no LIKE CONCAT('%', #{q.keyword}, '%') OR b.source_no LIKE CONCAT('%', #{q.keyword}, '%'))
+        </if>
+        <if test="q.overdue != null and q.overdue">AND b.status &lt;&gt; 'SETTLED' AND b.due_date &lt; #{today}</if>
+        <if test="q.beginDate != null">AND b.bill_date &gt;= #{q.beginDate}</if>
+        <if test="q.endDate != null">AND b.bill_date &lt;= #{q.endDate}</if>
+        ORDER BY b.id DESC
+    </select>
+
+    <select id="selectUnsettledAmount" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(amount - settled_amount), 0) FROM fin_bill WHERE kind = #{kind} AND partner_id = #{partnerId}
+    </select>
+
+    <!-- withAp（应收挂接应付）：关联供应商的应付单按关联的客户汇总，金额取负数，计入同一账龄分段 -->
+    <select id="selectAging" resultType="com.lemon.erp.modules.fin.dto.AgingRow">
+        SELECT x.partner_id, COALESCE(c.code, s.code) AS partner_code, COALESCE(c.name, s.name) AS partner_name,
+               x.balance, x.not_due, x.d30, x.d60, x.d90, x.over90
+        FROM (
+            SELECT b.partner_id,
+                   SUM(b.sgn * (b.amount - COALESCE(st.settled, 0))) AS balance,
+                   SUM(CASE WHEN b.due_date &gt;= #{asOf} THEN b.sgn * (b.amount - COALESCE(st.settled, 0)) ELSE 0 END) AS not_due,
+                   SUM(CASE WHEN b.due_date &lt; #{asOf} AND b.due_date &gt;= #{d30} THEN b.sgn * (b.amount - COALESCE(st.settled, 0)) ELSE 0 END) AS d30,
+                   SUM(CASE WHEN b.due_date &lt; #{d30} AND b.due_date &gt;= #{d60} THEN b.sgn * (b.amount - COALESCE(st.settled, 0)) ELSE 0 END) AS d60,
+                   SUM(CASE WHEN b.due_date &lt; #{d60} AND b.due_date &gt;= #{d90} THEN b.sgn * (b.amount - COALESCE(st.settled, 0)) ELSE 0 END) AS d90,
+                   SUM(CASE WHEN b.due_date &lt; #{d90} THEN b.sgn * (b.amount - COALESCE(st.settled, 0)) ELSE 0 END) AS over90
+            FROM (
+                SELECT b0.id, b0.partner_id, 1 AS sgn, b0.amount, b0.due_date
+                FROM fin_bill b0
+                WHERE b0.kind = #{kind} AND b0.bill_date &lt;= #{asOf}
+                <if test="withAp">
+                    UNION ALL
+                    SELECT b1.id, sp.customer_id, -1, b1.amount, b1.due_date
+                    FROM fin_bill b1 JOIN scm_supplier sp ON sp.id = b1.partner_id
+                    WHERE b1.kind = 'AP' AND sp.customer_id IS NOT NULL AND b1.bill_date &lt;= #{asOf}
+                </if>
+            ) b
+            <!-- 截至查询日期的核销金额（收付款、应收应付对冲）：之后的核销不扣减，查历史日期的账龄也准确 -->
+            LEFT JOIN (SELECT y.bill_id, SUM(y.settled) AS settled FROM (
+                           SELECT si.bill_id, si.amount + si.discount AS settled
+                           FROM fin_settlement_item si JOIN fin_settlement s ON s.id = si.settlement_id
+                           WHERE s.settle_date &lt;= #{asOf} AND s.status = 'APPROVED'
+                           UNION ALL
+                           SELECT ni.bill_id, ni.amount
+                           FROM fin_netting_item ni JOIN fin_netting n ON n.id = ni.netting_id
+                           WHERE n.netting_date &lt;= #{asOf}
+                       ) y GROUP BY y.bill_id) st ON st.bill_id = b.id
+            GROUP BY b.partner_id
+        ) x
+        LEFT JOIN scm_customer c ON #{kind} = 'AR' AND c.id = x.partner_id
+        LEFT JOIN scm_supplier s ON #{kind} = 'AP' AND s.id = x.partner_id
+        WHERE x.balance &lt;&gt; 0
+        ORDER BY x.balance DESC
+    </select>
+
+    <!-- status 必须写在 settled_amount 之前：MySQL 按顺序赋值，后面的表达式会读到已更新的值（H2 读旧值），放在前面两者一致 -->
+    <update id="addSettledFc">
+        UPDATE fin_bill SET settled_fc = settled_fc + #{amount}, update_time = NOW() WHERE id = #{id}
+    </update>
+
+    <!-- 外币单据的未核销余额：[{id, kind, partnerId, currency, remainingFc, remainingBase}] -->
+    <select id="selectOpenForeign" resultType="com.lemon.erp.modules.fin.dto.FxRevaluation$OpenBill">
+        SELECT id AS "id", kind AS "kind", partner_id AS "partnerId", currency AS "currency",
+               amount_fc - settled_fc AS "remainingFc", amount - settled_amount AS "remainingBase"
+        FROM fin_bill
+        WHERE currency &lt;&gt; 'CNY' AND amount_fc &lt;&gt; settled_fc AND bill_date &lt;= #{asOf}
+    </select>
+
+    <update id="addDiscount">
+        UPDATE fin_bill SET discount_amount = discount_amount + #{amount}, update_time = NOW() WHERE id = #{id}
+    </update>
+
+    <update id="addBadDebt">
+        UPDATE fin_bill SET bad_debt_amount = bad_debt_amount + #{amount}, update_time = NOW() WHERE id = #{id}
+    </update>
+
+    <update id="addInvoiced">
+        UPDATE fin_bill SET invoiced_amount = invoiced_amount + #{amount}, update_time = NOW()
+        WHERE id = #{id} AND ABS(invoiced_amount + #{amount}) &lt;= ABS(amount)
+          AND (invoiced_amount + #{amount}) * amount &gt;= 0
+    </update>
+
+    <update id="addSettled">
+        UPDATE fin_bill
+        SET status = CASE WHEN settled_amount + #{amount} = amount THEN 'SETTLED'
+                          WHEN settled_amount + #{amount} = 0 THEN 'UNSETTLED' ELSE 'PARTIAL' END,
+            settled_amount = settled_amount + #{amount},
+            update_time = NOW()
+        WHERE id = #{id}
+          AND ((amount &gt;= 0 AND settled_amount + #{amount} &gt;= 0 AND settled_amount + #{amount} &lt;= amount)
+            OR (amount &lt; 0 AND settled_amount + #{amount} &lt;= 0 AND settled_amount + #{amount} &gt;= amount))
+    </update>
+
+    <select id="selectOrderAdjustByCategory" resultType="java.util.Map">
+        SELECT m.category AS "category", SUM(i.close_adjust_net) AS "net"
+        FROM scm_order_item i
+        JOIN wms_material m ON m.id = i.material_id
+        WHERE i.order_id = #{orderId} AND i.close_adjust_net &lt;&gt; 0
+        GROUP BY m.category
+    </select>
+
+    <!-- 采购运费按物料分类汇总（入库单明细分摊的运费），合计等于运费 -->
+    <select id="selectFreightByCategory" resultType="java.util.Map">
+        SELECT m.category AS "category", SUM(i.freight_share) AS "net"
+        FROM scm_trade_doc_item i
+        JOIN wms_material m ON m.id = i.material_id
+        WHERE i.doc_id = #{tradeDocId} AND i.freight_share &lt;&gt; 0
+        GROUP BY m.category
+    </select>
+
+    <select id="selectSourceByCategory" resultType="java.util.Map">
+        SELECT m.category AS "category", SUM(i.amount - i.tax_amount) AS "net", SUM(i.tax_amount) AS "tax"
+        FROM scm_trade_doc_item i
+        JOIN wms_material m ON m.id = i.material_id
+        WHERE i.doc_id = #{tradeDocId}
+        GROUP BY m.category
+    </select>
+
+</mapper>

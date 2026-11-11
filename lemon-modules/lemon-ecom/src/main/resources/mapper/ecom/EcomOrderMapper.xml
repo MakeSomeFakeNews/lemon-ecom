@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomOrderMapper">
+
+    <sql id="columns">
+        o.*, s.name AS store_name, s.platform, w.name AS warehouse_name, ch.name AS channel_name,
+        (SELECT COUNT(*) FROM ecom_order_item oi WHERE oi.order_id = o.id) AS item_count
+    </sql>
+
+    <sql id="joins">
+        FROM ecom_order o
+        JOIN ecom_store s ON s.id = o.store_id
+        LEFT JOIN wms_warehouse w ON w.id = o.warehouse_id
+        LEFT JOIN ecom_logistics_channel ch ON ch.id = o.channel_id
+    </sql>
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.entity.EcomOrder">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        <where>
+            <if test="q.storeId != null">o.store_id = #{q.storeId}</if>
+            <if test="q.platform != null">AND s.platform = #{q.platform}</if>
+            <if test="q.status != null">AND o.status = #{q.status}</if>
+            <if test="q.localStatus != null">AND o.local_status = #{q.localStatus}</if>
+            <if test="q.fulfillment != null">AND o.fulfillment = #{q.fulfillment}</if>
+            <if test="q.country != null and q.country != ''">AND o.ship_country = #{q.country}</if>
+            <if test="q.beginTime != null">AND o.order_time &gt;= #{q.beginTime}</if>
+            <if test="q.endExclusive != null">AND o.order_time &lt; #{q.endExclusive}</if>
+            <if test="q.overdue != null and q.overdue">
+                AND o.ship_by &lt; CURRENT_TIMESTAMP AND o.local_status IN ('PENDING', 'EXCEPTION', 'OUTBOUND')
+            </if>
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (o.platform_order_no LIKE CONCAT('%', #{q.keyword}, '%') OR o.buyer_name LIKE CONCAT('%', #{q.keyword}, '%')
+                     OR o.ship_name LIKE CONCAT('%', #{q.keyword}, '%') OR o.tracking_no LIKE CONCAT('%', #{q.keyword}, '%')
+                     OR EXISTS (SELECT 1 FROM ecom_order_item oi WHERE oi.order_id = o.id AND oi.seller_sku LIKE CONCAT('%', #{q.keyword}, '%')))
+            </if>
+        </where>
+        ORDER BY o.order_time DESC, o.id DESC
+    </select>
+
+    <select id="selectDetail" resultType="com.lemon.erp.modules.ecom.entity.EcomOrder">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        WHERE o.id = #{id}
+    </select>
+
+    <select id="selectByStoreOrderNos" resultType="com.lemon.erp.modules.ecom.entity.EcomOrder">
+        SELECT o.* FROM ecom_order o
+        WHERE o.store_id = #{storeId} AND o.platform_order_no IN
+        <foreach collection="orderNos" item="no" open="(" separator="," close=")">#{no}</foreach>
+    </select>
+
+</mapper>

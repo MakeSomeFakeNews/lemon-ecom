@@ -1,0 +1,337 @@
+<template>
+  <div class="table-page">
+    <a-card :bordered="false" class="page-card">
+      <div class="filters">
+        <a-range-picker v-model:value="range" value-format="YYYY-MM-DD" :allow-clear="false" :presets="presets" @change="load" />
+        <PartnerSelect
+          v-model:value="query.partnerId"
+          :type="sales ? 'customer' : 'supplier'"
+          allow-clear
+          :placeholder="$t(sales ? 'jxc.common.allCustomers' : 'jxc.common.allSuppliers')"
+          class="filter"
+        />
+        <IdentityUserSelect v-if="sales" v-model:value="query.salesmanId" :placeholder="$t('jxc.common.allSalesmen')" class="filter-s" />
+        <MaterialCategorySelect v-model="query.category" :placeholder="$t('jxc.common.allCategories')" class="filter-s" />
+        <a-select v-model:value="query.brand" :options="toOptions(dict.wms_material_brand)" allow-clear
+          :placeholder="$t('jxc.common.allBrands')" class="filter-s" />
+        <a-select v-if="sales" v-model:value="query.region" :options="toOptions(dict.scm_region)" allow-clear show-search option-filter-prop="label"
+          :placeholder="$t('jxc.common.allRegions')" class="filter-s" />
+        <WarehouseSelect v-model:value="query.warehouseId" :placeholder="$t('jxc.common.allWarehouses')" class="filter-s" />
+        <a-input v-model:value="query.keyword" allow-clear :placeholder="$t('jxc.common.materialKeyword')" class="filter" @press-enter="load" />
+        <a-button type="primary" :loading="loading" @click="load">{{ $t('common.action.query') }}</a-button>
+      </div>
+      <div class="dims">
+        <span class="sub-text">{{ $t('jxc.common.groupBy') }}</span>
+        <a-radio-group v-model:value="groupBy" button-style="solid" size="small" @change="load">
+          <a-radio-button v-for="d in dims" :key="d" :value="d">{{ $t(`jxc.dim.${d}`) }}</a-radio-button>
+        </a-radio-group>
+      </div>
+    </a-card>
+
+    <a-card :bordered="false" class="page-card table-card">
+      <div class="head">
+        <div class="kpis">
+          <template v-if="sales">
+            <a-tooltip :title="$t('jxc.common.salesAmountTip')">
+              <div class="kpi">
+                <div class="sub-text">{{ $t('jxc.field.salesAmount') }}</div>
+                <b>¥{{ money(total.salesAmount) }}</b>
+              </div>
+            </a-tooltip>
+            <div class="kpi">
+              <div class="sub-text">{{ $t('jxc.field.profit') }}</div>
+              <b :class="{ neg: Number(total.profit) < 0 }">¥{{ money(total.profit) }}</b>
+            </div>
+            <div class="kpi">
+              <div class="sub-text">{{ $t('jxc.field.margin') }}</div>
+              <b>{{ marginText(total.margin) }}</b>
+            </div>
+          </template>
+          <div class="kpi">
+            <div class="sub-text">{{ $t('jxc.field.netAmount') }}</div>
+            <b>¥{{ money(total.netAmount) }}</b>
+          </div>
+          <div class="kpi">
+            <div class="sub-text">{{ $t('jxc.field.taxedAmount') }}</div>
+            <b>¥{{ money(total.taxedAmount) }}</b>
+          </div>
+          <a-tooltip v-if="!sales && Number(total.settleDiscount)" :title="$t('jxc.common.purchaseDiscountTip')">
+            <div class="kpi">
+              <div class="sub-text">{{ $t('jxc.field.netAfterDiscount') }}</div>
+              <b>¥{{ money(total.netAfterDiscount) }}</b>
+            </div>
+          </a-tooltip>
+          <div class="kpi">
+            <div class="sub-text">{{ $t('jxc.field.netQty') }}</div>
+            <b>{{ qty(total.netQty) }}</b>
+          </div>
+          <div class="kpi">
+            <div class="sub-text">{{ $t('jxc.field.docCount') }}</div>
+            <b>{{ total.docCount ?? 0 }}</b>
+          </div>
+        </div>
+        <a-space>
+          <a-button @click="openDocs()">{{ $t('jxc.common.allDocs') }}</a-button>
+          <a-button @click="openDetail()">{{ $t('jxc.common.allDetail') }}</a-button>
+          <a-button :disabled="!data.rows.length" @click="exportSummary">
+            <template #icon><DownloadOutlined /></template>{{ $t('jxc.common.exportSummary') }}
+          </a-button>
+        </a-space>
+      </div>
+      <div class="sub-text caliber">{{ tip }}</div>
+      <a-alert v-if="data.truncated" type="warning" show-icon class="alert" :message="$t('jxc.common.truncated', { n: data.rows.length })" />
+      <a-table
+        :row-key="(r) => r.groupKey ?? '__none'"
+        size="middle"
+        :columns="columns"
+        :data-source="data.rows"
+        :loading="loading"
+        :pagination="data.rows.length > 50 ? { pageSize: 50, showSizeChanger: false, showTotal: (n) => $t('common.table.total', { total: n }) } : false"
+        :scroll="{ x: scrollX, y: '100%' }"
+        :custom-row="(r) => ({ onClick: () => drill(r), class: 'click-row' })"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'group'">
+            <a>{{ groupLabel(groupBy, record, dict) }}</a>
+          </template>
+          <template v-else-if="column.qty">{{ qty(record[column.key]) }}</template>
+          <template v-else-if="column.key === 'cost'">
+            {{ money(record.cost) }}
+            <a-tooltip v-if="Number(record.missingCost) > 0" :title="$t('jxc.common.missingCostTip', { n: record.missingCost })">
+              <a-tag color="orange" :bordered="false" class="hint">{{ $t('jxc.common.hasRefCost') }}</a-tag>
+            </a-tooltip>
+          </template>
+          <template v-else-if="column.money">
+            <span :class="{ neg: Number(record[column.key]) < 0 }">{{ money(record[column.key]) }}</span>
+          </template>
+          <template v-else-if="column.key === 'avgPrice'">{{ price(record.avgPrice) }}</template>
+          <template v-else-if="column.key === 'margin'">
+            <span :class="{ neg: Number(record.margin) < 0 }">{{ marginText(record.margin) }}</span>
+          </template>
+          <template v-else-if="column.key === 'action'">
+            <span @click.stop><TableActions :actions="drillActions(() => openDocs(record), () => openDetail(record))" /></span>
+          </template>
+        </template>
+        <template v-if="data.rows.length" #summary>
+          <a-table-summary fixed>
+            <a-table-summary-row class="total-row">
+              <a-table-summary-cell v-for="(c, i) in columns" :key="c.key" :index="i" :align="c.align">
+                <template v-if="c.key === 'group'">{{ $t('jxc.common.total') }}</template>
+                <template v-else-if="c.qty">{{ qty(total[c.key]) }}</template>
+                <template v-else-if="c.money || c.key === 'cost'">{{ money(total[c.key]) }}</template>
+                <template v-else-if="c.key === 'avgPrice'">{{ price(total.avgPrice) }}</template>
+                <template v-else-if="c.key === 'margin'">{{ marginText(total.margin) }}</template>
+                <template v-else-if="c.key === 'docCount'">{{ total.docCount }}</template>
+              </a-table-summary-cell>
+            </a-table-summary-row>
+          </a-table-summary>
+        </template>
+      </a-table>
+    </a-card>
+
+    <JxcDetail ref="detailRef" :report="report" />
+    <JxcDocs ref="docsRef" :report="report" />
+  </div>
+</template>
+
+<script setup>
+import MaterialCategorySelect from '@/components/wms/MaterialCategorySelect.vue'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { DownloadOutlined } from '@ant-design/icons-vue'
+import PartnerSelect from '@/components/scm/PartnerSelect.vue'
+import WarehouseSelect from '@/components/wms/WarehouseSelect.vue'
+import IdentityUserSelect from '@/components/common/IdentityUserSelect.vue'
+import JxcDetail from './JxcDetail.vue'
+import JxcDocs from './JxcDocs.vue'
+import TableActions from '@/components/common/TableActions.vue'
+import { jxcSummary } from '@/api/ecom/jxc'
+import { useDict } from '@/composables/useDict'
+import { toOptions } from '@/utils/dict'
+import { money, price, qty } from '@/utils/number'
+import { writeExcel } from '@/utils/excel'
+import { JxcDimension } from '@/constants/enums'
+import { DICT_TYPES, PURCHASE_DIMS, SALES_DIMS, drillActions, drillColumn, drillsToLines, groupLabel, marginText, rangePresets, thisMonth } from './jxc'
+import { t } from '@/locales'
+
+/**
+ * 销售报表 / 进货报表：按维度汇总出入库单（净额 = 出库 − 退货）。汇总行的两种穿透（issue #88）：【单据】列出该汇总项下的单据（每张一行），
+ * 再点单据看该单的明细；【商品明细】列出出入库明细。点击行时，按类别、品牌、商品汇总到商品明细，其他维度到单据列表；明细中点击单据号查看单据
+ * - report：sales | purchase
+ */
+const props = defineProps({
+  report: { type: String, required: true }
+})
+
+const sales = computed(() => props.report === 'sales')
+const dict = useDict(...DICT_TYPES)
+const dims = computed(() => (sales.value ? SALES_DIMS : PURCHASE_DIMS))
+const presets = rangePresets()
+const range = ref(thisMonth())
+const groupBy = ref(sales.value ? JxcDimension.CUSTOMER : JxcDimension.SUPPLIER)
+const query = reactive({ partnerId: undefined, salesmanId: undefined, category: undefined, brand: undefined, region: undefined, warehouseId: undefined, keyword: '' })
+const data = ref({ rows: [], total: {}, truncated: false })
+const total = computed(() => data.value.total || {})
+const loading = ref(false)
+const tip = computed(() => t(sales.value ? 'jxc.sales.tip' : 'jxc.purchase.tip'))
+
+/**
+ * 金额口径（issue #93）：出库（入库）货款 − 退货货款 = 货款（优惠前）；货款 − 整单优惠 = 净额（销售收入 / 进货金额）；
+ * 销售金额 = 净额 − 本公司运费 − 收款折让 − 坏账核销，毛利 = 销售金额 − 成本；进货的扣折让后净进货额 = 净额 − 付款折让（参考）
+ */
+const columns = computed(() => {
+  const s = sales.value
+  const m = (key, titleKey, width = 120) => ({ title: t(titleKey), key, width, align: 'right', money: true })
+  return [
+    { title: t(`jxc.dim.${groupBy.value}`), key: 'group', width: 220, fixed: 'left', ellipsis: true },
+    { title: t(s ? 'jxc.field.outQty' : 'jxc.field.inQty'), key: 'bizQty', width: 110, align: 'right', qty: true },
+    { title: t('jxc.field.returnQty'), key: 'returnQty', width: 100, align: 'right', qty: true },
+    { title: t('jxc.field.netQty'), key: 'netQty', width: 100, align: 'right', qty: true },
+    m('bizAmount', s ? 'jxc.field.outAmount' : 'jxc.field.inAmount', 130),
+    m('returnAmount', 'jxc.field.returnAmount'),
+    m('goodsAmount', 'jxc.field.goodsAmount', 130),
+    m('discount', 'jxc.field.discount', 110),
+    m('netAmount', 'jxc.field.netAmount', 130),
+    ...(s
+      ? [
+          m('freight', 'jxc.field.freight', 110),
+          m('settleDiscount', 'jxc.field.receiptDiscount', 110),
+          m('badDebt', 'jxc.field.badDebt', 110),
+          m('salesAmount', 'jxc.field.salesAmount', 130),
+          m('taxedAmount', 'jxc.field.taxedAmount', 130),
+          { title: t('jxc.field.cost'), key: 'cost', width: 170, align: 'right' },
+          m('profit', 'jxc.field.profit'),
+          { title: t('jxc.field.margin'), key: 'margin', width: 90, align: 'right' }
+        ]
+      : [
+          m('taxedAmount', 'jxc.field.taxedAmount', 130),
+          // 参考口径：付款折让（计入财务费用，不冲减存货成本）
+          m('settleDiscount', 'jxc.field.purchaseDiscount', 110),
+          m('netAfterDiscount', 'jxc.field.netAfterDiscount', 150)
+        ]),
+    { title: t('jxc.field.avgPrice'), key: 'avgPrice', width: 100, align: 'right' },
+    { title: t('jxc.field.docCount'), key: 'docCount', dataIndex: 'docCount', width: 80, align: 'right' },
+    drillColumn()
+  ]
+})
+
+const scrollX = computed(() => columns.value.reduce((sum, c) => sum + c.width, 0))
+
+/** 查询条件（不含汇总维度），去掉空值 */
+function params() {
+  const p = { begin: range.value[0], end: range.value[1], ...query, keyword: query.keyword?.trim() }
+  return Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined && v !== null && v !== ''))
+}
+
+let seq = 0
+async function load() {
+  const current = ++seq
+  loading.value = true
+  try {
+    const res = await jxcSummary(props.report, { ...params(), groupBy: groupBy.value })
+    if (current === seq) data.value = res
+  } finally {
+    if (current === seq) loading.value = false
+  }
+}
+
+const docsRef = ref()
+function openDocs(row) {
+  if (!row) {
+    docsRef.value.open({ params: params() })
+    return
+  }
+  docsRef.value.open({ params: params(), dim: groupBy.value, key: row.groupKey, label: groupLabel(groupBy.value, row, dict) })
+}
+
+const detailRef = ref()
+function openDetail(row) {
+  if (!row) {
+    detailRef.value.open({ params: params() })
+    return
+  }
+  detailRef.value.open({ params: params(), dim: groupBy.value, key: row.groupKey, label: groupLabel(groupBy.value, row, dict) })
+}
+
+/** 点击汇总行：按类别、品牌、商品汇总时到商品明细，按客户、区域、业务员、日期等汇总时到单据列表 */
+function drill(row) {
+  if (drillsToLines(groupBy.value)) openDetail(row)
+  else openDocs(row)
+}
+
+function exportSummary() {
+  const cols = columns.value.filter((c) => c.key !== 'action')
+  const cell = (c, r) => {
+    if (c.key === 'group') return groupLabel(groupBy.value, r, dict)
+    const v = r[c.key]
+    return v === null || v === undefined ? '' : Number(v)
+  }
+  const rows = data.value.rows.map((r) => cols.map((c) => cell(c, r)))
+  rows.push(cols.map((c) => (c.key === 'group' ? t('jxc.common.total') : cell(c, total.value))))
+  const name = `${t(sales.value ? 'jxc.sales.title' : 'jxc.purchase.title')}_${t(`jxc.dim.${groupBy.value}`)}_${range.value[0]}_${range.value[1]}`
+  writeExcel(name, cols.map((c) => ({ title: c.title, width: c.key === 'group' ? 30 : 14 })), rows, { withStamp: false })
+}
+
+onMounted(load)
+</script>
+
+<style scoped>
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.filter {
+  width: 220px;
+}
+.filter-s {
+  width: 150px;
+}
+.dims {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.kpis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+}
+.kpi b {
+  font-size: 18px;
+}
+.caliber {
+  margin-bottom: 12px;
+  line-height: 1.6;
+}
+.alert {
+  margin-bottom: 12px;
+}
+.hint {
+  margin-left: 6px;
+  margin-right: 0;
+}
+.neg {
+  color: var(--status-critical, #cf1322);
+}
+.sub-text {
+  color: var(--app-text-3);
+  font-size: 12px;
+}
+:deep(.click-row) {
+  cursor: pointer;
+}
+:deep(.total-row) {
+  font-weight: 600;
+}
+</style>

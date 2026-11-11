@@ -1,0 +1,476 @@
+/* 全局 CSS 变量：亮色为默认，html[data-theme='dark'] 时切换为暗色。自定义样式统一使用这些变量 */
+:root {
+  color-scheme: light;
+  /* 主题色 --app-primary、--app-primary-bg、--app-primary-hover、--app-primary-border 由 components/ThemeVars.vue 按界面设置写到 html 上 */
+  --app-bg: #f4f6fa;
+  --app-card: #ffffff;
+  --app-header: #ffffff;
+  --app-border: #f0f0f0;
+  --app-hover: #f5f5f5;
+  --app-text: rgba(0, 0, 0, 0.88);
+  --app-text-2: rgba(0, 0, 0, 0.65);
+  --app-text-3: rgba(0, 0, 0, 0.45);
+  --app-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px rgba(0, 0, 0, 0.02);
+  --app-code-bg: #f6f8fa;
+  /* 侧边栏与顶栏同色，和内容区灰底形成柔和的层次，而不是强烈的深浅对比 */
+  --app-sider: #ffffff;
+  --app-sider-text: rgba(0, 0, 0, 0.65);
+  --app-sider-icon: rgba(0, 0, 0, 0.45);
+
+  /* 图表：分类色（已通过色盲安全校验），网格线 */
+  --chart-series-1: #2a78d6;
+  --chart-series-2: #eb6834;
+  --chart-grid: #ebebea;
+  --chart-surface: #ffffff;
+  /* 状态色（固定，不随主题变化），只用于表达状态，始终搭配文字 */
+  --status-warning: #fab219;
+  --status-critical: #d03b3b;
+  --chart-track: #f0f0ef;
+}
+
+html[data-theme='dark'] {
+  color-scheme: dark;
+  --app-bg: #0d0d0e;
+  --app-card: #18181a;
+  --app-header: #18181a;
+  --app-border: #2a2a2c;
+  --app-hover: #26262a;
+  --app-text: rgba(255, 255, 255, 0.85);
+  --app-text-2: rgba(255, 255, 255, 0.65);
+  --app-text-3: rgba(255, 255, 255, 0.45);
+  --app-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --app-code-bg: #111113;
+  --app-sider: #18181a;
+  --app-sider-text: rgba(255, 255, 255, 0.65);
+  --app-sider-icon: rgba(255, 255, 255, 0.45);
+
+  --chart-series-1: #3987e5;
+  --chart-series-2: #d95926;
+  --chart-grid: #2c2c2a;
+  --chart-surface: #18181a;
+  --chart-track: #2a2a2c;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  background: var(--app-bg);
+  color: var(--app-text);
+}
+
+/*
+ * 侧边栏：与顶栏同色、细分隔线，选中项用主色的浅色底 + 左侧指示条，
+ * 不使用大面积深色或高饱和色块，与内容区保持协调
+ */
+.app-sider,
+.app-sider .ant-drawer-body {
+  background: var(--app-sider) !important;
+}
+.app-sider .ant-menu-light,
+.app-sider .ant-menu-light .ant-menu-sub.ant-menu-inline {
+  background: transparent !important;
+  border-inline-end: none !important;
+}
+.app-sider .ant-menu-light .ant-menu-item,
+.app-sider .ant-menu-light .ant-menu-submenu-title {
+  margin-inline: 8px;
+  width: calc(100% - 16px);
+  border-radius: 8px;
+  color: var(--app-sider-text);
+}
+.app-sider .ant-menu-light .ant-menu-item .anticon,
+.app-sider .ant-menu-light .ant-menu-submenu-title .anticon {
+  color: var(--app-sider-icon);
+  transition: color 0.2s;
+}
+.app-sider .ant-menu-light .ant-menu-item:not(.ant-menu-item-selected):hover,
+.app-sider .ant-menu-light .ant-menu-submenu-title:hover {
+  background: var(--app-hover) !important;
+  color: var(--app-text) !important;
+}
+/* 当前所在目录：标题加深即可，不染主色，避免一屏出现两处高亮 */
+.app-sider .ant-menu-light .ant-menu-submenu-selected > .ant-menu-submenu-title {
+  color: var(--app-text);
+  font-weight: 500;
+}
+.app-sider .ant-menu-light .ant-menu-item-selected {
+  position: relative;
+  background: var(--app-primary-bg) !important;
+  color: var(--app-primary) !important;
+  font-weight: 500;
+}
+.app-sider .ant-menu-light .ant-menu-item-selected .anticon {
+  color: var(--app-primary);
+}
+.app-sider .ant-menu-light .ant-menu-item-selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 16px;
+  border-radius: 0 3px 3px 0;
+  background: var(--app-primary);
+  transform: translateY(-50%);
+}
+/* 去掉 antd 浅色菜单选中项右侧的竖线 */
+.app-sider .ant-menu-light .ant-menu-item::after {
+  display: none;
+}
+
+/*
+ * 顶部菜单布局的下拉面板（渲染在 body 下）：有分组的模块把分组排成多列（列数由 TopMenu 按分组数给出 top-menu-cols-N），
+ * 分组不跨列；面板过高时滚动
+ */
+.top-menu-popup .ant-menu-sub.ant-menu-vertical {
+  max-height: calc(100vh - 72px);
+  overflow-y: auto;
+}
+.top-menu-popup .ant-menu-sub.ant-menu-vertical .ant-menu-item {
+  height: 36px;
+  line-height: 36px;
+  margin-block: 2px;
+}
+.top-menu-popup[class*='top-menu-cols-'] .ant-menu-sub.ant-menu-vertical {
+  display: block;
+  column-gap: 4px;
+  padding: 4px;
+}
+.top-menu-popup[class*='top-menu-cols-'] .ant-menu-sub.ant-menu-vertical > li {
+  break-inside: avoid;
+}
+.top-menu-cols-2 .ant-menu-sub.ant-menu-vertical {
+  column-count: 2;
+  width: 420px;
+}
+.top-menu-cols-3 .ant-menu-sub.ant-menu-vertical {
+  column-count: 3;
+  width: 630px;
+}
+.top-menu-cols-4 .ant-menu-sub.ant-menu-vertical {
+  column-count: 4;
+  width: min(840px, calc(100vw - 32px));
+}
+.top-menu-popup .ant-menu-item-group-title {
+  font-weight: 500;
+  color: var(--app-text-2);
+}
+
+/* 页面卡片 */
+.page-card {
+  border-radius: 10px;
+  box-shadow: var(--app-shadow);
+}
+.page-card + .page-card {
+  margin-top: 16px;
+}
+
+/*
+ * 表格页：页面占满内容区，搜索区高度自适应，表格卡片占据剩余高度，
+ * 只有表格主体滚动，表头与分页始终可见。
+ * 表格需开启 :scroll="{ y: '100%' }" 以固定表头，具体高度由下面的 flex 布局决定。
+ */
+.table-page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.table-page > .page-card + .page-card {
+  margin-top: 0;
+}
+.table-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.table-card > .ant-card-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.table-card .ant-table-wrapper,
+.table-card .ant-table-wrapper .ant-spin-nested-loading,
+.table-card .ant-table-wrapper .ant-spin-container,
+.table-card .ant-table-wrapper .ant-table,
+.table-card .ant-table-wrapper .ant-table-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.table-card .ant-table-wrapper .ant-table-body {
+  flex: 1;
+  max-height: none !important;
+}
+.table-card .ant-table-wrapper .ant-pagination {
+  flex: none;
+}
+/* 没有设置 scroll.y 的表格（上方还有检查结果等内容时）：放不下时在表格内滚动，分页器不压住表头和最后几行 */
+.table-card .ant-table-wrapper .ant-table-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto !important;
+}
+/* 表格卡片中使用标签页时，剩余高度沿标签页传递给当前页签中的表格 */
+.table-card > .ant-card-body > .ant-tabs,
+.table-card > .ant-card-body > .ant-tabs > .ant-tabs-content-holder,
+.table-card > .ant-card-body > .ant-tabs > .ant-tabs-content-holder > .ant-tabs-content,
+.table-card > .ant-card-body > .ant-tabs > .ant-tabs-content-holder > .ant-tabs-content > .ant-tabs-tabpane-active {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* 一个页签中有多块内容（如两张表）放不下时，在页签内滚动 */
+.table-card > .ant-card-body > .ant-tabs > .ant-tabs-content-holder > .ant-tabs-content > .ant-tabs-tabpane-active {
+  overflow-y: auto;
+}
+/* 有多张表时各表按内容高度显示（不再平分剩余高度被压扁、分页器压住最后一行），整个页签滚动 */
+.table-card > .ant-card-body > .ant-tabs .ant-tabs-tabpane-active:has(.ant-table-wrapper ~ .ant-table-wrapper) .ant-table-wrapper {
+  flex: none;
+}
+
+/* 窄屏高度有限，恢复整页自然滚动 */
+@media (max-width: 767px) {
+  .table-page {
+    height: auto;
+  }
+  .table-card .ant-table-wrapper .ant-table-body {
+    overflow-y: visible !important;
+  }
+}
+
+/*
+ * 左右布局工作区：左侧树 / 列表，右侧内容。
+ * <div class="workspace">
+ *   <a-card class="page-card workspace-side">...</a-card>
+ *   <div class="workspace-main">...（可以放 table-card）</div>
+ * </div>
+ */
+.workspace {
+  height: 100%;
+  display: flex;
+  gap: 16px;
+}
+.workspace-side {
+  width: 260px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+}
+.workspace-side > .ant-card-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 12px;
+}
+.workspace-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.workspace-main > .page-card + .page-card {
+  margin-top: 0;
+}
+.workspace-side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px;
+  font-weight: 600;
+}
+@media (max-width: 767px) {
+  .workspace {
+    height: auto;
+    flex-direction: column;
+  }
+  .workspace-side {
+    width: auto;
+  }
+  .workspace-side > .ant-card-body {
+    max-height: 320px;
+  }
+}
+
+/* 表格操作列 */
+.table-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.table-actions .ant-btn-link {
+  padding: 0 4px;
+  height: auto;
+}
+/* TableActions：图标按钮 24 × 24，竖线分隔；宽度与 components/common/tableActions.js 的 actionWidth 一致 */
+.table-actions.icon-actions {
+  gap: 0;
+}
+.table-actions .table-action-btn.ant-btn-icon-only {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+}
+.table-actions .table-action-btn {
+  height: 24px;
+}
+.table-actions .table-actions-divider {
+  height: 14px;
+  margin: 0 4px;
+  border-inline-start-color: var(--app-text-3);
+  opacity: 0.45;
+}
+.table-actions-menu-item .anticon {
+  margin-right: 8px;
+}
+
+/* 抽屉表单底部 */
+.drawer-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* 代码 / JSON 块 */
+.code-block {
+  margin: 0;
+  padding: 12px;
+  max-height: 320px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: var(--app-code-bg);
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  color: var(--app-text);
+}
+
+/* 页面切换动画 */
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: opacity 0.2s ease, transform 0.25s ease;
+}
+.fade-slide-enter-from {
+  opacity: 0;
+  transform: translateX(-12px);
+}
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateX(12px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-slide-enter-active,
+  .fade-slide-leave-active {
+    transition: none;
+  }
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.35);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 局部滚动区域：细而淡，鼠标移入该区域才显示（侧边栏菜单、首页卡片列表等） */
+.scroll-hover {
+  overflow-y: auto;
+}
+.scroll-hover::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scroll-hover::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: transparent;
+}
+.scroll-hover:hover::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.28);
+}
+.scroll-hover::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.5);
+}
+@supports not selector(::-webkit-scrollbar) {
+  .scroll-hover {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  .scroll-hover:hover {
+    scrollbar-color: rgba(128, 128, 128, 0.35) transparent;
+  }
+}
+
+/* 折叠时只剩图标：当前所在模块的图标用主色浅底标出 */
+/* 收起时图标居中：菜单项左右外边距改成了 8px，内边距也按 8px 计算（Ant Design 默认按 4px） */
+.app-sider .ant-menu-inline-collapsed > .ant-menu-item,
+.app-sider .ant-menu-inline-collapsed > .ant-menu-submenu > .ant-menu-submenu-title {
+  padding-inline: calc(50% - 8px - 8px) !important;
+}
+.app-sider .ant-menu-inline-collapsed > .ant-menu-submenu-selected > .ant-menu-submenu-title,
+.app-sider .ant-menu-inline-collapsed > .ant-menu-item-selected {
+  background: var(--app-primary-bg) !important;
+}
+.app-sider .ant-menu-inline-collapsed > .ant-menu-submenu-selected > .ant-menu-submenu-title .anticon {
+  color: var(--app-primary);
+}
+.app-sider .ant-menu-inline-collapsed .ant-menu-item-selected::before {
+  display: none;
+}
+
+/* 下拉框按内容宽度展开（见 main.js），最宽不超过 560px，更长的选项换行显示而不是省略 */
+.ant-select-dropdown {
+  max-width: min(560px, calc(100vw - 32px));
+}
+.ant-select-dropdown .ant-select-item-option-content {
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+/* 表格中的标签：英文等较长文字在窄列中换行，不溢出单元格（省略列保持单行） */
+.ant-table-cell:not(.ant-table-cell-ellipsis) .ant-tag {
+  white-space: normal;
+  max-width: 100%;
+  overflow-wrap: break-word;
+}
+
+/* 可编辑明细表中的下拉框占满单元格（:where 不增加优先级，组件中显式设置的宽度仍然生效） */
+:where(.ant-table-cell) .ant-select {
+  width: 100%;
+}
+
+/* 横向滚动的表格：右侧固定列（操作列）左边缘的阴影加深，表明其下还有被遮住、可横向滚动查看的列（Ant Design 默认阴影很淡） */
+.ant-table-wrapper .ant-table.ant-table-ping-right .ant-table-cell-fix-right-first::after {
+  box-shadow: inset -10px 0 8px -8px rgba(0, 0, 0, 0.18);
+}
+.ant-table-wrapper .ant-table.ant-table-ping-left .ant-table-cell-fix-left-last::after {
+  box-shadow: inset 10px 0 8px -8px rgba(0, 0, 0, 0.18);
+}
+html[data-theme='dark'] .ant-table-wrapper .ant-table.ant-table-ping-right .ant-table-cell-fix-right-first::after {
+  box-shadow: inset -10px 0 8px -8px rgba(0, 0, 0, 0.6);
+}
+html[data-theme='dark'] .ant-table-wrapper .ant-table.ant-table-ping-left .ant-table-cell-fix-left-last::after {
+  box-shadow: inset 10px 0 8px -8px rgba(0, 0, 0, 0.6);
+}

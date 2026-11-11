@@ -1,0 +1,58 @@
+import { hasPerm } from '@/store/user'
+import { bizRule, loadBizRules } from '@/store/bizRules'
+import approval from './approval'
+import wms from './wms'
+import notice from './notice'
+
+/**
+ * 工作台入口。每个功能区在本目录的同名文件中登记：
+ *   { key, group, title（消息键）, color, url, tab?（底部导航页）, perm?（任一权限，空为登录即可）, permAll?（还必须同时具备的权限）, links?（对应的 Web 端路由前缀）,
+ *     rule?（布尔型业务参数，关闭时不显示；须是后端声明为前端可读的参数，读取前按开启处理，页面自身仍要检查） }
+ * group：office 办公 / sales 销售 / warehouse 仓储。links 用于把首页待办、站内消息中的 Web 端链接转到小程序页面
+ */
+export const GROUPS = ['office', 'sales', 'warehouse']
+const ALL = [...approval, ...notice, ...wms]
+
+export function visibleEntries() {
+  return ALL.filter((e) => hasPerm(e.perm) && (e.permAll || []).every((p) => hasPerm(p)) && (!e.rule || bizRule(e.rule, true) !== false))
+}
+
+/** 读取入口用到的业务参数（工作台加载时调用） */
+export const loadEntryRules = () => loadBizRules([...new Set(ALL.map((e) => e.rule).filter(Boolean))])
+
+/** Web 端链接（如 /workflow/todo、/crm/customer?id=1）对应的小程序入口，没有对应或没有权限时为 null */
+export function entryOfLink(link) {
+  if (!link) return null
+  const path = link.split('?')[0]
+  let best = null
+  for (const e of visibleEntries()) {
+    for (const prefix of e.links || []) {
+      if ((path === prefix || path.startsWith(prefix + '/')) && (!best || prefix.length > best.len)) best = { entry: e, len: prefix.length }
+    }
+  }
+  return best?.entry || null
+}
+
+/** 底部导航页不能带参数：从链接进入时把链接暂存，由页面在 onShow 中用 takeTabLink 取出（如审批页按链接切换分段） */
+let tabLink = null
+
+/**
+ * @param link 从首页待办、消息进入时的 Web 端链接；其中的查询参数（筛选条件，如库存的 lowStock=1）原样带给小程序页面，
+ *             页面在 onLoad 中按与 Web 端相同的参数名读取
+ */
+export function openEntry(entry, link) {
+  if (entry.tab) {
+    tabLink = link ? { url: entry.url, link } : null
+    uni.switchTab({ url: entry.url })
+    return
+  }
+  const query = link && link.includes('?') ? link.slice(link.indexOf('?') + 1) : ''
+  uni.navigateTo({ url: query ? `${entry.url}${entry.url.includes('?') ? '&' : '?'}${query}` : entry.url })
+}
+
+/** 取出并清除进入该底部导航页时的链接 */
+export function takeTabLink(url) {
+  const hit = tabLink?.url === url ? tabLink.link : null
+  tabLink = null
+  return hit
+}

@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.fin.mapper.FinAnalysisMapper">
+
+    <!-- 销售出库单的坏账核销与本公司承担的发运运费（已发货），按行金额比例分摊到明细；
+         只作为毛利的参考口径（扣坏账后毛利、扣运费后毛利），不改变销售收入。
+         坏账按不含税折算（与不含税的收入、毛利同一口径）：核销金额 × 该应收单的 (价税合计 − 税额) ÷ 价税合计，
+         按应收单自身的比例折算，多税率、整单优惠的单据也准确；凭证中营业外支出仍是含税的核销金额。
+         坏账跟随出库单的业务日期归属（看单据的真实收益），不按核销日期，因此按期间与利润表的营业外支出不一定一致 -->
+    <sql id="docShare">CASE WHEN d.total_amount &lt;&gt; 0 THEN i.amount / d.total_amount WHEN d.total_qty &lt;&gt; 0 THEN i.qty / d.total_qty ELSE 0 END</sql>
+    <!-- 本公司承担的运费：发运单的运费（出库单没有登记运费时，已发货）+ 出库单上本公司承担的运费 + 销售退货客户代垫的运费（issue #72），
+         出库单已登记运费时发运单从出库单带出，不重复计算 -->
+    <sql id="freightAmount">(COALESCE(sf.amount, 0) + CASE WHEN (d.kind = 'SALES_OUT' AND d.freight_bearer = 'COMPANY') OR d.kind = 'SALES_RETURN' THEN d.freight ELSE 0 END)</sql>
+    <!-- 收款折让 / 抹零（issue #89）：该出库 / 退货单生成的应收单（货款，以及客户代垫运费、退货运费的应收单）在收款时的折让累计
+         （fin_bill.discount_amount，同一单据多次收款累计，作废收款时扣回；本位币，外币单据已按记账汇率折算），
+         与坏账同样按应收单的不含税比例折算、跟随出库单的业务日期归属；退货的红字应收单折让为负数（少退给客户），扣除后毛利增加。
+         凭证中折让按含税金额计入财务费用等（收款折让科目），利润表的毛利不扣，所以这里扣除不会重复 -->
+    <sql id="settleDiscount">
+        LEFT JOIN (SELECT source_id, SUM(discount_amount * (amount - tax_amount) / amount) AS amount FROM fin_bill
+                   WHERE kind = 'AR' AND source_type IN ('SALES_OUT', 'SALES_RETURN', 'SALES_FREIGHT', 'SALES_RETURN_FREIGHT')
+                     AND discount_amount &lt;&gt; 0 AND amount &lt;&gt; 0 GROUP BY source_id) sd ON sd.source_id = d.id
+    </sql>
+    <!-- 本行分摊的整单优惠（不含税）：含税的分摊额按行税率折算、每行舍入到分（issue #93），货款 = 不含税金额 + 本项 -->
+    <sql id="lineDiscount">ROUND(i.discount_share * 100 / (100 + i.tax_rate), 2)</sql>
+    <sql id="badDebtFreightJoins">
+        LEFT JOIN (SELECT source_id, SUM(bad_debt_amount * (amount - tax_amount) / amount) AS amount FROM fin_bill
+                   WHERE kind = 'AR' AND source_type = 'SALES_OUT' AND bad_debt_amount &lt;&gt; 0 AND amount &lt;&gt; 0 GROUP BY source_id) bd ON d.kind = 'SALES_OUT' AND bd.source_id = d.id
+        LEFT JOIN (SELECT trade_doc_id, SUM(freight) AS amount FROM scm_shipment
+                   WHERE freight_bearer = 'COMPANY' AND status &lt;&gt; 'PENDING' AND freight &gt; 0 GROUP BY trade_doc_id) sf ON d.kind = 'SALES_OUT' AND sf.trade_doc_id = d.id AND d.freight = 0
+        <include refid="settleDiscount"/>
+    </sql>
+
+    <select id="selectGrossMargin" resultType="com.lemon.erp.modules.fin.dto.FinAnalysis$MarginRow">
+        SELECT
+            <choose>
+                <when test="groupBy == 'CUSTOMER'">d.partner_id AS "groupKey", c.name AS "groupName",</when>
+                <when test="groupBy == 'MONTH'">t.period AS "groupKey", CAST(t.period AS CHAR) AS "groupName",</when>
+                <otherwise>i.material_id AS "groupKey", CONCAT(m.code, ' ', m.name) AS "groupName",</otherwise>
+            </choose>
+            SUM(CASE WHEN d.kind = 'SALES_OUT' THEN i.qty ELSE -i.qty END) AS "qty",
+            SUM(CASE WHEN d.kind = 'SALES_OUT' THEN 1 ELSE -1 END * (i.amount - i.tax_amount)) AS "revenue",
+            SUM(CASE WHEN d.kind = 'SALES_OUT' THEN 1 ELSE -1 END * <include refid="lineDiscount"/>) AS "discount",
+            SUM(CASE WHEN d.kind = 'SALES_OUT' THEN 1 ELSE -1 END * i.qty * COALESCE(mc.unit_cost, m.ref_cost, 0)) AS "cost",
+            SUM(CASE WHEN mc.unit_cost IS NULL THEN 1 ELSE 0 END) AS "missingCost",
+            SUM(COALESCE(bd.amount, 0) * <include refid="docShare"/>) AS "badDebt",
+            SUM(<include refid="freightAmount"/> * <include refid="docShare"/>) AS "freight",
+            SUM(COALESCE(sd.amount, 0) * <include refid="docShare"/>) AS "settleDiscount"
+        FROM scm_trade_doc_item i
+        JOIN scm_trade_doc d ON d.id = i.doc_id
+        JOIN (SELECT id, YEAR(biz_date) * 100 + MONTH(biz_date) AS period FROM scm_trade_doc
+              WHERE kind IN ('SALES_OUT', 'SALES_RETURN') AND biz_date &gt;= #{begin} AND biz_date &lt;= #{end}) t ON t.id = d.id
+        JOIN wms_material m ON m.id = i.material_id
+        LEFT JOIN scm_customer c ON c.id = d.partner_id
+        LEFT JOIN fin_material_cost mc ON mc.material_id = i.material_id AND mc.period = t.period
+        <include refid="badDebtFreightJoins"/>
+        WHERE 1 = 1
+        <if test="customerId != null">AND d.partner_id = #{customerId}</if>
+        GROUP BY
+            <choose>
+                <when test="groupBy == 'CUSTOMER'">d.partner_id, c.name</when>
+                <when test="groupBy == 'MONTH'">t.period</when>
+                <otherwise>i.material_id, m.code, m.name</otherwise>
+            </choose>
+        <!-- 按月份时按月份先后，其他维度按收入从高到低 -->
+        <choose>
+            <when test="groupBy == 'MONTH'">ORDER BY t.period</when>
+            <otherwise>ORDER BY 4 DESC, 1</otherwise>
+        </choose>
+    </select>
+
+    <!-- 毛利明细：每行带本行分摊的整单优惠、坏账、运费、收款折让（都按行金额比例），由 Service 按显示方式（汇总到底部 / 分摊到各行）
+         计算行上的销售金额和毛利（issue #93）；有关键字时只列出单据的部分明细，调整项按所列明细的金额比例计算 -->
+    <select id="selectMarginDetail" resultType="com.lemon.erp.modules.fin.dto.FinAnalysis$MarginDetailRow">
+        SELECT d.id AS "docId", d.doc_no AS "docNo", d.kind AS "kind", d.biz_date AS "bizDate", c.name AS "customerName",
+               m.code AS "materialCode", m.name AS "materialName", m.spec AS "spec", m.unit AS "unit",
+               CASE WHEN d.kind = 'SALES_OUT' THEN i.qty ELSE -i.qty END AS "qty",
+               CASE WHEN d.kind = 'SALES_OUT' THEN 1 ELSE -1 END * (i.amount - i.tax_amount) AS "revenue",
+               CASE WHEN d.kind = 'SALES_OUT' THEN 1 ELSE -1 END * <include refid="lineDiscount"/> AS "discount",
+               CASE WHEN d.kind = 'SALES_OUT' THEN 1 ELSE -1 END * i.qty * COALESCE(mc.unit_cost, m.ref_cost, 0) AS "cost",
+               CASE WHEN mc.unit_cost IS NULL THEN 0 ELSE 1 END AS "costed",
+               COALESCE(bd.amount, 0) * <include refid="docShare"/> AS "badDebt",
+               <include refid="freightAmount"/> * <include refid="docShare"/> AS "freight",
+               COALESCE(sd.amount, 0) * <include refid="docShare"/> AS "settleDiscount"
+        FROM scm_trade_doc_item i
+        JOIN scm_trade_doc d ON d.id = i.doc_id
+        JOIN wms_material m ON m.id = i.material_id
+        LEFT JOIN scm_customer c ON c.id = d.partner_id
+        LEFT JOIN fin_material_cost mc ON mc.material_id = i.material_id AND mc.period = YEAR(d.biz_date) * 100 + MONTH(d.biz_date)
+        <include refid="badDebtFreightJoins"/>
+        WHERE d.kind IN ('SALES_OUT', 'SALES_RETURN') AND d.biz_date &gt;= #{begin} AND d.biz_date &lt;= #{end}
+        <if test="customerId != null">AND d.partner_id = #{customerId}</if>
+        <if test="keyword != null and keyword != ''">
+            AND (m.code LIKE CONCAT('%', #{keyword}, '%') OR m.name LIKE CONCAT('%', #{keyword}, '%') OR d.doc_no LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY d.biz_date, d.id, i.id
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectCostCloseByCategory" resultType="com.lemon.erp.modules.fin.dto.FinAnalysis$CategoryAmount">
+        SELECT m.category AS "category", SUM(mc.close_amount) AS "closeAmount"
+        FROM fin_material_cost mc
+        JOIN wms_material m ON m.id = mc.material_id
+        WHERE mc.period = #{period}
+        GROUP BY m.category
+    </select>
+
+    <select id="selectQtyDiff" resultType="com.lemon.erp.modules.fin.dto.FinAnalysis$QtyDiff">
+        SELECT q.material_id AS "materialId", m.code AS "code", m.name AS "name", q.cost_qty AS "costQty", q.stock_qty AS "stockQty"
+        FROM (
+            SELECT x.material_id, SUM(x.cost_qty) AS cost_qty, SUM(x.stock_qty) AS stock_qty
+            FROM (
+                SELECT material_id, close_qty AS cost_qty, 0 AS stock_qty FROM fin_material_cost WHERE period = #{period}
+                UNION ALL
+                SELECT f.material_id, 0, f.qty
+                FROM wms_stock_flow f
+                JOIN wms_warehouse wh ON wh.id = f.warehouse_id
+                LEFT JOIN wms_stock_doc sd ON f.biz_type IN ('IN', 'OUT', 'TRANSFER') AND sd.id = f.doc_id
+                LEFT JOIN wms_check ck ON f.biz_type = 'CHECK' AND ck.id = f.doc_id
+                WHERE COALESCE(sd.biz_date, ck.biz_date) &lt;= #{end} AND wh.type &lt;&gt; 'CONSIGN_IN'
+            ) x
+            GROUP BY x.material_id
+        ) q
+        JOIN wms_material m ON m.id = q.material_id
+        WHERE q.cost_qty &lt;&gt; q.stock_qty
+        ORDER BY m.code
+    </select>
+
+    <select id="selectCashVoucherEntries" resultType="com.lemon.erp.modules.fin.dto.FinAnalysis$CashEntry">
+        SELECT e.voucher_id AS "voucherId", a.code AS "accountCode", e.debit AS "debit", e.credit AS "credit"
+        FROM fin_voucher_entry e
+        JOIN fin_voucher v ON v.id = e.voucher_id
+        JOIN fin_account a ON a.id = e.account_id
+        WHERE v.status = 'POSTED' AND v.period &gt;= #{begin} AND v.period &lt;= #{end}
+          AND EXISTS (SELECT 1 FROM fin_voucher_entry ce JOIN fin_account ca ON ca.id = ce.account_id
+                      WHERE ce.voucher_id = v.id
+                        AND <foreach collection="cashCodes" item="c" open="(" separator=" OR " close=")">ca.code LIKE CONCAT(#{c}, '%')</foreach>)
+        ORDER BY e.voucher_id, e.seq
+    </select>
+
+    <select id="selectAssetPayments" resultType="com.lemon.erp.modules.fin.dto.FinAnalysis$AssetPayment">
+        SELECT s.voucher_id AS "voucherId",
+               SUM(CASE WHEN b.source_type = 'ASSET' THEN si.amount ELSE 0 END) AS "assetAmount",
+               SUM(si.amount) AS "totalAmount"
+        FROM fin_settlement s
+        JOIN fin_voucher v ON v.id = s.voucher_id
+        JOIN fin_settlement_item si ON si.settlement_id = s.id
+        JOIN fin_bill b ON b.id = si.bill_id
+        WHERE s.kind = 'PAYMENT' AND v.status = 'POSTED' AND v.period &gt;= #{begin} AND v.period &lt;= #{end}
+        GROUP BY s.voucher_id
+        HAVING SUM(CASE WHEN b.source_type = 'ASSET' THEN si.amount ELSE 0 END) &lt;&gt; 0
+    </select>
+
+</mapper>

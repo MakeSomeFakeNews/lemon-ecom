@@ -1,0 +1,71 @@
+{
+  "easycom": {
+    "autoscan": true,
+    "custom": {
+      "^l-(.*)": "@/components/l-$1/l-$1.vue"
+    }
+  },
+  "pages": [
+    { "path": "pages/index/index", "style": { "navigationBarTitleText": "工作台", "enablePullDownRefresh": true } },
+    { "path": "pages/approval/index", "style": { "navigationBarTitleText": "审批", "enablePullDownRefresh": true } },
+    { "path": "pages/message/index", "style": { "navigationBarTitleText": "消息", "enablePullDownRefresh": true } },
+    { "path": "pages/mine/index", "style": { "navigationBarTitleText": "我的", "enablePullDownRefresh": true, "navigationBarBackgroundColor": "#1677FF", "navigationBarTextStyle": "white", "backgroundColorTop": "#1677FF" } },
+    { "path": "pages/login/index", "style": { "navigationBarTitleText": "登录", "navigationStyle": "custom" } },
+    { "path": "pages/mine/password", "style": { "navigationBarTitleText": "修改密码" } }
+  ],
+  "subPackages": [
+    {
+      "root": "pkg-approval",
+      "pages": [
+        { "path": "detail", "style": { "navigationBarTitleText": "审批详情" } },
+        { "path": "start/index", "style": { "navigationBarTitleText": "发起申请", "enablePullDownRefresh": true } },
+        { "path": "start/form", "style": { "navigationBarTitleText": "填写申请" } }
+      ]
+    },
+    {
+      "root": "pkg-notice",
+      "pages": [
+        { "path": "index", "style": { "navigationBarTitleText": "通知公告", "enablePullDownRefresh": true } },
+        { "path": "detail", "style": { "navigationBarTitleText": "公告详情" } }
+      ]
+    },
+    {
+      "root": "pkg-wms",
+      "pages": [
+        { "path": "stock/index", "style": { "navigationBarTitleText": "库存查询" } },
+        { "path": "stock/history", "style": { "navigationBarTitleText": "经营历史" } },
+        { "path": "sale/index", "style": { "navigationBarTitleText": "快速开单" } },
+        { "path": "purchase/index", "style": { "navigationBarTitleText": "快速入库" } },
+        { "path": "draft/index", "style": { "navigationBarTitleText": "单据草稿", "enablePullDownRefresh": true } },
+        { "path": "draft/detail", "style": { "navigationBarTitleText": "草稿详情" } },
+        { "path": "lookup/index", "style": { "navigationBarTitleText": "商品速查" } },
+        { "path": "lookup/trades", "style": { "navigationBarTitleText": "交易历史", "enablePullDownRefresh": true } },
+        { "path": "lookup/reference", "style": { "navigationBarTitleText": "价格参考" } },
+        { "path": "receive/index", "style": { "navigationBarTitleText": "扫码收货" } },
+        { "path": "putaway/index", "style": { "navigationBarTitleText": "上架" } },
+        { "path": "check/index", "style": { "navigationBarTitleText": "盘点" } }
+      ]
+    }
+  ],
+  "preloadRule": {
+    "pages/approval/index": { "network": "all", "packages": ["pkg-approval"] }
+  },
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "柠檬跨境ERP",
+    "navigationBarBackgroundColor": "#FFFFFF",
+    "backgroundColor": "#F5F6F8"
+  },
+  "tabBar": {
+    "color": "#8C8C8C",
+    "selectedColor": "#1677FF",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "white",
+    "list": [
+      { "pagePath": "pages/index/index", "text": "工作台", "iconPath": "static/tab/workbench.png", "selectedIconPath": "static/tab/workbench-active.png" },
+      { "pagePath": "pages/approval/index", "text": "审批", "iconPath": "static/tab/approval.png", "selectedIconPath": "static/tab/approval-active.png" },
+      { "pagePath": "pages/message/index", "text": "消息", "iconPath": "static/tab/message.png", "selectedIconPath": "static/tab/message-active.png" },
+      { "pagePath": "pages/mine/index", "text": "我的", "iconPath": "static/tab/mine.png", "selectedIconPath": "static/tab/mine-active.png" }
+    ]
+  }
+}

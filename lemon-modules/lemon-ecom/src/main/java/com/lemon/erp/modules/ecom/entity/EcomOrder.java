@@ -1,0 +1,126 @@
+package com.lemon.erp.modules.ecom.entity;
+
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.lemon.erp.common.base.BaseEntity;
+import com.lemon.erp.modules.ecom.model.EcomLocalStatus;
+import com.lemon.erp.modules.ecom.model.EcomOrderStatus;
+import com.lemon.erp.modules.ecom.model.EcomPlatform;
+import com.lemon.erp.modules.ecom.model.FulfillmentType;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+
+/**
+ * 平台订单：从各平台导入 / 同步的销售订单。金额为订单币种，totalBase 等本位币金额按下单日汇率折算；
+ * 出库时生成销售出库（直接开单，客户为店铺对应的客户），成本取出库成本，利润 = 本位币金额 − 平台费用 − 退款 − 成本 − 运费
+ */
+@Data
+@EqualsAndHashCode(callSuper = true)
+@TableName("ecom_order")
+public class EcomOrder extends BaseEntity {
+
+    private Long storeId;
+    private String platformOrderNo;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime orderTime;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime paidTime;
+
+    /** 平台状态 */
+    private EcomOrderStatus status;
+    private FulfillmentType fulfillment;
+    /** 本系统处理状态 */
+    private EcomLocalStatus localStatus;
+
+    private String buyerName;
+    private String buyerEmail;
+    private String shipName;
+    private String shipPhone;
+    /** 收件国家 / 地区代码，如 US */
+    private String shipCountry;
+    private String shipState;
+    private String shipCity;
+    private String shipPostcode;
+    private String shipAddress;
+
+    private String currency;
+    /** 商品金额 */
+    private BigDecimal itemAmount;
+    /** 买家支付的运费 */
+    private BigDecimal shippingAmount;
+    private BigDecimal taxAmount;
+    /** 优惠（促销、优惠券） */
+    private BigDecimal discountAmount;
+    /** 买家实付 = 商品 + 运费 + 税 − 优惠 */
+    private BigDecimal totalAmount;
+    /** 汇率：1 订单币种 = exchangeRate 本位币 */
+    private BigDecimal exchangeRate;
+    /** 买家实付（本位币） */
+    private BigDecimal totalBase;
+
+    /** 平台佣金（订单币种）：结算回写前为按店铺佣金率的估算 */
+    private BigDecimal platformFee;
+    /** 平台配送费（订单币种） */
+    private BigDecimal fulfillmentFee;
+    /** 其他费用（订单币种） */
+    private BigDecimal otherFee;
+    /** 费用是否为结算单回写的实际值 1 是 0 估算 */
+    private Integer feeActual;
+    /** 已退款金额（订单币种） */
+    private BigDecimal refundAmount;
+    /** 商品成本（本位币，出库时取出库成本） */
+    private BigDecimal costAmount;
+    /** 本公司承担的物流成本（本位币）：自发货为尾程运费，平台配送为头程分摊 */
+    private BigDecimal shippingCost;
+    /** 利润（本位币） */
+    private BigDecimal profit;
+
+    /** 生成的销售出库单 */
+    private Long tradeDocId;
+    private String tradeDocNo;
+    /** 出库仓库 */
+    private Long warehouseId;
+
+    private String carrier;
+    private String trackingNo;
+    /** 发货使用的物流渠道 */
+    private Long channelId;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime shipTime;
+    /** 承诺发货截止 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime shipBy;
+    /** 承诺送达截止 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime deliverBy;
+
+    /** 异常原因 */
+    private String exception;
+    /** 买家留言 */
+    private String note;
+    private String remark;
+
+    private Long deptId;
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private Long createBy;
+
+    @TableField(exist = false)
+    private String storeName;
+    @TableField(exist = false)
+    private EcomPlatform platform;
+    @TableField(exist = false)
+    private String warehouseName;
+    @TableField(exist = false)
+    private String channelName;
+    @TableField(exist = false)
+    private Integer itemCount;
+    @TableField(exist = false)
+    private List<EcomOrderItem> items;
+}

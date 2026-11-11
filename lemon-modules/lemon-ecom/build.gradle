@@ -1,0 +1,11 @@
+plugins {
+    id 'lemon.java-conventions'
+}
+
+description = '跨境电商：平台店铺、在线商品、平台订单、头程货件、物流渠道、平台结算、广告、退货退款、补货建议与利润分析'
+
+dependencies {
+    api project(':lemon-modules:lemon-fin')
+    api project(':lemon-modules:lemon-scm')
+    api project(':lemon-modules:lemon-wms')
+}

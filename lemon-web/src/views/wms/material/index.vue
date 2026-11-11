@@ -1,0 +1,628 @@
+<template>
+  <div class="workspace">
+    <!-- 物料分类树：点击分类列出该分类及其下级分类的物料，有权限时可维护分类 -->
+    <a-card v-show="showCategory" :bordered="false" class="page-card workspace-side">
+      <MaterialCategoryTree ref="categoryTreeRef" v-model="query.category" @change="search" />
+    </a-card>
+
+    <div class="table-page workspace-main">
+      <a-card v-show="showSearch" :bordered="false" class="page-card">
+        <SearchForm :model="query" @search="search" @reset="resetQuery">
+          <a-form-item :label="$t('wms.common.material')" name="keyword">
+            <a-input v-model:value="query.keyword" :placeholder="$t('wms.flow.codeOrName')" allow-clear />
+          </a-form-item>
+          <a-form-item :label="$t('pricing.goods.brand')" name="brand">
+            <a-select v-model:value="query.brand" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.wms_material_brand)" />
+          </a-form-item>
+          <a-form-item :label="$t('common.field.status')" name="status">
+            <a-select v-model:value="query.status" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.sys_common_status, true)" />
+          </a-form-item>
+        </SearchForm>
+      </a-card>
+
+      <a-card :bordered="false" class="page-card table-card">
+        <TableToolbar
+          :exporter="exportAll"
+          v-model:size="size"
+          v-model:checked="checked"
+          v-model:show-search="showSearch"
+          :columns="toolbarColumns"
+          @refresh="load"
+        >
+          <a-button v-perm="'wms:material:add'" type="primary" @click="drawer.openCreate()">
+            <template #icon><PlusOutlined /></template>{{ $t('wms.material.createTitle') }}
+          </a-button>
+          <AiExtractButton target="wms.material" perm="wms:material:add" :title="$t('wms.material.createTitle')" @result="ai.apply" />
+          <a-button v-perm="'wms:material:add'" @click="importOpen = true">
+            <template #icon><ImportOutlined /></template>{{ $t('common.action.import') }}
+          </a-button>
+          <span v-perm="'wms:material:remove'">
+            <a-popconfirm
+              :title="$t('wms.material.confirmDeleteN', { n: selectedKeys.length })"
+              :disabled="!selectedKeys.length"
+              @confirm="remove(selectedKeys)"
+            >
+              <a-button danger :disabled="!selectedKeys.length">
+                <template #icon><DeleteOutlined /></template>{{ $t('common.action.batchDelete') }}
+              </a-button>
+            </a-popconfirm>
+          </span>
+          <a-button v-perm="'wms:material:priceLevel'" @click="priceLevelRef.open()">
+            <template #icon><DollarOutlined /></template>{{ $t('pricing.level.title') }}
+          </a-button>
+          <a-button :disabled="!selectedKeys.length" @click="openLabels">
+            <template #icon><BarcodeOutlined /></template>{{ $t('wms.material.printLabel') }}{{ selectedKeys.length ? ` (${selectedKeys.length})` : '' }}
+          </a-button>
+          <template #extra>
+            <a-tooltip :title="showCategory ? $t('wms.material.hideCategory') : $t('wms.material.showCategory')">
+              <a-button type="text" @click="showCategory = !showCategory">
+                <template #icon><MenuFoldOutlined v-if="showCategory" /><MenuUnfoldOutlined v-else /></template>
+              </a-button>
+            </a-tooltip>
+          </template>
+        </TableToolbar>
+
+        <a-table
+          row-key="id"
+          :size="size"
+          :columns="tableColumns"
+          :data-source="list"
+          :loading="loading"
+          :pagination="pagination"
+          :row-selection="rowSelection"
+          :scroll="{ x: sumWidth(tableColumns) + 32, y: '100%' }"
+          @change="onTableChange"
+        >
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'name'">
+              <div class="name-cell">
+                <a-image v-if="record.imageUrl" :src="record.imageUrl" :width="36" :height="36" class="thumb" />
+                <div>
+                  <a @click="openDetail(record.id)">{{ record.name }}</a>
+                  <a-tag v-if="record.isTemplate === 1" color="magenta" :bordered="false" class="ml">{{ $t('wms.material.style') }}</a-tag>
+                  <div class="sub-text">
+                    {{ record.code }}
+                    <template v-if="record.variantText"> · {{ record.variantText }}</template>
+                  </div>
+                </div>
+              </div>
+            </template>
+            <template v-else-if="column.key === 'category'">
+              <DictTag type="wms_material_category" :value="record.category" />
+            </template>
+            <template v-else-if="column.key === 'brand'">
+              <DictTag type="wms_material_brand" :value="record.brand" />
+            </template>
+            <template v-else-if="column.priceLevel != null">{{ record[column.key] == null ? '-' : price(record[column.key]) }}</template>
+            <template v-else-if="column.key === 'tracking'">
+              <a-tag v-if="record.batchEnabled === 1" color="blue" :bordered="false">{{ $t('wms.common.batch') }}</a-tag>
+              <a-tag v-if="record.serialEnabled === 1" color="purple" :bordered="false">{{ $t('wms.common.serialNo') }}</a-tag>
+              <a-tag v-if="record.iqcRequired === 1" color="orange" :bordered="false">{{ $t('wms.material.iqc') }}</a-tag>
+              <span v-if="record.batchEnabled !== 1 && record.serialEnabled !== 1 && record.iqcRequired !== 1" class="sub-text">-</span>
+            </template>
+            <template v-else-if="column.key === 'safetyStock'">{{ formatQty(record.safetyStock) }}</template>
+            <template v-else-if="column.key === 'barcode'">{{ record.barcode || '-' }}</template>
+            <template v-else-if="column.key === 'status'">
+              <StatusSwitch
+                :value="record.status"
+                :name="record.name"
+                :api="(s) => changeMaterialStatus(record.id, s)"
+                :disabled="!userStore.hasPerm('wms:material:edit')"
+                @changed="(s) => (record.status = s)"
+              />
+            </template>
+            <template v-else-if="column.custom">{{ cfCell(record, column) }}</template>
+            <template v-else-if="column.key === 'action'">
+              <TableActions :actions="rowActions(record)" />
+            </template>
+          </template>
+        </a-table>
+      </a-card>
+
+      <FormDrawer page :drawer="drawer" :create-title="$t('wms.material.createTitle')" :edit-title="$t('wms.material.editTitle')">
+        <AiPrefillAlert :ai="ai" />
+        <a-form ref="formRef" :model="form" :rules="rules" layout="vertical">
+          <a-row :gutter="16">
+            <a-col :xs="24" :sm="colSpan">
+              <a-form-item :label="$t('wms.material.code')" name="code" :class="ai.cls('code')">
+                <a-input v-model:value="form.code" :maxlength="64" :placeholder="$t('wms.material.codePh')" :disabled="basicReadonly" />
+              </a-form-item>
+            </a-col>
+            <a-col :xs="24" :sm="colSpan">
+              <a-form-item :label="$t('wms.material.name')" name="name" :class="ai.cls('name')">
+                <a-input v-model:value="form.name" :maxlength="128" :disabled="basicReadonly" />
+              </a-form-item>
+            </a-col>
+            <a-col :xs="24" :sm="colSpan">
+              <a-form-item :label="$t('wms.inout.spec')" name="spec">
+                <a-input v-model:value="form.spec" :maxlength="128" :disabled="basicReadonly" />
+              </a-form-item>
+            </a-col>
+            <a-col :xs="24" :sm="colSpan">
+              <a-form-item :label="$t('wms.material.unit')" name="unit">
+                <a-auto-complete v-model:value="form.unit" :options="UNITS" :maxlength="16" :placeholder="$t('wms.material.unitPh')" :disabled="basicReadonly" />
+              </a-form-item>
+            </a-col>
+            <a-col :xs="24" :sm="colSpan">
+              <a-form-item :label="$t('wms.inout.category')" name="category" :class="ai.cls('category')">
+                <MaterialCategorySelect v-model="form.category" usable-only :placeholder="$t('common.placeholder.select')" :disabled="basicReadonly" />
+              </a-form-item>
+            </a-col>
+            <a-col :xs="24" :sm="colSpan">
+              <a-form-item :label="$t('pricing.goods.brand')" name="brand">
+                <a-select
+                  v-model:value="form.brand"
+                  :placeholder="$t('wms.common.optional')"
+                  allow-clear
+                  show-search
+                  option-filter-prop="label"
+                  :options="toOptions(dict.wms_material_brand)"
+                  :disabled="basicReadonly"
+                />
+              </a-form-item>
+            </a-col>
+            <a-col :xs="24" :sm="colSpan">
+              <a-form-item :label="$t('wms.stock.safetyStock')" name="safetyStock" :extra="$t('wms.material.safetyTip')">
+                <a-input-number v-model:value="form.safetyStock" :min="0" :precision="4" class="full" :placeholder="$t('wms.material.noAlert')" :disabled="basicReadonly" />
+              </a-form-item>
+            </a-col>
+            <a-col :xs="24" :sm="colSpan">
+              <a-form-item name="reorderPoint" :extra="$t('wms.material.reorderPointExtra')">
+                <template #label>
+                  {{ $t('wms.material.reorderPoint') }}
+                  <a-tooltip :title="$t('wms.material.reorderPointTip')">
+                    <QuestionCircleOutlined class="label-help" />
+                  </a-tooltip>
+                </template>
+                <a-input-number v-model:value="form.reorderPoint" :min="0" :precision="4" class="full" :placeholder="$t('wms.material.notInvolved')" :disabled="basicReadonly" />
+              </a-form-item>
+            </a-col>
+            <a-col :xs="24" :sm="colSpan">
+              <a-form-item :label="$t('wms.material.reorderQty')" name="reorderQty" :extra="$t('wms.material.reorderQtyTip')">
+                <a-input-number v-model:value="form.reorderQty" :min="0" :precision="4" class="full" :placeholder="$t('wms.common.optional')" :disabled="basicReadonly" />
+              </a-form-item>
+            </a-col>
+            <a-col :xs="24" :sm="colSpan">
+              <a-form-item :label="$t('wms.units.barcode')" name="barcode" :extra="$t('wms.material.barcodeTip')">
+                <a-input v-model:value="form.barcode" :maxlength="64" :placeholder="$t('wms.common.optional')" allow-clear :disabled="basicReadonly" />
+              </a-form-item>
+            </a-col>
+            <a-col :xs="24" :sm="colSpan">
+              <a-form-item :label="$t('wms.material.refCost')" name="refCost" :extra="$t('wms.material.refCostTip')">
+                <a-input-number v-model:value="form.refCost" :min="0" :precision="4" class="full" :placeholder="$t('wms.common.optional')" :disabled="basicReadonly" />
+              </a-form-item>
+            </a-col>
+            <a-col :xs="24" :sm="colSpan">
+              <a-form-item :label="$t('wms.material.costMethod')" name="costMethod" :extra="$t('wms.material.costMethodTip')">
+                <a-select v-model:value="form.costMethod" :options="toOptions(dict.wms_cost_method)" :disabled="basicReadonly" />
+              </a-form-item>
+            </a-col>
+            <a-col :xs="24" :sm="colSpan">
+              <a-form-item :label="$t('wms.material.defaultWarehouse')" name="defaultWarehouseId">
+                <WarehouseSelect v-model:value="form.defaultWarehouseId" :placeholder="$t('wms.common.optional')" :disabled="basicReadonly" @update:value="form.defaultLocationId = null" />
+              </a-form-item>
+            </a-col>
+            <a-col :xs="24" :sm="colSpan">
+              <a-form-item :label="$t('wms.material.defaultLocation')" name="defaultLocationId" :extra="$t('wms.material.defaultLocationTip')">
+                <LocationSelect v-model:value="form.defaultLocationId" :warehouse-id="form.defaultWarehouseId" :disabled="basicReadonly" />
+              </a-form-item>
+            </a-col>
+            <a-col v-if="enabledLevels.length" :span="24">
+              <div class="sub-title">{{ $t('pricing.level.prices') }}</div>
+              <a-row :gutter="16">
+                <a-col v-for="l in enabledLevels" :key="l.level" :xs="12" :sm="6">
+                  <a-form-item :label="l.name" :name="l.field">
+                    <a-input-number v-model:value="form[l.field]" :min="0" :precision="4" class="full" :disabled="basicReadonly" />
+                  </a-form-item>
+                </a-col>
+              </a-row>
+            </a-col>
+            <a-col :span="24">
+              <a-form-item :label="$t('wms.material.tracking')" :extra="$t('wms.material.trackingTip')">
+                <a-space direction="vertical">
+                  <a-checkbox :checked="form.batchEnabled === 1" :disabled="basicReadonly" @change="(e) => (form.batchEnabled = e.target.checked ? 1 : 0)">
+                    {{ $t('wms.material.batchManaged') }}<span class="option-desc">{{ $t('wms.material.batchManagedDesc') }}</span>
+                  </a-checkbox>
+                  <a-checkbox :checked="form.serialEnabled === 1" :disabled="basicReadonly" @change="(e) => (form.serialEnabled = e.target.checked ? 1 : 0)">
+                    {{ $t('wms.material.serialManaged') }}<span class="option-desc">{{ $t('wms.material.serialManagedDesc') }}</span>
+                  </a-checkbox>
+                  <a-checkbox :checked="form.iqcRequired === 1" :disabled="basicReadonly" @change="(e) => (form.iqcRequired = e.target.checked ? 1 : 0)">
+                    {{ $t('wms.material.iqc') }}<span class="option-desc">{{ $t('wms.material.iqcDesc') }}</span>
+                  </a-checkbox>
+                </a-space>
+              </a-form-item>
+            </a-col>
+            <a-col :span="24">
+              <a-form-item :label="$t('common.field.remark')" name="remark">
+                <a-textarea v-model:value="form.remark" :rows="2" :maxlength="255" show-count :disabled="basicReadonly" />
+              </a-form-item>
+            </a-col>
+          </a-row>
+
+          <CustomFieldsForm :fields="cfFields" :values="form.cf || {}" :title="$t('wms.material.customFields')" />
+        </a-form>
+      </FormDrawer>
+      <VariantDrawer v-model:open="variantOpen" :material="variantMaterial" @generated="load" />
+
+      <!-- 详情 -->
+      <SubPage :open="detailOpen" :title="detail ? `${detail.code} ${detail.name}` : $t('wms.common.material')" width="min(960px, 100vw)" destroy-on-close @close="detailOpen = false">
+        <template #extra>
+          <a-button v-if="detail && canEdit" type="primary" @click="drawer.openEdit({ id: detail.id })">{{ $t('common.action.edit') }}</a-button>
+        </template>
+        <a-spin :spinning="detailLoading">
+          <template v-if="detail">
+            <MaterialImages :material-id="detail.id" :editable="canEdit" :size="88" class="block" @changed="load" />
+            <a-descriptions :column="{ xs: 1, sm: 2, lg: 3 }" size="small" class="block">
+              <a-descriptions-item :label="$t('wms.material.specUnit')">{{ detail.spec || '-' }} / {{ detail.unit || '-' }}</a-descriptions-item>
+              <a-descriptions-item :label="$t('wms.inout.category')"><DictTag type="wms_material_category" :value="detail.category" /></a-descriptions-item>
+              <a-descriptions-item v-if="detail.barcode" :label="$t('wms.units.barcode')">{{ detail.barcode }}</a-descriptions-item>
+              <a-descriptions-item :label="$t('wms.stock.safetyStock')">{{ detail.safetyStock != null ? formatQty(detail.safetyStock) + ' ' + (detail.unit || '') : '-' }}</a-descriptions-item>
+            </a-descriptions>
+          </template>
+        </a-spin>
+      </SubPage>
+      <ImportModal
+        v-model:open="importOpen"
+        :title="$t('wms.common.material')"
+        :columns="importColumns"
+        :importer="importMaterial"
+        :sample="{ code: 'M0001', name: $t('wms.material.sampleName'), spec: 'M3*8', unit: $t('wms.material.sampleUnit'), batchEnabled: $t('wms.material.sampleNo'), serialEnabled: $t('wms.material.sampleNo'), safetyStock: 100 }"
+        @success="onImported"
+      />
+      <MaterialUnitsModal v-model:open="unitsOpen" :material="unitsMaterial" :editable="canEdit" />
+      <RecordExtrasModal
+        v-model:open="extrasOpen"
+        :title="extrasTitle"
+        biz-type="wms_material"
+        :biz-id="extrasId"
+        :editable="userStore.hasPerm('wms:material:edit')"
+      />
+      <LabelPrintModal v-model:open="labelOpen" type-key="label.material" :items="labelItems" />
+      <PriceLevelModal ref="priceLevelRef" @saved="load" />
+      <StockHistory ref="historyRef" />
+      <MaterialImagesModal ref="imagesRef" :editable="canEdit" @changed="load" />
+      <MaterialTrackingModal ref="trackingRef" @saved="load" />
+    </div>
+  </div>
+</template>
+
+<script setup>
+import SubPage from '@/components/SubPage.vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { isZh } from '@/locales'
+import { message } from 'ant-design-vue'
+import { AppstoreAddOutlined, BarcodeOutlined, DeleteOutlined, DollarOutlined, ImportOutlined, MenuFoldOutlined, MenuUnfoldOutlined, PaperClipOutlined, PictureOutlined, PlusOutlined, QuestionCircleOutlined, SafetyCertificateOutlined, SwapOutlined } from '@ant-design/icons-vue'
+import DictTag from '@/components/DictTag.vue'
+import FormDrawer from '@/components/FormDrawer.vue'
+import ImportModal from '@/components/ImportModal.vue'
+import RecordExtrasModal from '@/components/RecordExtrasModal.vue'
+import SearchForm from '@/components/SearchForm.vue'
+import StatusSwitch from '@/components/StatusSwitch.vue'
+import TableToolbar from '@/components/TableToolbar.vue'
+import LabelPrintModal from '@/components/label/LabelPrintModal.vue'
+import LocationSelect from '@/components/wms/LocationSelect.vue'
+import MaterialCategorySelect from '@/components/wms/MaterialCategorySelect.vue'
+import MaterialCategoryTree from '@/components/wms/MaterialCategoryTree.vue'
+import MaterialUnitsModal from '@/components/wms/MaterialUnitsModal.vue'
+import StockHistory from '@/components/wms/StockHistory.vue'
+import VariantDrawer from '@/components/wms/VariantDrawer.vue'
+import WarehouseSelect from '@/components/wms/WarehouseSelect.vue'
+import { addMaterial, changeMaterialStatus, deleteMaterial, getMaterial, pageMaterial, updateMaterial, importMaterial } from '@/api/wms/material'
+import { formatQty } from '@/components/wms/wms'
+import { sumWidth, useColumns } from '@/composables/useColumns'
+import TableActions from '@/components/common/TableActions.vue'
+import { actionColumn } from '@/components/common/tableActions'
+import { useDict } from '@/composables/useDict'
+import { asPrefilled, useFormDrawer } from '@/composables/useFormDrawer'
+import { useTable } from '@/composables/useTable'
+import { useUserStore } from '@/store/user'
+import { toOptions } from '@/utils/dict'
+import CustomFieldsForm from '@/components/common/CustomFieldsForm.vue'
+import { useCustomColumns, useCustomFields } from '@/composables/useCustomFields'
+import { PRICE_FIELDS, usePriceLevels } from '@/components/wms/priceLevels'
+import { price } from '@/utils/number'
+import PriceLevelModal from './PriceLevelModal.vue'
+import MaterialImagesModal from './MaterialImagesModal.vue'
+import MaterialTrackingModal from './MaterialTrackingModal.vue'
+import MaterialImages from '@/components/wms/MaterialImages.vue'
+
+import { CostMethod } from '@/constants/enums'
+import AiExtractButton from '@/components/ai/AiExtractButton.vue'
+import AiPrefillAlert from '@/components/ai/AiPrefillAlert.vue'
+import { useAiPrefill } from '@/composables/useAiPrefill'
+import { load as loadPref, save as savePref } from '@/utils/storage'
+const { t } = useI18n()
+
+/** 物料管理：物料主数据只有这一份，仓库、采购、销售共用 */
+const userStore = useUserStore()
+const canEdit = computed(() => userStore.hasPerm('wms:material:edit'))
+// 左侧分类树：显示 / 隐藏记在本机
+const showCategory = ref(loadPref('material-page:show-category', true))
+watch(showCategory, (v) => savePref('material-page:show-category', v))
+const categoryTreeRef = ref()
+/** 物料有增删改、导入后刷新分类树上的物料数 */
+const refreshCounts = () => categoryTreeRef.value?.refresh()
+const dict = useDict('sys_common_status', 'wms_material_category', 'wms_material_brand', 'wms_cost_method')
+const UNITS = (isZh() ? ['个', '件', '台', '箱', '包', '桶', '瓶', '袋', 'kg', 'g', 'L', 'm'] : ['pcs', 'set', 'box', 'pack', 'bag', 'bottle', 'drum', 'kg', 'g', 'L', 'm']).map((value) => ({ value })) // i18n-ignore
+const importOpen = ref(false)
+// 价格列：停用的列在表单、列表、导入导出中隐藏
+const { enabledLevels } = usePriceLevels()
+const priceLevelRef = ref()
+// 辅助单位
+const unitsOpen = ref(false)
+const unitsMaterial = ref()
+// 多规格：生成 SKU、查看库存矩阵
+const variantOpen = ref(false)
+const variantMaterial = ref()
+function openVariants(record) {
+  variantMaterial.value = { ...record }
+  variantOpen.value = true
+}
+
+// 经营历史（库存流水的进出、单价与结余）
+const historyRef = ref()
+function openHistory(record) {
+  historyRef.value.open({ materialId: record.id, materialCode: record.code, materialName: record.name })
+}
+
+function openUnits(record) {
+  unitsMaterial.value = record
+  unitsOpen.value = true
+}
+// 附件、变更记录
+const extrasOpen = ref(false)
+const extrasId = ref()
+const extrasTitle = ref('')
+function openExtras(record) {
+  extrasId.value = record.id
+  extrasTitle.value = `${record.code} ${record.name}`
+  extrasOpen.value = true
+}
+const importColumns = computed(() => [
+  { title: t('wms.material.code'), key: 'code', required: true },
+  { title: t('wms.material.name'), key: 'name', required: true },
+  { title: t('wms.inout.spec'), key: 'spec' },
+  { title: t('wms.material.unit'), key: 'unit' },
+  // 分类可填编码、完整路径（如「电子元器件/电阻」）或不重名的分类名称，由后端匹配
+  { title: t('wms.inout.category'), key: 'category' },
+  { title: t('pricing.goods.brand'), key: 'brand', dict: 'wms_material_brand' },
+  { title: t('wms.material.batchManaged'), key: 'batchEnabled', type: 'bool' },
+  { title: t('wms.material.serialManaged'), key: 'serialEnabled', type: 'bool' },
+  { title: t('wms.material.iqc'), key: 'iqcRequired', type: 'bool' },
+  { title: t('wms.stock.safetyStock'), key: 'safetyStock', type: 'number' },
+  ...enabledLevels.value.map((l) => ({ title: l.name, key: l.field, type: 'number' })),
+  { title: t('common.field.remark'), key: 'remark' }
+])
+
+const columns = [
+  { title: t('wms.common.material'), key: 'name', width: 200 },
+  { title: t('wms.inout.spec'), dataIndex: 'spec', width: 150, ellipsis: true },
+  { title: t('common.field.unit'), dataIndex: 'unit', width: 70 },
+  { title: t('wms.units.barcode'), key: 'barcode', width: 140, ellipsis: true },
+  { title: t('wms.inout.category'), key: 'category', width: 160, dict: 'wms_material_category' },
+  { title: t('pricing.goods.brand'), key: 'brand', width: 100, dict: 'wms_material_brand' },
+  ...PRICE_FIELDS.map((key, level) => ({ title: key, key, dataIndex: key, priceLevel: level, width: 100, align: 'right' })),
+  { title: t('wms.material.tracking'), key: 'tracking', width: 120 },
+  { title: t('wms.stock.safetyStock'), key: 'safetyStock', width: 120, align: 'right' },
+  { title: t('common.field.status'), key: 'status', width: 90 },
+  { title: t('common.field.createTime'), dataIndex: 'createTime', width: 170 },
+  // 编辑、删除直接显示；资料、单位、变更记录、款式变体在「更多」中
+  actionColumn(3)
+]
+const { checked } = useColumns(columns, 'wms-material')
+/** 列设置、导出用的列：只有启用的价格列，标题为价格列名称 */
+const toolbarColumns = computed(() => {
+  const enabled = new Map(enabledLevels.value.map((l) => [l.level, l.name]))
+  return columns.filter((c) => c.priceLevel == null || enabled.has(c.priceLevel))
+    .map((c) => (c.priceLevel == null ? c : { ...c, title: enabled.get(c.priceLevel) }))
+})
+const visibleColumns = computed(() => toolbarColumns.value.filter((c) => checked.value.includes(c.key || c.dataIndex)))
+const showSearch = ref(true)
+
+const query = reactive({ keyword: undefined, category: undefined, brand: undefined, status: undefined })
+const { list, loading, size, pagination, selectedKeys, rowSelection, load, search, onTableChange, exportAll } = useTable(pageMaterial, query)
+// 自定义字段：表单中填写，勾选「列表显示」的作为列
+const cf = useCustomFields('wms_material')
+const cfFields = cf.fields
+const { columns: cfColumns, cell: cfCell } = useCustomColumns('wms_material', list)
+const tableColumns = computed(() => {
+  const cols = visibleColumns.value
+  const action = cols.findIndex((c) => c.key === 'action')
+  return action < 0 ? [...cols, ...cfColumns.value] : [...cols.slice(0, action), ...cfColumns.value, ...cols.slice(action)]
+})
+
+function resetQuery() {
+  Object.assign(query, { keyword: undefined, category: undefined, brand: undefined, status: undefined })
+  search()
+}
+
+onMounted(load)
+
+// ---------------------------------------------------------------- 新增 / 编辑
+const rules = {
+  code: [
+    { required: true, message: t('wms.material.inputCode') },
+    { pattern: /^[A-Za-z0-9_.-]{1,64}$/, message: t('wms.material.codeRule') }
+  ],
+  name: [{ required: true, whitespace: true, message: t('wms.material.inputName') }]
+}
+const colSpan = 12
+const basicReadonly = computed(() => !!form.value.id && !canEdit.value)
+const MATERIAL_FIELDS = [
+  'code',
+  'name',
+  'spec',
+  'unit',
+  'category',
+  'brand',
+  ...PRICE_FIELDS,
+  'batchEnabled',
+  'serialEnabled',
+  'iqcRequired',
+  'safetyStock',
+  'reorderPoint',
+  'reorderQty',
+  'barcode',
+  'defaultWarehouseId',
+  'defaultLocationId',
+  'refCost',
+  'costMethod',
+  'remark'
+]
+const num = (v) => (v == null ? null : Number(v))
+
+const drawerOptions = cf.wrap({
+  emptyForm: () => ({
+    id: undefined,
+    code: '',
+    name: '',
+    spec: '',
+    unit: undefined,
+    category: undefined,
+    brand: undefined,
+    ...Object.fromEntries(PRICE_FIELDS.map((k) => [k, null])),
+    batchEnabled: 0,
+    serialEnabled: 0,
+    iqcRequired: 0,
+    safetyStock: null,
+    reorderPoint: null,
+    reorderQty: null,
+    barcode: '',
+    defaultWarehouseId: null,
+    defaultLocationId: null,
+    refCost: null,
+    costMethod: CostMethod.WEIGHTED,
+    remark: '',
+    copyFrom: undefined
+  }),
+  fetch: async (record) => {
+    const m = await getMaterial(record.id)
+    const form = { ...m, safetyStock: num(m.safetyStock), reorderPoint: num(m.reorderPoint), reorderQty: num(m.reorderQty), refCost: num(m.refCost), barcode: m.barcode || '' }
+    PRICE_FIELDS.forEach((k) => (form[k] = num(m[k])))
+    return form
+  },
+  create: ({ material, copyFrom }) => addMaterial(material, copyFrom),
+  update: (id, { material }) => updateMaterial(id, material),
+  toPayload: (f) => ({
+    copyFrom: f.copyFrom,
+    material: {
+      ...Object.fromEntries(MATERIAL_FIELDS.map((k) => [k, f[k]])),
+      reorderPoint: f.reorderPoint ?? null,
+      reorderQty: f.reorderQty ?? null,
+      refCost: f.refCost ?? null,
+      ...Object.fromEntries(PRICE_FIELDS.map((k) => [k, f[k] ?? null])),
+      brand: f.brand || null,
+      barcode: f.barcode?.trim() || null,
+      defaultLocationId: f.defaultWarehouseId ? f.defaultLocationId || null : null
+    }
+  }),
+  onSuccess: () => {
+    load()
+    refreshCounts()
+    if (detailOpen.value && detail.value) openDetail(detail.value.id)
+  }
+})
+const drawer = useFormDrawer(drawerOptions)
+const { formRef, form } = drawer
+// 智能录入：规格书、商品标签等识别结果打开新增物料并预填
+const ai = useAiPrefill('material', (data) => drawer.openCreate(data), () => drawer.open.value)
+
+const rowActions = (record) => [
+  { type: 'edit', show: canEdit.value, onClick: () => drawer.openEdit(record) },
+  { type: 'delete', perm: 'wms:material:remove', confirm: t('wms.material.confirmDelete', { name: record.name }), onClick: () => remove([record.id]) },
+  { key: 'copy', type: 'copy', perm: 'wms:material:add', more: true, onClick: () => copyMaterial(record) },
+  { key: 'images', label: t('wms.materialImage.action'), icon: PictureOutlined, more: true, onClick: () => imagesRef.value.open(record) },
+  { key: 'tracking', label: t('wms.tracking.action'), icon: SafetyCertificateOutlined, perm: 'wms:material:edit', show: record.isTemplate !== 1, more: true, onClick: () => trackingRef.value.open(record) },
+  { key: 'extras', label: t('wms.material.extras'), icon: PaperClipOutlined, more: true, onClick: () => openExtras(record) },
+  { key: 'units', label: t('common.field.unit'), icon: SwapOutlined, more: true, onClick: () => openUnits(record) },
+  { key: 'history', type: 'history', label: t('wms.history.action'), show: record.isTemplate !== 1, more: true, onClick: () => openHistory(record) },
+  { key: 'variants', label: t('wms.variant.title'), icon: AppstoreAddOutlined, show: !record.templateId, more: true, onClick: () => openVariants(record) }
+]
+
+// 复制：带出原物料的资料和自定义字段，编码留空（按编码规则生成）、条码不带；保存时后端复制辅助单位（不含包装条码）和图片
+const imagesRef = ref()
+const trackingRef = ref()
+async function copyMaterial(record) {
+  const src = await drawerOptions.fetch(record)
+  const data = omitKeys(src, ['id', 'code', 'barcode', 'createTime', 'updateTime', 'createBy', 'status', 'isTemplate', 'templateId', 'variantText', 'imageUrl', 'searchKey'])
+  if (record.isTemplate === 1 || record.templateId) message.info(t('wms.material.copyVariantTip'))
+  asPrefilled(() => drawer.openCreate({ ...data, code: '', barcode: '', copyFrom: record.id }))
+}
+const omitKeys = (obj, keys) => Object.fromEntries(Object.entries(obj).filter(([k]) => !keys.includes(k)))
+
+async function remove(ids) {
+  await deleteMaterial(ids)
+  message.success(t('common.msg.deleteSuccess'))
+  selectedKeys.value = selectedKeys.value.filter((k) => !ids.includes(k))
+  load()
+  refreshCounts()
+}
+
+function onImported() {
+  search()
+  refreshCounts()
+}
+
+// ---------------------------------------------------------------- 详情
+const detailOpen = ref(false)
+const detailLoading = ref(false)
+const detail = ref()
+
+async function openDetail(id) {
+  detailOpen.value = true
+  detailLoading.value = true
+  try {
+    detail.value = await getMaterial(id)
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+// 条码标签：选中的行（当前页）
+const labelOpen = ref(false)
+const labelItems = ref([])
+function openLabels() {
+  labelItems.value = list.value.filter((r) => selectedKeys.value.includes(r.id)).map((r) => ({ code: r.code, name: r.name, spec: r.spec, unit: r.unit, barcode: r.barcode }))
+  labelOpen.value = true
+}
+</script>
+
+<style scoped>
+.sub-text {
+  color: var(--app-text-3);
+  font-size: 12px;
+}
+.option-desc {
+  color: var(--app-text-3);
+  font-weight: normal;
+  font-size: 12px;
+}
+.full {
+  width: 100%;
+}
+.label-help {
+  margin-left: 4px;
+  color: var(--app-text-3);
+  cursor: help;
+}
+.block {
+  margin-bottom: 16px;
+}
+.sub-title {
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+.ml {
+  margin-left: 6px;
+}
+.name-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.name-cell :deep(.thumb) {
+  object-fit: cover;
+  border-radius: 4px;
+}
+</style>

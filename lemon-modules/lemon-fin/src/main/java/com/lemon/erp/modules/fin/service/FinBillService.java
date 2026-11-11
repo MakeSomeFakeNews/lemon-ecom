@@ -1,0 +1,613 @@
+package com.lemon.erp.modules.fin.service;
+
+import com.lemon.erp.common.util.Decimals;
+import com.lemon.erp.framework.security.PermissionService;
+import com.lemon.erp.modules.fin.model.AccountRole;
+import com.lemon.erp.modules.fin.model.FinConstants;
+import com.lemon.erp.modules.fin.model.SettleKind;
+import com.lemon.erp.modules.fin.model.BillKind;
+import com.lemon.erp.modules.fin.model.BillSource;
+import com.lemon.erp.modules.fin.model.BillStatus;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.lemon.erp.common.exception.BizException;
+import com.lemon.erp.common.result.PageResult;
+import com.lemon.erp.modules.fin.dto.AgingRow;
+import com.lemon.erp.modules.fin.dto.BillQuery;
+import com.lemon.erp.modules.fin.dto.BillRequest;
+import com.lemon.erp.modules.fin.entity.FinBill;
+import com.lemon.erp.modules.fin.entity.FinSettlementItem;
+import com.lemon.erp.modules.fin.mapper.FinBillMapper;
+import com.lemon.erp.modules.fin.mapper.FinSettlementItemMapper;
+import com.lemon.erp.modules.fin.model.VoucherLine;
+import com.lemon.erp.modules.fin.model.VoucherSource;
+import com.lemon.erp.modules.fin.model.VoucherStatus;
+import com.lemon.erp.modules.scm.event.OrderCloseAdjustedEvent;
+import com.lemon.erp.modules.scm.event.RebateSettledEvent;
+import com.lemon.erp.modules.scm.event.RebateUnsettledEvent;
+import com.lemon.erp.modules.scm.model.RebateKind;
+import com.lemon.erp.modules.scm.model.ScmConstants;
+import com.lemon.erp.modules.scm.event.PurchaseFreightEvent;
+import com.lemon.erp.modules.scm.event.TradeDocConfirmedEvent;
+import com.lemon.erp.modules.scm.model.OrderKind;
+import com.lemon.erp.modules.scm.model.TradeKind;
+import com.lemon.erp.modules.scm.service.ScmCustomerService;
+import com.lemon.erp.modules.scm.service.ScmQueryService;
+import com.lemon.erp.modules.scm.service.ScmRebateService;
+import com.lemon.erp.modules.scm.service.ScmSupplierService;
+import com.lemon.erp.modules.scm.service.ScmTaxRates;
+import com.lemon.erp.modules.scm.service.ScmTradeDocService;
+import com.lemon.erp.modules.wms.service.DocNoService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.context.event.EventListener;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * 应收 / 应付单：
+ * <ul>
+ *   <li>监听供应链的出入库确认事件，销售出库 / 退货生成应收单，采购入库 / 退货生成应付单（退货为红字负数），到期日按往来单位账期</li>
+ *   <li>手工录入期初余额等</li>
+ *   <li>生成凭证：应收 借 应收账款 / 贷 主营业务收入、销项税额；应付 借 原材料 / 库存商品（按物料分类）、进项税额 / 贷 应付账款</li>
+ *   <li>账龄分析：未核销余额按逾期天数分段</li>
+ * </ul>
+ */
+@Service
+@RequiredArgsConstructor
+public class FinBillService {
+
+    private final FinBillMapper billMapper;
+    private final FinSettlementItemMapper settlementItemMapper;
+    private final FinVoucherService voucherService;
+    private final FinAccountService accountService;
+    private final FinAccountRuleService accountRules;
+    private final ScmCustomerService customerService;
+    private final ScmSupplierService supplierService;
+    private final DocNoService docNoService;
+    private final FinBizPeriodGuard periodGuard;
+    private final ScmRebateService rebateService;
+    private final ScmTaxRates taxRates;
+    private final ScmQueryService scmQueryService;
+    private final ScmTradeDocService tradeDocService;
+    private final PermissionService permissionService;
+
+    public PageResult<FinBill> page(long current, long size, BillQuery query) {
+        checkKind(query.kind());
+        boolean withAp = linkedAp(query.kind(), query.withAp());
+        Page<FinBill> page = Page.of(current, size);
+        billMapper.selectPageList(page, query, LocalDate.now(), withAp);
+        if (withAp) {
+            page.getRecords().stream().filter(b -> b.getKind() == BillKind.AP).forEach(FinBillService::negateLinked);
+        }
+        return PageResult.of(page);
+    }
+
+    /**
+     * 挂接应付（issue #95）：只用于应收的查询，需要应付的查看权限
+     *
+     * @return 是否挂接
+     */
+    boolean linkedAp(BillKind kind, boolean withAp) {
+        if (!withAp || kind != BillKind.AR) {
+            return false;
+        }
+        if (!permissionService.hasPerm("fin:ap:list")) {
+            throw new BizException("fin.error.linkedApNoPermission");
+        }
+        return true;
+    }
+
+    /** 挂接到应收列表的应付单：金额、已核销等取负数（冲减应收），标记为只读 */
+    private static void negateLinked(FinBill b) {
+        b.setAmount(negate(b.getAmount()));
+        b.setTaxAmount(negate(b.getTaxAmount()));
+        b.setSettledAmount(negate(b.getSettledAmount()));
+        b.setInvoicedAmount(negate(b.getInvoicedAmount()));
+        b.setBadDebtAmount(negate(b.getBadDebtAmount()));
+        b.setDiscountAmount(negate(b.getDiscountAmount()));
+        b.setAmountFc(negate(b.getAmountFc()));
+        b.setSettledFc(negate(b.getSettledFc()));
+        b.setLinkedAp(true);
+    }
+
+    private static BigDecimal negate(BigDecimal v) {
+        return v == null ? null : v.negate();
+    }
+
+    /** 往来单位未核销的单据，收付款时选择核销 */
+    public List<FinBill> unsettled(BillKind kind, Long partnerId) {
+        checkKind(kind);
+        return billMapper.selectList(Wrappers.<FinBill>lambdaQuery()
+                .eq(FinBill::getKind, kind)
+                .eq(FinBill::getPartnerId, partnerId)
+                .ne(FinBill::getStatus, BillStatus.SETTLED)
+                .orderByAsc(FinBill::getBillDate).orderByAsc(FinBill::getDueDate).orderByAsc(FinBill::getId));
+    }
+
+    /** 账龄分析（不挂接应付） */
+    public PageResult<AgingRow> aging(long current, long size, BillKind kind, LocalDate asOf) {
+        return aging(current, size, kind, asOf, false);
+    }
+
+    /** @param withAp 挂接应付（仅应收）：关联供应商的应付按到期日计入同一分段，取负数 */
+    public PageResult<AgingRow> aging(long current, long size, BillKind kind, LocalDate asOf, boolean withAp) {
+        checkKind(kind);
+        LocalDate date = asOf == null ? LocalDate.now() : asOf;
+        Page<AgingRow> page = Page.of(current, size);
+        billMapper.selectAging(page, kind, date, date.minusDays(30), date.minusDays(60), date.minusDays(90), linkedAp(kind, withAp));
+        return PageResult.of(page);
+    }
+
+    /** 手工录入（期初余额等），不生成凭证 */
+    @Transactional
+    public Long create(BillRequest req) {
+        checkKind(req.kind());
+        if (req.amount().signum() == 0) {
+            throw new BizException("fin.error.amountCannot");
+        }
+        int paymentDays = paymentDays(req.kind(), req.partnerId());
+        FinBill bill = newBill(req.kind(), req.partnerId(), BillSource.MANUAL, null, null, req.billDate(),
+                req.dueDate() != null ? req.dueDate() : req.billDate().plusDays(paymentDays), req.amount(), BigDecimal.ZERO);
+        bill.setRemark(req.remark());
+        billMapper.insert(bill);
+        return bill.getId();
+    }
+
+    /**
+     * 其他模块的业务单据生成应收 / 应付单（如项目开票），可以生成凭证（借 应收账款，贷 合同负债、销项税额）
+     *
+     * @param sourceType 来源（字典 fin_bill_source），如 PROJECT
+     * @param projectId  项目（辅助核算），可为空
+     * @return 应收 / 应付单
+     */
+    @Transactional
+    public FinBill createFromSource(BillKind kind, Long partnerId, BillSource sourceType, Long sourceId, String sourceNo,
+                                    LocalDate billDate, BigDecimal amount, BigDecimal tax, String remark, Long projectId) {
+        checkKind(kind);
+        if (amount.signum() == 0) {
+            throw new BizException("fin.error.amountCannot");
+        }
+        periodGuard.checkOpen(billDate, kind == BillKind.AR ? "fin.label.receivable" : "fin.label.payable");
+        FinBill bill = newBill(kind, partnerId, sourceType, sourceId, sourceNo, billDate,
+                billDate.plusDays(paymentDays(kind, partnerId)), amount, tax);
+        bill.setRemark(remark);
+        bill.setProjectId(projectId);
+        billMapper.insert(bill);
+        return bill;
+    }
+
+    /** 删除其他模块生成的单据（如取消项目开票）：未核销、未生成凭证 */
+    @Transactional
+    public void deleteSourceBill(Long id) {
+        FinBill bill = billMapper.selectById(id);
+        if (bill == null) {
+            return;
+        }
+        if (bill.getSettledAmount().signum() != 0
+                || settlementItemMapper.exists(Wrappers.<FinSettlementItem>lambdaQuery().eq(FinSettlementItem::getBillId, id))) {
+            throw new BizException("fin.error.hasSettledCannotCanceled", bill.getBillNo());
+        }
+        if (bill.getVoucherId() != null) {
+            throw new BizException("fin.error.voucherHasGeneratedDeleteVoucherFinance", bill.getBillNo());
+        }
+        periodGuard.checkOpen(bill.getBillDate(), "fin.label.receivablePayable");
+        billMapper.deleteById(id);
+    }
+
+    /**
+     * 冲账单取消复核：删除红字单据，连同其未审核的凭证（凭证已记账时不能取消，已审核时须先反审核）；须未核销
+     */
+    @Transactional
+    public void deleteOffsetBill(Long id) {
+        FinBill bill = billMapper.selectById(id);
+        if (bill == null) {
+            return;
+        }
+        if (bill.getSettledAmount().signum() != 0
+                || settlementItemMapper.exists(Wrappers.<FinSettlementItem>lambdaQuery().eq(FinSettlementItem::getBillId, id))) {
+            throw new BizException("fin.error.hasSettledCannotCanceled", bill.getBillNo());
+        }
+        if (bill.getVoucherId() != null) {
+            if (voucherService.statusOf(bill.getVoucherId()) == VoucherStatus.POSTED) {
+                throw new BizException("fin.error.offsetVoucherPosted", bill.getBillNo());
+            }
+            voucherService.deleteOwned(bill.getVoucherId());
+            billMapper.update(Wrappers.<FinBill>lambdaUpdate().set(FinBill::getVoucherId, null).eq(FinBill::getId, id));
+        }
+        deleteSourceBill(id);
+    }
+
+    /** 只能删除手工录入、未核销、未生成凭证的单据 */
+    @Transactional
+    public void delete(List<Long> ids) {
+        for (FinBill bill : billMapper.selectByIds(ids)) {
+            if (bill.getSourceType() != BillSource.MANUAL) {
+                throw new BizException("fin.error.generatedBusinessDocumentCannotDeleted", bill.getBillNo());
+            }
+            if (bill.getSettledAmount().signum() != 0
+                    || settlementItemMapper.exists(Wrappers.<FinSettlementItem>lambdaQuery().eq(FinSettlementItem::getBillId, bill.getId()))) {
+                throw new BizException("fin.error.hasWrittenOffCannotDeleted", bill.getBillNo());
+            }
+        }
+        billMapper.deleteByIds(ids);
+    }
+
+    /**
+     * 采购入库的运费：生成运费应付单（来源 PURCHASE_FREIGHT，供应商代垫时应付该供应商，本公司承担时应付承运商），与入库同一事务。
+     * 凭证：计入存货成本的 借 存货（按物料分类，运费已分摊计入入库成本）/ 贷 应付账款；
+     * 计入当期费用的（本公司承担且业务参数为当期费用）记录费用科目，借 采购运费科目（默认销售费用）/ 贷 应付账款
+     */
+    @EventListener
+    public void onPurchaseFreight(PurchaseFreightEvent e) {
+        FinBill bill = newBill(BillKind.AP, e.payeeId(), BillSource.PURCHASE_FREIGHT, e.docId(), e.docNo(), e.bizDate(),
+                e.bizDate().plusDays(paymentDays(BillKind.AP, e.payeeId())), e.freight(), BigDecimal.ZERO);
+        bill.setDeptId(e.deptId());
+        if (e.expense()) {
+            bill.setExpenseAccountId(accountRules.accountId(AccountRole.PURCHASE_FREIGHT));
+        }
+        bill.setRemark("采购入库 " + e.docNo() + " 运费"); // i18n-ignore
+        billMapper.insert(bill);
+        tradeDocService.bindFreightBill(e.docId(), bill.getId());
+    }
+
+    /**
+     * 出入库单运费的应收 / 应付单（销售出库、销售退货、采购退货，见 {@link FinFreightService}），与出入库同一事务，不含税额，到期日按往来单位账期。
+     * 凭证中与应收 / 应付账款相对的科目取 {@code role}（记在单据上），金额为负数（红字）时反方向记账
+     *
+     * @param role 对方科目：销售运费 / 代垫运费
+     */
+    FinBill createFreightBill(BillKind kind, Long partnerId, BillSource source, Long docId, String docNo, LocalDate date, BigDecimal amount,
+                              AccountRole role, Long deptId, String remark) {
+        FinBill bill = newBill(kind, partnerId, source, docId, docNo, date, date.plusDays(paymentDays(kind, partnerId)), amount, BigDecimal.ZERO);
+        bill.setExpenseAccountId(accountRules.accountId(role));
+        bill.setDeptId(deptId);
+        bill.setRemark(remark);
+        billMapper.insert(bill);
+        return bill;
+    }
+
+    /**
+     * 返利结算（红字单据方式）：销售返利生成红字应收单冲减应收，采购返利生成红字应付单冲减应付；税额按默认税率（供应链业务参数，默认 13%）价内计算，与结算同一事务
+     */
+    @EventListener
+    public void onRebateSettled(RebateSettledEvent e) {
+        BigDecimal tax = ScmConstants.tax(e.amount(), taxRates.defaultRate());
+        boolean purchase = e.kind() == RebateKind.PURCHASE;
+        FinBill bill = createFromSource(purchase ? BillKind.AP : BillKind.AR, e.partnerId(), BillSource.REBATE, e.rebateId(), e.rebateNo(),
+                e.settleDate(), e.amount().negate(), tax.negate(), (purchase ? "采购返利 " : "销售返利 ") + e.rebateNo(), null); // i18n-ignore
+        rebateService.bindBill(e.rebateId(), bill.getId());
+    }
+
+    /** 撤销返利结算：删除红字应收单（已核销、已生成凭证时抛异常，撤销回滚） */
+    @EventListener
+    public void onRebateUnsettled(RebateUnsettledEvent e) {
+        deleteSourceBill(e.billId());
+    }
+
+    /** 出入库确认后生成应收 / 应付单，与出入库在同一事务 */
+    @EventListener
+    public void onTradeDocConfirmed(TradeDocConfirmedEvent e) {
+        TradeKind kind = e.kind();
+        BillKind billKind = kind.getOrderKind() == OrderKind.SALES ? BillKind.AR : BillKind.AP;
+        // 采购订单引用了约定付款天数的采购合同时按合同计算到期日
+        Integer contractDays = kind.getOrderKind() == OrderKind.PURCHASE ? scmQueryService.contractPaymentDays(e.docId()) : null;
+        LocalDate due = e.bizDate().plusDays(contractDays != null ? contractDays : paymentDays(billKind, e.partnerId()));
+        FinBill bill = newBill(billKind, e.partnerId(), BillSource.valueOf(kind.name()), e.docId(), e.docNo(), e.bizDate(), due, e.totalAmount(), e.taxAmount());
+        if (e.currency() != null && !FinConstants.BASE_CURRENCY.equals(e.currency())) {
+            bill.setCurrency(e.currency());
+            bill.setExchangeRate(e.exchangeRate());
+            bill.setAmountFc(e.totalAmountFc());
+        }
+        billMapper.insert(bill);
+    }
+
+    /**
+     * 订单关闭的尾差调整：生成应收 / 应付调整单（来源 ORDER_ADJUST，正数蓝字、负数红字），与关闭同一事务；
+     * 到期日按往来单位账期，外币订单记原币和汇率
+     */
+    @EventListener
+    public void onOrderCloseAdjusted(OrderCloseAdjustedEvent e) {
+        BillKind billKind = e.kind() == OrderKind.SALES ? BillKind.AR : BillKind.AP;
+        periodGuard.checkOpen(e.date(), billKind == BillKind.AR ? "fin.label.receivable" : "fin.label.payable");
+        FinBill bill = newBill(billKind, e.partnerId(), BillSource.ORDER_ADJUST, e.orderId(), e.orderNo(), e.date(),
+                e.date().plusDays(paymentDays(billKind, e.partnerId())), e.amount(), e.taxAmount());
+        if (e.currency() != null && !FinConstants.BASE_CURRENCY.equals(e.currency())) {
+            bill.setCurrency(e.currency());
+            bill.setExchangeRate(e.exchangeRate());
+            bill.setAmountFc(e.amountFc());
+        }
+        bill.setRemark("订单 " + e.orderNo() + " 关闭尾差调整"); // i18n-ignore
+        billMapper.insert(bill);
+    }
+
+    /**
+     * 为业务生成的单据逐张生成凭证（未审核），已生成的、金额为 0 的（整单赠品等，无需凭证）跳过
+     *
+     * @return 生成的凭证数
+     */
+    @Transactional
+    public int generateVouchers(List<Long> ids) {
+        int count = 0;
+        for (FinBill bill : billMapper.selectByIds(ids)) {
+            if (bill.getVoucherId() != null || bill.zeroAmount()) {
+                continue;
+            }
+            if (bill.getSourceType() == BillSource.MANUAL) {
+                throw new BizException("fin.error.manuallyEnteredOpeningDocumentDoesNot", bill.getBillNo());
+            }
+            Long voucherId = voucherService.createGenerated(bill.getBillDate(),
+                    bill.getKind().voucherSource(), bill.getBillNo(), lines(bill));
+            billMapper.update(Wrappers.<FinBill>lambdaUpdate().set(FinBill::getVoucherId, voucherId).eq(FinBill::getId, bill.getId()));
+            count++;
+        }
+        return count;
+    }
+
+    /**
+     * 坏账核销（直接转销法）：确认无法收回的应收款，计入已核销，生成凭证 借 营业外支出 / 贷 应收账款；
+     * 无法支付的应付款（供应商注销等）转销：借 应付账款 / 贷 营业外收入
+     *
+     * @return 凭证 ID
+     */
+    @Transactional
+    public Long writeOffBadDebt(BillKind kind, Long id, BigDecimal amount, LocalDate date, String reason) {
+        boolean ar = kind == BillKind.AR;
+        FinBill bill = billMapper.selectById(id);
+        if (bill == null || bill.getKind() != kind) {
+            throw new BizException(ar ? "fin.error.receivableDoesNotExist" : "fin.error.payableDoesNotExist");
+        }
+        if (bill.getAmount().signum() <= 0 || amount == null || amount.signum() <= 0) {
+            throw new BizException(ar ? "fin.error.onlyNonReversalReceivablesWrittenOff" : "fin.error.onlyNonReversalPayablesWrittenOff");
+        }
+        if (bill.getVoucherId() == null && bill.getSourceType() != BillSource.MANUAL) {
+            throw new BizException(ar ? "fin.error.noReceivableVoucherHasGeneratedGenerate" : "fin.error.noPayableVoucherGenerated", bill.getBillNo());
+        }
+        if (bill.getCurrency() != null && !FinConstants.BASE_CURRENCY.equals(bill.getCurrency())) {
+            throw new BizException(ar ? "fin.error.foreignCurrencyReceivablesReceivePaymentRevalue" : "fin.error.foreignCurrencyPayablesBadDebt");
+        }
+        LocalDate d = date == null ? LocalDate.now() : date;
+        periodGuard.checkOpen(d, "fin.label.badDebtWriteOff");
+        if (billMapper.addSettled(id, amount) == 0) {
+            throw new BizException("fin.error.writeOffAmountExceedsOutstandingAmount", bill.getAmount().subtract(bill.getSettledAmount()).toPlainString());
+        }
+        billMapper.addSettledFc(id, amount);
+        billMapper.addBadDebt(id, amount);
+        String summary = (ar ? "坏账核销 " : "无法支付的应付款转销 ") + bill.getBillNo() + " " + partnerName(kind, bill.getPartnerId()) // i18n-ignore
+                + (reason == null || reason.isBlank() ? "" : " " + reason);
+        List<VoucherLine> lines = ar
+                ? List.of(VoucherLine.debit(summary, accountRules.accountId(AccountRole.NON_OPERATING_EXPENSE), null, amount),
+                VoucherLine.credit(summary, accountRules.accountId(AccountRole.RECEIVABLE), null, amount)
+                        .withCustomer(bill.getPartnerId()).withProject(bill.getProjectId()))
+                : List.of(VoucherLine.debit(summary, accountRules.accountId(AccountRole.PAYABLE), null, amount)
+                        .withSupplier(bill.getPartnerId()).withProject(bill.getProjectId()),
+                VoucherLine.credit(summary, accountRules.accountId(AccountRole.NON_OPERATING_INCOME), null, amount));
+        return voucherService.createGenerated(d, VoucherSource.BAD_DEBT, bill.getBillNo(), lines);
+    }
+
+    /**
+     * 冲账单复核：生成红字应收 / 应付单（来源 OFFSET），到期日为冲账日期，收付款时与欠款冲抵
+     *
+     * @param amount    冲账金额（正数），单据金额为其负数
+     * @param accountId 凭证的对方科目，为空时取凭证科目设置中的应收冲账 / 应付冲账科目
+     */
+    @Transactional
+    public FinBill createOffsetBill(BillKind kind, Long partnerId, Long offsetId, String offsetNo, LocalDate date,
+                                    BigDecimal amount, Long accountId, String remark) {
+        checkKind(kind);
+        periodGuard.checkOpen(date, kind == BillKind.AR ? "fin.label.receivable" : "fin.label.payable");
+        FinBill bill = newBill(kind, partnerId, BillSource.OFFSET, offsetId, offsetNo, date, date, amount.negate(), BigDecimal.ZERO);
+        bill.setExpenseAccountId(accountId);
+        bill.setRemark(remark);
+        billMapper.insert(bill);
+        return bill;
+    }
+
+    // ---------------------------------------------------------------- 内部
+
+    /** 凭证分录：退货单据金额为负数，VoucherLine 自动记到相反方向 */
+    private List<VoucherLine> lines(FinBill bill) {
+        String partner = partnerName(bill.getKind(), bill.getPartnerId());
+        List<VoucherLine> lines = new ArrayList<>();
+        if (bill.getSourceType() == BillSource.OFFSET) {
+            // 冲账单（红字）：应收冲账 借 费用类科目 / 贷 应收账款；应付冲账 借 应付账款 / 贷 收入或冲减成本类科目
+            String summary = "冲账 " + bill.getSourceNo() + " " + partner; // i18n-ignore
+            BigDecimal amount = bill.getAmount().negate();
+            boolean ar = bill.getKind() == BillKind.AR;
+            Long account = bill.getExpenseAccountId() != null ? bill.getExpenseAccountId()
+                    : accountRules.accountId(ar ? AccountRole.OFFSET_AR : AccountRole.OFFSET_AP);
+            if (ar) {
+                lines.add(VoucherLine.debit(summary, account, null, amount));
+                lines.add(VoucherLine.credit(summary, accountRules.accountId(AccountRole.RECEIVABLE), null, amount)
+                        .withCustomer(bill.getPartnerId()));
+            } else {
+                lines.add(VoucherLine.debit(summary, accountRules.accountId(AccountRole.PAYABLE), null, amount)
+                        .withSupplier(bill.getPartnerId()));
+                lines.add(VoucherLine.credit(summary, account, null, amount));
+            }
+            return lines;
+        }
+        BigDecimal sign = BigDecimal.valueOf(bill.getAmount().signum() < 0 ? -1 : 1);
+        if (bill.getKind() == BillKind.AR) {
+            if (bill.getSourceType() == BillSource.SALES_FREIGHT || bill.getSourceType() == BillSource.SALES_RETURN_FREIGHT) {
+                // 销售出库的代垫运费：借 应收账款 / 贷 代垫运费（与付承运商时的 借 代垫运费 相抵）；
+                // 销售退货客户代垫的运费（红字）：借 销售运费（部门）/ 贷 应收账款
+                String summary = (bill.getSourceType() == BillSource.SALES_FREIGHT ? "代垫运费 " : "退货运费 ") + bill.getSourceNo() + " " + partner; // i18n-ignore
+                Long account = bill.getExpenseAccountId() != null ? bill.getExpenseAccountId() : accountRules.accountId(
+                        bill.getSourceType() == BillSource.SALES_FREIGHT ? AccountRole.FREIGHT_ADVANCE : AccountRole.SALES_FREIGHT);
+                lines.add(VoucherLine.debit(summary, accountRules.accountId(AccountRole.RECEIVABLE), null, bill.getAmount())
+                        .withCustomer(bill.getPartnerId()));
+                lines.add(VoucherLine.credit(summary, account, bill.getDeptId(), bill.getAmount()));
+                return lines;
+            }
+            if (bill.getSourceType() == BillSource.SHIPMENT) {
+                // 代垫运费（客户承担的发运运费）：借 应收账款 / 贷 代垫运费，与付承运商时的 借 代垫运费 相抵
+                String summary = "代垫运费 " + bill.getSourceNo() + " " + partner; // i18n-ignore
+                lines.add(VoucherLine.debit(summary, accountRules.accountId(AccountRole.RECEIVABLE), null, bill.getAmount())
+                        .withCustomer(bill.getPartnerId()));
+                lines.add(VoucherLine.credit(summary, accountRules.accountId(AccountRole.FREIGHT_ADVANCE), null, bill.getAmount()));
+                return lines;
+            }
+            String summary = (bill.getSourceType() == BillSource.PROJECT ? "项目开票 " : bill.getSourceType() == BillSource.TICKET ? "服务收费 " // i18n-ignore
+                    : bill.getSourceType() == BillSource.REBATE ? "销售返利 " : bill.getSourceType() == BillSource.ORDER_ADJUST ? "订单尾差调整 " // i18n-ignore
+                    : sign.signum() < 0 ? "销售退货 " : "销售出库 ") // i18n-ignore
+                    + bill.getSourceNo() + " " + partner;
+            BigDecimal net = bill.getAmount().subtract(bill.getTaxAmount());
+            boolean project = bill.getSourceType() == BillSource.PROJECT;
+            lines.add(VoucherLine.debit(summary, accountRules.accountId(AccountRole.RECEIVABLE), null, bill.getAmount())
+                    .withCustomer(bill.getPartnerId()).withProject(bill.getProjectId()));
+            if (isTradeDoc(bill) || bill.getSourceType() == BillSource.ORDER_ADJUST) {
+                // 销售出库 / 退货、订单尾差调整：主营业务收入按物料分类取科目
+                byCategory(bill, net).forEach((category, amount) -> lines.add(
+                        VoucherLine.credit(summary, accountRules.accountId(AccountRole.REVENUE, category), null, amount)));
+            } else {
+                // 项目开票计入合同负债，按完工百分比确认收入时再转入主营业务收入（项目月结）
+                // 服务工单收费计入其他业务收入
+                AccountRole revenue = project ? AccountRole.CONTRACT_LIABILITY
+                        : bill.getSourceType() == BillSource.TICKET ? AccountRole.OTHER_REVENUE : AccountRole.REVENUE;
+                lines.add(VoucherLine.credit(summary, accountRules.accountId(revenue), null, net)
+                        .withProject(bill.getProjectId()));
+            }
+            lines.add(VoucherLine.credit(summary, accountRules.accountId(AccountRole.OUTPUT_VAT), null, bill.getTaxAmount()));
+            return lines;
+        }
+        if (bill.getSourceType() == BillSource.REBATE) {
+            // 采购返利（红字应付单）：借 应付账款 / 贷 采购返利科目（默认冲减主营业务成本）、进项税额（红字，即进项税额转出）
+            String summary = "采购返利 " + bill.getSourceNo() + " " + partner; // i18n-ignore
+            BigDecimal amount = bill.getAmount().negate();
+            BigDecimal tax = bill.getTaxAmount().negate();
+            lines.add(VoucherLine.debit(summary, accountRules.accountId(AccountRole.PAYABLE), null, amount)
+                    .withSupplier(bill.getPartnerId()));
+            lines.add(VoucherLine.credit(summary, accountRules.accountId(AccountRole.PURCHASE_REBATE), null, amount.subtract(tax)));
+            lines.add(VoucherLine.credit(summary, accountRules.accountId(AccountRole.INPUT_VAT), null, tax));
+            return lines;
+        }
+        if (bill.getSourceType() == BillSource.ORDER_ADJUST) {
+            // 采购订单尾差调整：借 存货（按物料分类）、进项税额 / 贷 应付账款（红字时自动反向）
+            String summary = "订单尾差调整 " + bill.getSourceNo() + " " + partner; // i18n-ignore
+            byCategory(bill, bill.getAmount().subtract(bill.getTaxAmount())).forEach((category, amount) -> lines.add(
+                    VoucherLine.debit(summary, accountRules.accountId(AccountRole.INVENTORY, category), null, amount)));
+            lines.add(VoucherLine.debit(summary, accountRules.accountId(AccountRole.INPUT_VAT), null, bill.getTaxAmount()));
+            lines.add(VoucherLine.credit(summary, accountRules.accountId(AccountRole.PAYABLE), null, bill.getAmount())
+                    .withSupplier(bill.getPartnerId()));
+            return lines;
+        }
+        if (bill.getSourceType() == BillSource.PURCHASE_FREIGHT && bill.getExpenseAccountId() == null) {
+            // 采购运费（计入存货成本）：借 存货（按物料分类，与入库成本中分摊的运费一致）/ 贷 应付账款；计入当期费用的按下面的费用类应付
+            String summary = "采购运费 " + bill.getSourceNo() + " " + partner; // i18n-ignore
+            List<Map<String, Object>> rows = billMapper.selectFreightByCategory(bill.getSourceId());
+            BigDecimal allocated = BigDecimal.ZERO;
+            for (int i = 0; i < rows.size(); i++) {
+                BigDecimal net = i == rows.size() - 1 ? bill.getAmount().subtract(allocated) : new BigDecimal(rows.get(i).get("net").toString());
+                allocated = allocated.add(net);
+                lines.add(VoucherLine.debit(summary, accountRules.accountId(AccountRole.INVENTORY, (String) rows.get(i).get("category")), null, net));
+            }
+            if (rows.isEmpty()) {
+                lines.add(VoucherLine.debit(summary, accountRules.accountId(AccountRole.INVENTORY), null, bill.getAmount()));
+            }
+            lines.add(VoucherLine.credit(summary, accountRules.accountId(AccountRole.PAYABLE), null, bill.getAmount())
+                    .withSupplier(bill.getPartnerId()));
+            return lines;
+        }
+        if (bill.getExpenseAccountId() != null) {
+            // 费用类应付（运费等）：借 费用科目、进项税额 / 贷 应付账款
+            // 销售运费（月结的承运商应付）借 销售运费或代垫运费 / 贷 应付账款；
+            // 采购退货运费：给供应商的红字应付 借 应付账款 / 贷 代垫运费，月结的承运商应付 借 代垫运费 / 贷 应付账款
+            String summary = bill.getSourceType() == BillSource.SHIPMENT ? "运费 " + bill.getSourceNo() + " " + partner // i18n-ignore
+                    : bill.getSourceType() == BillSource.PURCHASE_FREIGHT ? "采购运费 " + bill.getSourceNo() + " " + partner // i18n-ignore
+                    : bill.getSourceType() == BillSource.SALES_FREIGHT ? "销售运费 " + bill.getSourceNo() + " " + partner // i18n-ignore
+                    : bill.getSourceType() == BillSource.PURCHASE_RETURN_FREIGHT ? "退货运费 " + bill.getSourceNo() + " " + partner // i18n-ignore
+                    : bill.getSourceNo() + " " + partner;
+            lines.add(VoucherLine.debit(summary, bill.getExpenseAccountId(), bill.getDeptId(), bill.getAmount().subtract(bill.getTaxAmount())));
+            lines.add(VoucherLine.debit(summary, accountRules.accountId(AccountRole.INPUT_VAT), null, bill.getTaxAmount()));
+            lines.add(VoucherLine.credit(summary, accountRules.accountId(AccountRole.PAYABLE), null, bill.getAmount())
+                    .withSupplier(bill.getPartnerId()));
+            return lines;
+        }
+        String summary = (sign.signum() < 0 ? "采购退货 " : "采购入库 ") + bill.getSourceNo() + " " + partner; // i18n-ignore
+        for (Map<String, Object> row : billMapper.selectSourceByCategory(bill.getSourceId())) {
+            BigDecimal net = new BigDecimal(row.get("net").toString()).multiply(sign);
+            lines.add(VoucherLine.debit(summary, accountRules.accountId(AccountRole.INVENTORY, (String) row.get("category")), null, net));
+        }
+        lines.add(VoucherLine.debit(summary, accountRules.accountId(AccountRole.INPUT_VAT), null, bill.getTaxAmount()));
+        lines.add(VoucherLine.credit(summary, accountRules.accountId(AccountRole.PAYABLE), null, bill.getAmount())
+                .withSupplier(bill.getPartnerId()));
+        return lines;
+    }
+
+    private static boolean isTradeDoc(FinBill bill) {
+        return bill.getSourceType() != null && bill.getSourceType().isTrade();
+    }
+
+    /** 不含税金额按来源单据（出入库单 / 订单尾差调整）各物料分类的金额比例分摊，尾差计入最后一类 */
+    private Map<String, BigDecimal> byCategory(FinBill bill, BigDecimal net) {
+        List<Map<String, Object>> rows = bill.getSourceType() == BillSource.ORDER_ADJUST
+                ? billMapper.selectOrderAdjustByCategory(bill.getSourceId()) : billMapper.selectSourceByCategory(bill.getSourceId());
+        BigDecimal total = Decimals.sum(rows, r -> new BigDecimal(r.get("net").toString()));
+        Map<String, BigDecimal> result = new LinkedHashMap<>();
+        if (rows.isEmpty() || total.signum() == 0) {
+            result.put(null, net);
+            return result;
+        }
+        BigDecimal allocated = BigDecimal.ZERO;
+        for (int i = 0; i < rows.size(); i++) {
+            String category = (String) rows.get(i).get("category");
+            BigDecimal amount = i == rows.size() - 1 ? net.subtract(allocated)
+                    : net.multiply(new BigDecimal(rows.get(i).get("net").toString())).divide(total, Decimals.MONEY_SCALE, Decimals.ROUNDING);
+            result.merge(category, amount, BigDecimal::add);
+            allocated = allocated.add(amount);
+        }
+        return result;
+    }
+
+    private FinBill newBill(BillKind kind, Long partnerId, BillSource sourceType, Long sourceId, String sourceNo, LocalDate billDate,
+                            LocalDate dueDate, BigDecimal amount, BigDecimal tax) {
+        FinBill bill = new FinBill();
+        bill.setBillNo(docNoService.next(kind == BillKind.AR ? FinDocNos.RECEIVABLE : FinDocNos.PAYABLE));
+        bill.setKind(kind);
+        bill.setPartnerId(partnerId);
+        bill.setSourceType(sourceType);
+        bill.setSourceId(sourceId);
+        bill.setSourceNo(sourceNo);
+        bill.setBillDate(billDate);
+        bill.setDueDate(dueDate);
+        bill.setAmount(amount);
+        bill.setTaxAmount(tax);
+        bill.setSettledAmount(BigDecimal.ZERO);
+        bill.setInvoicedAmount(BigDecimal.ZERO);
+        bill.setBadDebtAmount(BigDecimal.ZERO);
+        bill.setDiscountAmount(BigDecimal.ZERO);
+        bill.setCurrency(FinConstants.BASE_CURRENCY);
+        bill.setExchangeRate(BigDecimal.ONE);
+        bill.setAmountFc(amount);
+        bill.setSettledFc(BigDecimal.ZERO);
+        // 金额为 0（整单赠品等）没有可核销的金额，直接为已核销
+        bill.setStatus(amount.signum() == 0 ? BillStatus.SETTLED : BillStatus.UNSETTLED);
+        return bill;
+    }
+
+    private int paymentDays(BillKind kind, Long partnerId) {
+        Integer days = kind == BillKind.AR ? customerService.get(partnerId).getPaymentDays() : supplierService.get(partnerId).getPaymentDays();
+        return days == null ? 0 : days;
+    }
+
+    String partnerName(BillKind kind, Long partnerId) {
+        return kind == BillKind.AR ? customerService.get(partnerId).getName() : supplierService.get(partnerId).getName();
+    }
+
+    String partnerName(SettleKind kind, Long partnerId) {
+        return partnerName(kind.billKind(), partnerId);
+    }
+
+    static void checkKind(BillKind kind) {
+        if (kind == null) {
+            throw new BizException("fin.error.invalidDocumentKind", kind);
+        }
+    }
+}

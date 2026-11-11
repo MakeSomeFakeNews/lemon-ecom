@@ -1,0 +1,67 @@
+package com.lemon.erp.modules.fin.entity;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.lemon.erp.modules.fin.model.SettleKind;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.lemon.erp.common.base.BaseEntity;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+
+/**
+ * 预收 / 预付款
+ */
+@Data
+@EqualsAndHashCode(callSuper = true)
+@TableName("fin_advance")
+public class FinAdvance extends BaseEntity {
+
+    private String advanceNo;
+
+    /** RECEIPT 预收 / PAYMENT 预付 */
+    private SettleKind kind;
+
+    private Long partnerId;
+
+    private LocalDate advanceDate;
+
+    /** 结算科目 */
+    private Long accountId;
+
+    private String method;
+
+    /** 金额（本位币） */
+    private BigDecimal amount;
+
+    /** 已冲抵（本位币） */
+    private BigDecimal usedAmount;
+
+    /** 币种、汇率（金额 = 原币金额 × 汇率），原币金额、原币已冲抵；本位币的原币与本位币相同 */
+    private String currency;
+
+    private BigDecimal exchangeRate;
+
+    private BigDecimal amountFc;
+
+    private BigDecimal usedFc;
+
+    private Long voucherId;
+
+    private String remark;
+
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private Long createBy;
+
+    @TableField(exist = false)
+    private String partnerName;
+    @TableField(exist = false)
+    private String accountName;
+    @TableField(exist = false)
+    private String voucherNo;
+    @TableField(exist = false)
+    private List<FinAdvanceApply> applies;
+}

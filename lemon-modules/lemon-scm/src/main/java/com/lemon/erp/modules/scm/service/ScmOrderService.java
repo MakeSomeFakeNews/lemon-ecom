@@ -1,0 +1,424 @@
+package com.lemon.erp.modules.scm.service;
+
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.lemon.erp.common.exception.BizException;
+import com.lemon.erp.common.i18n.Messages;
+import com.lemon.erp.common.result.PageResult;
+import com.lemon.erp.framework.data.DetailLines;
+import com.lemon.erp.framework.data.StatusTransitions;
+import com.lemon.erp.framework.record.ChangeLogger;
+import com.lemon.erp.framework.security.LoginUser;
+import com.lemon.erp.framework.security.SecurityUtils;
+import com.lemon.erp.framework.security.datascope.DataPermission;
+import com.lemon.erp.framework.security.datascope.DataScopes;
+import com.lemon.erp.framework.workflow.ApprovalFlow;
+import com.lemon.erp.framework.workflow.ApprovalSupport;
+import com.lemon.erp.framework.workflow.FlowApi;
+import com.lemon.erp.framework.workflow.FlowFinishedEvent;
+import com.lemon.erp.framework.workflow.FlowStatus;
+import com.lemon.erp.modules.scm.dto.OrderQuery;
+import com.lemon.erp.modules.scm.dto.OrderRequest;
+import com.lemon.erp.modules.scm.entity.ScmOrder;
+import com.lemon.erp.modules.scm.entity.ScmOrderItem;
+import com.lemon.erp.modules.scm.event.OrderStatusChangedEvent;
+import com.lemon.erp.modules.scm.mapper.ScmOrderItemMapper;
+import com.lemon.erp.modules.scm.mapper.ScmOrderMapper;
+import com.lemon.erp.modules.scm.model.OrderDeletedEvent;
+import com.lemon.erp.modules.scm.model.OrderKind;
+import com.lemon.erp.modules.scm.model.OrderSource;
+import com.lemon.erp.modules.scm.model.OrderStatus;
+import com.lemon.erp.modules.wms.service.DocNoService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.event.EventListener;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
+
+import static com.lemon.erp.modules.scm.model.ScmConstants.ORDER_RULE;
+
+/**
+ * 采购 / 销售订单：草稿可以修改、删除；审核后才能入库 / 出库。
+ * 在流程中心发布了对应的审批流程（OrderKind.processKey）时，审核改为发起审批，审批通过后自动变为已审核。
+ * 数据权限按制单人部门 + 制单人过滤。
+ * <p>
+ * 本类负责编排和事务边界：请求转换由 {@link ScmOrderAssembler}，合同价、促销返利、限价由 {@link ScmOrderPricingService}，
+ * 信用额度由 {@link ScmOrderCreditChecker} 完成
+ */
+@Service
+@RequiredArgsConstructor
+public class ScmOrderService {
+
+    /** 记录变更历史的字段 */
+    private static final Map<String, String> CHANGE_FIELDS = ChangeLogger.fields("partnerId", "往来单位ID", "orderDate", "订单日期", "deliveryDate", "交货日期", "warehouseId", "仓库ID", // i18n-ignore
+            "totalQty", "合计数量", "totalAmount", "价税合计", "wholeDiscount", "整单优惠", "invoiceKind", "发票类型", "remark", "备注"); // i18n-ignore
+
+    /** 审批流程的业务标识前缀，businessKey = scm_order:订单ID */
+    private static final String BUSINESS_KEY_PREFIX = "scm_order:";
+
+    private final ScmOrderMapper orderMapper;
+    private final ScmOrderItemMapper itemMapper;
+    private final DocNoService docNoService;
+    private final FlowApi flowApi;
+    private final ApprovalSupport approvalSupport;
+    private final ApplicationEventPublisher eventPublisher;
+    private final ChangeLogger changeLogger;
+    private final ScmOrderAssembler assembler;
+    private final ScmOrderPricingService pricing;
+    private final ScmOrderCreditChecker creditChecker;
+    private final ScmOrderCloseAdjuster closeAdjuster;
+    private final ScmTaxRates taxRates;
+
+    @DataPermission(table = "scm_order", deptColumn = "dept_id", userColumn = "create_by")
+    public PageResult<ScmOrder> page(OrderKind kind, long current, long size, OrderQuery query) {
+        Page<ScmOrder> page = Page.of(current, size);
+        orderMapper.selectPageList(page, kind, query);
+        return PageResult.of(page);
+    }
+
+    public ScmOrder detail(OrderKind kind, Long id) {
+        getAccessible(kind, id);
+        ScmOrder order = orderMapper.selectDetail(id);
+        order.setItems(itemMapper.selectByOrderId(id));
+        return order;
+    }
+
+    /**
+     * 按 ID 读取订单主表，供其他模块（如客户关系的合同、商机）校验关联关系、读取单号。
+     * 不做当前用户的数据权限校验，不含明细
+     *
+     * @return 订单，不存在时返回 null
+     */
+    public ScmOrder find(Long id) {
+        return id == null ? null : orderMapper.selectById(id);
+    }
+
+    /** 手工新建：销售订单自动应用促销，可使用返利抵扣；采购、销售订单都可以填写整单优惠 */
+    @Transactional
+    public Long create(OrderKind kind, OrderRequest req) {
+        return createDraft(kind, req, OrderSource.MANUAL, kind == OrderKind.SALES);
+    }
+
+    /**
+     * 新建草稿订单，MRP 生成采购订单时也调用
+     *
+     * @param source 订单来源
+     */
+    @Transactional
+    public Long createDraft(OrderKind kind, OrderRequest req, OrderSource source) {
+        return createDraft(kind, req, source, false);
+    }
+
+    /** @param promote 应用促销和返利抵扣（销售订单） */
+    @Transactional
+    public Long createDraft(OrderKind kind, OrderRequest req, OrderSource source, boolean promote) {
+        return insertDraft(kind, req, source, promote, source == OrderSource.MANUAL, null).getId();
+    }
+
+    /**
+     * 直接开单：生成隐式订单（来源 DIRECT）并直接审核（不走审批），在出入库单的事务中执行。
+     * 出库 / 入库时与手工订单一样校验限价；销售出库应用折扣、满减、买赠促销（赠品行追加在明细之后，随单出库），按业务参数校验信用额度。
+     * 退货的隐式订单视为已全部出入库，只用于回写退货数量
+     *
+     * @param salesmanId 销售业务员，为空时取客户负责人，没有时为制单人
+     * @param returns    是否退货
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public ScmOrder createDirect(OrderKind kind, OrderRequest req, Long salesmanId, boolean returns) {
+        ScmOrder order = insertDraft(kind, req, OrderSource.DIRECT, kind == OrderKind.SALES && !returns, !returns, salesmanId);
+        if (kind == OrderKind.SALES && !returns) {
+            creditChecker.checkOnApprove(order);
+        }
+        approveDirect(order.getId());
+        if (returns) {
+            itemMapper.markAllDone(order.getId());
+            refreshStatus(order.getId());
+        }
+        return orderMapper.selectById(order.getId());
+    }
+
+    private ScmOrder insertDraft(OrderKind kind, OrderRequest req, OrderSource source, boolean promote, boolean checkPrice,
+                                 Long salesmanId) {
+        if (source == OrderSource.MANUAL || source == OrderSource.DIRECT) {
+            // 手工录入、直接开单时校验发票类型；由报价单等生成时沿用来源单据保存时校验过的值
+            taxRates.checkInvoiceKind(req.invoiceKind(), null);
+        }
+        List<ScmOrderItem> items = assembler.toItems(kind, req);
+        pricing.applyContract(kind, req, items, null);
+        ScmPromotionService.Applied applied = promote ? pricing.promote(req, items, null) : null;
+        if (applied != null) {
+            items = applied.items();
+        }
+        BigDecimal wholeDiscount = ScmOrderPricingService.applyWholeDiscount(req, items);
+        LoginUser user = SecurityUtils.getLoginUser();
+        ScmOrder order = new ScmOrder();
+        order.setOrderNo(docNoService.next(kind.getPrefix()));
+        order.setKind(kind);
+        order.setSource(source);
+        order.setStatus(OrderStatus.DRAFT);
+        order.setVersion(1);
+        order.setDeptId(user.deptId());
+        if (kind == OrderKind.SALES) {
+            order.setSalesmanId(salesmanId != null ? salesmanId : assembler.salesmanOf(req.partnerId(), user.userId()));
+        }
+        assembler.fillHeader(order, req, items);
+        if (checkPrice) {
+            pricing.checkPriceLimit(kind, items, order.getExchangeRate());
+        }
+        if (applied != null) {
+            order.setDiscountAmount(applied.discountAmount());
+            order.setRebateAmount(ScmOrderPricingService.rebateOf(req));
+        }
+        order.setWholeDiscount(wholeDiscount);
+        orderMapper.insert(order);
+        saveItems(order.getId(), items);
+        if (applied != null) {
+            pricing.saveUsages(order.getId(), applied);
+        }
+        return order;
+    }
+
+    /** 修改销售订单的业务员（影响之后计算的销售提成） */
+    @Transactional
+    public void changeSalesman(Long id, Long salesmanId) {
+        getAccessible(OrderKind.SALES, id);
+        orderMapper.update(Wrappers.<ScmOrder>lambdaUpdate().set(ScmOrder::getSalesmanId, salesmanId).eq(ScmOrder::getId, id));
+    }
+
+    @Transactional
+    public void update(OrderKind kind, Long id, OrderRequest req) {
+        Object before = orderMapper.selectById(id);
+        ScmOrder old = getDraft(kind, id);
+        taxRates.checkInvoiceKind(req.invoiceKind(), old.getInvoiceKind());
+        List<ScmOrderItem> items = assembler.toItems(kind, req);
+        pricing.applyContract(kind, req, items, id);
+        ScmPromotionService.Applied applied = kind == OrderKind.SALES ? pricing.promote(req, items, id) : null;
+        if (applied != null) {
+            items = applied.items();
+        }
+        BigDecimal wholeDiscount = ScmOrderPricingService.applyWholeDiscount(req, items);
+        ScmOrder order = new ScmOrder();
+        assembler.fillHeader(order, req, items);
+        pricing.checkPriceLimit(kind, items, order.getExchangeRate());
+        orderMapper.update(Wrappers.<ScmOrder>lambdaUpdate()
+                .set(ScmOrder::getPartnerId, order.getPartnerId())
+                .set(ScmOrder::getOrderDate, order.getOrderDate())
+                .set(ScmOrder::getDeliveryDate, order.getDeliveryDate())
+                .set(ScmOrder::getWarehouseId, order.getWarehouseId())
+                .set(ScmOrder::getRemark, order.getRemark())
+                .set(ScmOrder::getTotalQty, order.getTotalQty())
+                .set(ScmOrder::getTotalAmount, order.getTotalAmount())
+                .set(ScmOrder::getTaxAmount, order.getTaxAmount())
+                .set(ScmOrder::getCurrency, order.getCurrency())
+                .set(ScmOrder::getExchangeRate, order.getExchangeRate())
+                .set(ScmOrder::getContractId, order.getContractId())
+                .set(ScmOrder::getInvoiceKind, order.getInvoiceKind())
+                .set(applied != null, ScmOrder::getDiscountAmount, applied == null ? null : applied.discountAmount())
+                .set(applied != null, ScmOrder::getRebateAmount, ScmOrderPricingService.rebateOf(req))
+                .set(ScmOrder::getWholeDiscount, wholeDiscount)
+                .set(ScmOrder::getUpdateTime, LocalDateTime.now())
+                .eq(ScmOrder::getId, id)
+                .eq(ScmOrder::getStatus, OrderStatus.DRAFT));
+        DetailLines.replace(itemMapper, ScmOrderItem::getOrderId, id, items, ScmOrderItem::setOrderId, itemMapper::insertBatch);
+        if (applied != null) {
+            pricing.saveUsages(id, applied);
+        }
+        changeLogger.log("scm_" + kind.path(), id, before, orderMapper.selectById(id), CHANGE_FIELDS);
+    }
+
+    /** 只能删除草稿 */
+    @Transactional
+    public void delete(OrderKind kind, List<Long> ids) {
+        ids.forEach(id -> getDraft(kind, id));
+        itemMapper.delete(Wrappers.<ScmOrderItem>lambdaQuery().in(ScmOrderItem::getOrderId, ids));
+        ids.forEach(pricing::deleteUsages);
+        orderMapper.deleteByIds(ids);
+        // 下游（商机等）解除对订单的引用
+        eventPublisher.publishEvent(new OrderDeletedEvent(kind, ids));
+    }
+
+    /**
+     * 审核：发布了审批流程时发起审批（状态变为审批中），否则直接审核通过。销售订单先校验客户信用额度
+     *
+     * @return true 已发起审批，false 已直接审核
+     */
+    @Transactional
+    public boolean approve(OrderKind kind, Long id) {
+        ScmOrder order = getDraft(kind, id);
+        if (kind == OrderKind.SALES) {
+            creditChecker.checkOnApprove(order);
+        }
+        pricing.checkContractOnApprove(order,
+                () -> itemMapper.selectList(Wrappers.<ScmOrderItem>lambdaQuery().eq(ScmOrderItem::getOrderId, id)));
+        // 先改状态再发起：流程没有审批节点时会在发起过程中直接结束并回调 onFlowFinished
+        return approvalSupport.submit(flowOf(kind), id, Map.of(
+                        "amount", order.getTotalAmount().doubleValue(),
+                        "wholeDiscount", order.getWholeDiscount() == null ? 0d : order.getWholeDiscount().doubleValue(),
+                        "orderNo", order.getOrderNo()),
+                () -> {
+                    changeStatus(id, OrderStatus.DRAFT, OrderStatus.APPROVED, true);
+                },
+                () -> changeStatus(id, OrderStatus.DRAFT, OrderStatus.APPROVING, false),
+                instanceId -> orderMapper.update(Wrappers.<ScmOrder>lambdaUpdate()
+                        .set(ScmOrder::getFlowInstanceId, instanceId).eq(ScmOrder::getId, id)));
+    }
+
+    /** 撤回审批：撤销流程，订单回到草稿 */
+    @Transactional
+    public void withdraw(OrderKind kind, Long id) {
+        ScmOrder order = getAccessible(kind, id);
+        if (order.getStatus() != OrderStatus.APPROVING) {
+            throw new BizException("scm.error.orderNotUnderApproval");
+        }
+        if (order.getFlowInstanceId() != null && flowApi.getStatus(order.getFlowInstanceId()) == FlowStatus.RUNNING) {
+            flowApi.cancel(order.getFlowInstanceId(), "撤回订单审批"); // i18n-ignore
+        }
+        // 流程撤销事件已把订单改回草稿时这里不再更新
+        StatusTransitions.tryChange(orderMapper, ScmOrder::getId, id, ScmOrder::getStatus, OrderStatus.APPROVING, OrderStatus.DRAFT, null);
+    }
+
+    /** 反审核：已审核且还没有入库 / 出库的订单回到草稿 */
+    @Transactional
+    public void unapprove(OrderKind kind, Long id) {
+        ScmOrder order = getAccessible(kind, id);
+        checkNotDirect(order);
+        if (orderMapper.unapprove(id) == 0) {
+            throw new BizException("scm.error.orderHasReceiptsDeliveriesNotApproved");
+        }
+        // 下游（已生成的生产计划等）可以阻止反审核
+        eventPublisher.publishEvent(new OrderStatusChangedEvent(kind, id, order.getOrderNo(), OrderStatus.DRAFT));
+    }
+
+    /**
+     * 关闭：不再入库 / 出库（如供应商无法继续供货），已完成部分不受影响。
+     * 先锁定订单（与进行中的出入库串行），部分出入库的行按订单口径调整尾差并生成应收 / 应付调整单（{@link ScmOrderCloseAdjuster}）
+     */
+    @Transactional
+    public void close(OrderKind kind, Long id) {
+        ScmOrder order = getAccessible(kind, id);
+        checkNotDirect(order);
+        if (!lockStatus(id).isExecutable()) {
+            throw new BizException("scm.error.onlyApprovedPartiallyCompletedOrdersClosed");
+        }
+        int updated = orderMapper.update(Wrappers.<ScmOrder>lambdaUpdate()
+                .set(ScmOrder::getStatus, OrderStatus.CLOSED)
+                .set(ScmOrder::getUpdateTime, LocalDateTime.now())
+                .eq(ScmOrder::getId, id)
+                .in(ScmOrder::getStatus, OrderStatus.EXECUTABLE));
+        if (updated == 0) {
+            throw new BizException("scm.error.orderStatusHasChangedRefresh");
+        }
+        closeAdjuster.adjust(order);
+        // 下游联动关闭（未完成的生产计划等）
+        eventPublisher.publishEvent(new OrderStatusChangedEvent(kind, id, order.getOrderNo(), OrderStatus.CLOSED));
+    }
+
+    /** 审批结束：通过 → 已审核；拒绝、撤销 → 草稿。与审批操作在同一事务中 */
+    @EventListener
+    public void onFlowFinished(FlowFinishedEvent e) {
+        OrderKind kind = OrderKind.ofProcessKey(e.processKey());
+        if (kind == null) {
+            return;
+        }
+        // 只处理仍在审批中的订单（已撤回、删除的忽略），不抛异常，避免回滚审批操作
+        flowOf(kind).onFinished(e, (id, approved) -> {
+            if (approved) {
+                boolean updated = StatusTransitions.tryChange(orderMapper, ScmOrder::getId, id, ScmOrder::getStatus,
+                        OrderStatus.APPROVING, OrderStatus.APPROVED, w -> w
+                                .set(ScmOrder::getApproveBy, SecurityUtils.getUserIdOrNull())
+                                .set(ScmOrder::getApproveTime, LocalDateTime.now()));
+                if (updated) {
+                    ScmOrder order = orderMapper.selectById(id);
+                }
+            } else {
+                StatusTransitions.tryChange(orderMapper, ScmOrder::getId, id, ScmOrder::getStatus, OrderStatus.APPROVING, OrderStatus.DRAFT, null);
+            }
+        });
+    }
+
+    /** 订单的审批流程按订单种类区分，业务标识前缀相同 */
+    private static ApprovalFlow flowOf(OrderKind kind) {
+        return new ApprovalFlow(kind.getProcessKey(), BUSINESS_KEY_PREFIX);
+    }
+
+    /** 系统生成并直接审核的订单（寄售结算）：不走审批、不校验信用额度 */
+    void approveDirect(Long id) {
+        changeStatus(id, OrderStatus.DRAFT, OrderStatus.APPROVED, true);
+    }
+
+    // ---------------------------------------------------------------- 供入库 / 出库使用
+
+    /** 直接开单生成的隐式订单随出入库单生成，不能反审核、关闭、变更、预留或发货通知，错误通过退货冲回 */
+    public static void checkNotDirect(ScmOrder order) {
+        if (order.getSource() == OrderSource.DIRECT) {
+            throw new BizException("scm.error.directOrderReadOnly", order.getOrderNo());
+        }
+    }
+
+    /** 锁定订单行并返回最新状态：出入库、关闭在同一订单上串行执行（关闭后不会再有进行中的出入库回写数量、金额） */
+    OrderStatus lockStatus(Long id) {
+        String status = orderMapper.selectStatusForUpdate(id);
+        if (status == null) {
+            throw new BizException("scm.error.orderDoesNotExist");
+        }
+        return OrderStatus.valueOf(status);
+    }
+
+    /** 在数据权限范围内的订单 */
+    ScmOrder getAccessible(OrderKind kind, Long id) {
+        ScmOrder order = DataScopes.load(ORDER_RULE, () -> orderMapper.selectById(id));
+        if (order == null || order.getKind() != kind) {
+            throw new BizException("scm.error.doesNotExistAccessDenied", Messages.get(kind.getLabelKey()));
+        }
+        return order;
+    }
+
+    /**
+     * 入库 / 出库、退货后按明细重新计算订单状态：没有未完成数量 → 已完成，有过出入库 → 部分完成，没有 → 已审核。已关闭的不变。
+     * 退款的退货不会让订单重新变为未完成，需要补发的退货会
+     */
+    void refreshStatus(Long orderId) {
+        List<ScmOrderItem> items = itemMapper.selectList(Wrappers.<ScmOrderItem>lambdaQuery().eq(ScmOrderItem::getOrderId, orderId));
+        boolean all = items.stream().allMatch(i -> i.remainingQty().signum() == 0);
+        boolean any = items.stream().anyMatch(i -> i.getDoneQty().signum() > 0);
+        OrderStatus status = all ? OrderStatus.COMPLETED : any ? OrderStatus.PARTIAL : OrderStatus.APPROVED;
+        orderMapper.update(Wrappers.<ScmOrder>lambdaUpdate()
+                .set(ScmOrder::getStatus, status)
+                .set(ScmOrder::getUpdateTime, LocalDateTime.now())
+                .eq(ScmOrder::getId, orderId)
+                .in(ScmOrder::getStatus, OrderStatus.APPROVED, OrderStatus.PARTIAL, OrderStatus.COMPLETED));
+    }
+
+    // ---------------------------------------------------------------- 内部
+
+    private ScmOrder getDraft(OrderKind kind, Long id) {
+        ScmOrder order = getAccessible(kind, id);
+        if (order.getStatus() != OrderStatus.DRAFT) {
+            throw new BizException("scm.error.notDraftCannotModifiedDeletedApproved", Messages.get(kind.getLabelKey()), order.getOrderNo());
+        }
+        return order;
+    }
+
+    private void changeStatus(Long id, OrderStatus from, OrderStatus to, boolean approved) {
+        boolean changed = StatusTransitions.tryChange(orderMapper, ScmOrder::getId, id, ScmOrder::getStatus, from, to, w -> {
+            w.set(ScmOrder::getUpdateTime, LocalDateTime.now());
+            if (approved) {
+                w.set(ScmOrder::getApproveBy, SecurityUtils.getUserId()).set(ScmOrder::getApproveTime, LocalDateTime.now());
+            }
+        });
+        if (!changed) {
+            throw new BizException("scm.error.orderStatusHasChangedRefresh");
+        }
+    }
+
+    private void saveItems(Long orderId, List<ScmOrderItem> items) {
+        items.forEach(i -> i.setOrderId(orderId));
+        itemMapper.insertBatch(items);
+    }
+}
