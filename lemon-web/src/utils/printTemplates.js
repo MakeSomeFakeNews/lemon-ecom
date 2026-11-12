@@ -123,6 +123,14 @@ export const PRINT_TYPES = [
     signs: [n.entityHead, n.accountingManager, n.tabulator]
   },
   {
+    key: 'ecom.pickList',
+    module: n.modEcom,
+    name: n.pickList,
+    fields: [n.warehouse, n.date, n.packageCount, n.totalQty, n.packageNos],
+    columns: [n.index, n.location, ...MATERIAL_COLUMNS.slice(1), num(n.quantity), n.sellerSku, num(n.packageCount)],
+    signs: [n.prepared, n.picker]
+  },
+  {
     key: 'fin.partnerStatement',
     module: n.modFin,
     name: n.partnerStatement,

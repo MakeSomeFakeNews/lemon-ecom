@@ -11,8 +11,16 @@
     <a-spin :spinning="loading">
       <template v-if="detail">
         <a-alert
-          v-if="detail.localStatus === EcomLocalStatus.EXCEPTION && detail.exception"
-          type="error"
+          v-if="detail.localStatus === EcomLocalStatus.ON_HOLD"
+          type="warning"
+          show-icon
+          class="block"
+          :message="$t('ecomOrder.ops.held')"
+          :description="detail.holdReason || '-'"
+        />
+        <a-alert
+          v-if="detail.exception && detail.localStatus !== EcomLocalStatus.SHIPPED"
+          :type="detail.localStatus === EcomLocalStatus.EXCEPTION ? 'error' : 'warning'"
           show-icon
           class="block"
           :message="$t('ecomOrder.order.exception')"
@@ -32,6 +40,9 @@
             <span :class="{ 'overdue-text': isOverdue(detail) }">{{ detail.shipBy || '-' }}</span>
           </a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOrder.order.deliverBy')">{{ detail.deliverBy || '-' }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomOrder.ops.planShipTime')">{{ detail.planShipTime || '-' }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomOrder.ops.weight')">{{ detail.weight != null ? `${Number(detail.weight)} ${$t('ecomOrder.common.kg')}` : '-' }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomOrder.ops.matchedRules')">{{ detail.matchedRules || '-' }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOrder.order.buyer')">
             {{ detail.buyerName || '-' }}<span v-if="detail.buyerEmail" class="sub-text"> {{ detail.buyerEmail }}</span>
           </a-descriptions-item>
@@ -83,9 +94,13 @@
               <a-tag v-else color="error" :bordered="false">{{ $t('ecomOrder.common.unmapped') }}</a-tag>
             </template>
             <template v-else-if="column.key === 'materialQty'">{{ record.materialId ? `${qty(record.materialQty)} ${record.unit || ''}` : '-' }}</template>
+            <template v-else-if="column.key === 'allocatedQty'">{{ qty(record.allocatedQty) }}</template>
             <template v-else-if="column.key === 'cost'">{{ record.cost != null ? baseMoney(record.cost) : '-' }}</template>
           </template>
         </a-table>
+
+        <div class="section-title">{{ $t('ecomOrder.ops.packages') }}</div>
+        <OrderPackages :packages="detail.packages || []" class="block" />
 
         <div class="section-title">{{ $t('ecomOrder.order.sectionShip') }}</div>
         <a-descriptions :column="{ xs: 1, sm: 2, lg: 3 }" size="small">
@@ -113,21 +128,53 @@
 import { computed, ref } from 'vue'
 import { Modal, message } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
-import { CarOutlined, EditOutlined, ExportOutlined, ReloadOutlined, RollbackOutlined, StopOutlined } from '@ant-design/icons-vue'
+import {
+  AuditOutlined,
+  CarOutlined,
+  CloudUploadOutlined,
+  EditOutlined,
+  ExportOutlined,
+  PauseCircleOutlined,
+  PlayCircleOutlined,
+  ReloadOutlined,
+  RollbackOutlined,
+  ScissorOutlined,
+  StopOutlined,
+  SyncOutlined
+} from '@ant-design/icons-vue'
 import SubPage from '@/components/SubPage.vue'
 import DictTag from '@/components/DictTag.vue'
-import { cancelEcomOrder, getEcomOrder, rematchEcomOrder } from '@/api/ecom/order'
+import OrderPackages from './OrderPackages.vue'
+import { auditEcomOrders, cancelEcomOrder, confirmEcomOrderShipment, getEcomOrder, recheckEcomOrders, rematchEcomOrder, unholdEcomOrders } from '@/api/ecom/order'
 import { useUserStore } from '@/store/user'
 import { money, price, qty } from '@/utils/number'
 import { EcomLocalStatus } from '@/constants/enums'
-import { baseMoney, canCancel, canEdit, canOutbound, canRematch, canReturn, canShip, fcMoney, isOverdue } from './order'
+import {
+  ORDER_RESULT_KEYS,
+  baseMoney,
+  canAudit,
+  canCancel,
+  canEdit,
+  canHold,
+  canOutbound,
+  canRecheck,
+  canRematch,
+  canReturn,
+  canShip,
+  canShipConfirm,
+  canSplit,
+  canUnhold,
+  fcMoney,
+  isOverdue,
+  showBatchResult
+} from './order'
 
 /**
- * 平台订单详情子页：订单信息、金额（原币 + 本位币、平台费用、成本与利润）、商品明细（映射物料）、发货信息。
- * 重新匹配、取消在本组件内完成（触发 changed）；出库、发货、修改、退货退款交给页面打开对应弹窗（事件带订单）。
- * ref 调用 open(id)、reload()
+ * 平台订单详情子页：订单信息（含挂起原因、命中规则、计划发货）、金额（原币 + 本位币、平台费用、成本与利润）、商品明细（映射物料、已分配包裹的件数）、
+ * 包裹、发货信息。重新匹配、审核、重新检查库存、取消挂起、重新回传发货、取消在本组件内完成（触发 changed）；
+ * 出库、发货、修改、退货退款、挂起、拆分交给页面打开对应弹窗（事件带订单）。ref 调用 open(id)、reload()
  */
-const emit = defineEmits(['changed', 'outbound', 'ship', 'edit', 'return'])
+const emit = defineEmits(['changed', 'outbound', 'ship', 'edit', 'return', 'hold', 'split'])
 const { t } = useI18n()
 const userStore = useUserStore()
 const can = (perm) => userStore.hasPerm(perm)
@@ -144,6 +191,7 @@ const itemColumns = [
   { title: t('ecomOrder.order.itemDiscount'), key: 'discount', width: 90, align: 'right' },
   { title: t('ecomOrder.order.itemMaterial'), key: 'material', width: 220 },
   { title: t('ecomOrder.order.itemMaterialQty'), key: 'materialQty', width: 110, align: 'right' },
+  { title: t('ecomOrder.ops.allocated'), key: 'allocatedQty', width: 80, align: 'right' },
   { title: t('ecomOrder.order.itemCost'), key: 'cost', width: 120, align: 'right' }
 ]
 
@@ -190,10 +238,39 @@ function confirmAction(title, content, api, success, danger = false) {
   })
 }
 
+/** 批量接口用于单张订单：列出未完成的原因，刷新详情 */
+async function runOne(api) {
+  showBatchResult(await api([currentId]), 1, ORDER_RESULT_KEYS)
+  await load(currentId)
+  emit('changed')
+}
+
 const actions = computed(() => {
   const d = detail.value
   if (!d) return []
   const list = []
+  if (canUnhold(d) && can('ecom:order:audit')) {
+    list.push({
+      key: 'unhold',
+      label: t('ecomOrder.ops.unhold'),
+      icon: PlayCircleOutlined,
+      run: () => confirmAction(t('ecomOrder.ops.unholdConfirm', { n: 1 }), '', (id) => unholdEcomOrders([id]), t('ecomOrder.ops.unheld'))
+    })
+  }
+  if (canHold(d) && can('ecom:order:audit')) {
+    list.push({ key: 'hold', label: t('ecomOrder.ops.hold'), icon: PauseCircleOutlined, run: () => emit('hold', d) })
+  }
+  if (canSplit(d) && can('ecom:order:merge')) {
+    list.push({ key: 'split', label: t('ecomOrder.ops.split'), icon: ScissorOutlined, run: () => emit('split', d) })
+  }
+  if (canShipConfirm(d) && can('ecom:order:ship')) {
+    list.push({
+      key: 'shipConfirm',
+      label: t('ecomOrder.ops.shipConfirm'),
+      icon: CloudUploadOutlined,
+      run: () => confirmAction(t('ecomOrder.ops.shipConfirmConfirm', { no: d.platformOrderNo }), '', confirmEcomOrderShipment, t('ecomOrder.ops.shipConfirmed'))
+    })
+  }
   if (canRematch(d) && can('ecom:order:outbound')) {
     list.push({
       key: 'rematch',
@@ -217,8 +294,14 @@ const actions = computed(() => {
       run: () => confirmAction(t('ecomOrder.order.cancelConfirm', { no: d.platformOrderNo }), t('ecomOrder.order.cancelContent'), cancelEcomOrder, t('ecomOrder.order.cancelled'), true)
     })
   }
+  if (canRecheck(d) && can('ecom:order:audit')) {
+    list.push({ key: 'recheck', label: t('ecomOrder.ops.recheck'), icon: SyncOutlined, primary: true, run: () => runOne(recheckEcomOrders) })
+  }
+  if (canAudit(d) && can('ecom:order:audit')) {
+    list.push({ key: 'audit', label: t('ecomOrder.ops.audit'), icon: AuditOutlined, primary: true, run: () => runOne(auditEcomOrders) })
+  }
   if (canOutbound(d) && can('ecom:order:outbound')) {
-    list.push({ key: 'outbound', label: t('ecomOrder.order.outbound'), icon: ExportOutlined, primary: true, run: () => emit('outbound', d) })
+    list.push({ key: 'outbound', label: t('ecomOrder.order.outbound'), icon: ExportOutlined, primary: !canAudit(d), run: () => emit('outbound', d) })
   }
   if (canShip(d) && can('ecom:order:ship')) {
     list.push({ key: 'ship', label: t('ecomOrder.order.ship'), icon: CarOutlined, primary: true, run: () => emit('ship', d) })

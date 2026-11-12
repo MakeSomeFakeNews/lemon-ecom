@@ -115,7 +115,13 @@ export default {
     customerSeal: 'Customer Confirmation (Seal)',
     supplierSeal: 'Supplier Confirmation (Seal)',
     deliveryNote: 'Delivery Note',
-    total: 'Total'
+    total: 'Total',
+    modEcom: 'E-commerce',
+    pickList: 'Pick List',
+    packageCount: 'Packages',
+    packageNos: 'Package Nos.',
+    sellerSku: 'Seller SKU',
+    picker: 'Picker'
   },
   paper: {
     size: '{name} ({size})',

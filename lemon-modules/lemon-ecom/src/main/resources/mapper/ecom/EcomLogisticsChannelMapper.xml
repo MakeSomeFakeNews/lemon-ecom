@@ -3,7 +3,10 @@
 <mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomLogisticsChannelMapper">
 
     <sql id="columns">
-        c.*, sp.name AS supplier_name, (SELECT COUNT(*) FROM ecom_logistics_rate r WHERE r.channel_id = c.id) AS rate_count
+        c.id, c.code, c.name, c.provider, c.transport_mode, c.supplier_id, c.days_min, c.days_max, c.status, c.remark,
+        c.carrier, c.carrier_service, c.carrier_sandbox, c.carrier_api_url, c.create_time, c.update_time,
+        CASE WHEN c.carrier_credentials IS NULL OR c.carrier_credentials = '' THEN 0 ELSE 1 END AS has_carrier_credentials,
+        sp.name AS supplier_name, (SELECT COUNT(*) FROM ecom_logistics_rate r WHERE r.channel_id = c.id) AS rate_count
     </sql>
 
     <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.entity.EcomLogisticsChannel">

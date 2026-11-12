@@ -15,3 +15,7 @@ export const addLogistics = (data) => request.post('/ecom/logistics', data)
 export const updateLogistics = (id, data) => request.put(`/ecom/logistics/${id}`, data)
 export const changeLogisticsStatus = (id, status) => request.put(`/ecom/logistics/${id}/status`, null, { params: { status } })
 export const deleteLogistics = (id) => request.delete(`/ecom/logistics/${ids(id)}`)
+/** 可对接的物流商：[{ carrier, name, displayName, fields: [{ key, label, secret, required }], productionUrl, sandboxUrl, serviceHint, docUrl }] */
+export const logisticsCarriers = () => request.get('/ecom/logistics/carriers')
+/** 清除物流商授权 */
+export const clearCarrierCredentials = (id) => request.delete(`/ecom/logistics/${id}/carrier-credentials`)

@@ -200,6 +200,26 @@ public class EcomStoreService {
                 c -> saveCredentials(s.getId(), c.values()));
     }
 
+    /**
+     * 调用渠道接口的上下文，刷新令牌保存后另外通知 onSaved（令牌维护任务据此判断是否刷新过）
+     */
+    public ConnectorContext context(EcomStore s, Runnable onSaved) {
+        return new ConnectorContext(s, credentials(s), Integer.valueOf(1).equals(s.getSandbox()), s.getApiBaseUrl(), c -> {
+            saveCredentials(s.getId(), c.values());
+            onSaved.run();
+        });
+    }
+
+    /** 全部店铺（含停用的，渠道接入总览），含加密的授权信息，只在服务端使用 */
+    public List<EcomStore> all() {
+        return storeMapper.selectList(Wrappers.<EcomStore>lambdaQuery().orderByAsc(EcomStore::getId));
+    }
+
+    /** 按 ID 取店铺完整记录（含加密的授权信息），只在服务端使用 */
+    public List<EcomStore> byIds(java.util.Collection<Long> ids) {
+        return ids.isEmpty() ? List.of() : storeMapper.selectByIds(ids);
+    }
+
     /** 保存授权信息（加密），连接器刷新令牌、OAuth 回调时调用 */
     public void saveCredentials(Long id, Map<String, String> values) {
         String json = values == null || values.isEmpty() ? null : HttpJsonHolder.write(values);

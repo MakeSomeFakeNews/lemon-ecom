@@ -44,6 +44,8 @@
         </a-col>
       </a-row>
 
+      <CarrierFields :form="form" :carriers="carriers" @cleared="form.hasCarrierCredentials = false" />
+
       <div class="items-head">
         <span class="section-title">{{ $t('ecom.logistics.rates') }}</span>
         <span class="sub-text">{{ $t('ecom.logistics.ratesTip') }}</span>
@@ -82,19 +84,21 @@
 </template>
 
 <script setup>
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { PlusOutlined } from '@ant-design/icons-vue'
 import FormDrawer from '@/components/FormDrawer.vue'
 import LineItemsTable from '@/components/common/LineItemsTable.vue'
 import PartnerSelect from '@/components/scm/PartnerSelect.vue'
-import { addLogistics, getLogistics, updateLogistics } from '@/api/ecom/logistics'
+import CarrierFields from './CarrierFields.vue'
+import { addLogistics, getLogistics, logisticsCarriers, updateLogistics } from '@/api/ecom/logistics'
 import { useDict } from '@/composables/useDict'
 import { useFormDrawer } from '@/composables/useFormDrawer'
 import { useLineItems } from '@/composables/useLineItems'
 import { optionsWithCurrent } from '@/utils/dict'
 
 /**
- * 物流渠道新增 / 编辑（子页）：渠道信息 + 费率明细行（国家 × 重量段），保存时整体提交 rates。
+ * 物流渠道新增 / 编辑（子页）：渠道信息 + 物流商面单对接（CarrierFields，授权只写不读）+ 费率明细行（国家 × 重量段），保存时整体提交 rates。
  * openCreate() / openEdit(record) 打开，保存后触发 success
  */
 const emit = defineEmits(['success'])
@@ -142,14 +146,21 @@ const newRate = (rates) => {
 }
 const lines = useLineItems(() => form.value.rates, { newRow: newRate, field: 'rates' })
 
-const FIELDS = ['code', 'name', 'provider', 'transportMode', 'supplierId', 'daysMin', 'daysMax', 'remark']
+const FIELDS = ['code', 'name', 'provider', 'transportMode', 'supplierId', 'daysMin', 'daysMax', 'remark', 'carrier', 'carrierService', 'carrierApiUrl']
+const CARRIER_DEFAULTS = () => ({ carrier: undefined, carrierService: undefined, carrierApiUrl: undefined, carrierSandbox: 0, carrierAuth: {}, hasCarrierCredentials: false })
+const carriers = ref([])
 const num = (v) => (v == null || v === '' ? undefined : Number(v))
 const drawer = useFormDrawer({
-  emptyForm: () => ({ id: undefined, ...Object.fromEntries(FIELDS.map((f) => [f, undefined])), supplierName: undefined, rates: [] }),
+  emptyForm: () => ({ id: undefined, ...Object.fromEntries(FIELDS.map((f) => [f, undefined])), ...CARRIER_DEFAULTS(), supplierName: undefined, rates: [] }),
+  beforeOpen: async () => {
+    if (!carriers.value.length) carriers.value = (await logisticsCarriers()) || []
+  },
   fetch: async (record) => {
     const d = await getLogistics(record.id)
     return {
       ...d,
+      carrierSandbox: d.carrierSandbox ?? 0,
+      carrierAuth: {},
       supplierName: d.supplierName || record.supplierName,
       rates: (d.rates || []).map((r) =>
         lines.withKey({ country: r.country, minWeight: num(r.minWeight), maxWeight: num(r.maxWeight), baseFee: num(r.baseFee), perKg: num(r.perKg), remark: r.remark || '' })
@@ -160,6 +171,9 @@ const drawer = useFormDrawer({
   update: updateLogistics,
   toPayload: (f) => ({
     ...Object.fromEntries(FIELDS.map((k) => [k, f[k] === '' || f[k] === undefined ? null : f[k]])),
+    carrierSandbox: f.carrier ? f.carrierSandbox || 0 : 0,
+    // 授权只提交填写了的字段，后端与已保存的合并
+    carrierAuth: f.carrier ? Object.fromEntries(Object.entries(f.carrierAuth || {}).filter(([, v]) => v != null && String(v).trim() !== '')) : null,
     // 明细整体替换，不带 id
     rates: f.rates.map((r) => ({
       country: (r.country || '*').trim().toUpperCase(),

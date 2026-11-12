@@ -24,6 +24,8 @@ public enum EcomPlatform {
     WALMART,
     /** Ozon */
     OZON,
+    /** 美客多 Mercado Libre */
+    MERCADO_LIBRE,
     /** 其他 */
     OTHER
 }

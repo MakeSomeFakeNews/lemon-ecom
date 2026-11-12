@@ -8,4 +8,6 @@ dependencies {
     api project(':lemon-modules:lemon-fin')
     api project(':lemon-modules:lemon-scm')
     api project(':lemon-modules:lemon-wms')
+    // 批量打印面单：合并物流商返回的 PDF
+    implementation libs.openpdf
 }

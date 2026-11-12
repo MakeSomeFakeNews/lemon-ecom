@@ -138,4 +138,7 @@ public class EcomStore extends BaseEntity {
     /** 在线商品数 */
     @TableField(exist = false)
     private Integer listingCount;
+    /** 授权状态（列表、渠道接入按授权信息与最近一次授权日志计算） */
+    @TableField(exist = false)
+    private com.lemon.erp.modules.ecom.model.StoreAuthStatus authStatus;
 }

@@ -115,7 +115,13 @@ export default {
     customerSeal: '客户确认（盖章）',
     supplierSeal: '供应商确认（盖章）',
     deliveryNote: '发货单',
-    total: '合计'
+    total: '合计',
+    modEcom: '电商',
+    pickList: '拣货单',
+    packageCount: '包裹数',
+    packageNos: '包裹号',
+    sellerSku: '平台 SKU',
+    picker: '拣货人'
   },
   paper: {
     size: '{name}（{size}）',

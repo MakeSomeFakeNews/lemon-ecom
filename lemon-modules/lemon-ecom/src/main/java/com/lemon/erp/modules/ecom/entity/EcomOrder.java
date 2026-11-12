@@ -103,6 +103,22 @@ public class EcomOrder extends BaseEntity {
 
     /** 异常原因 */
     private String exception;
+
+    /** 挂起原因（审单规则要求人工审核或人工拦截） */
+    private String holdReason;
+    /** 挂起前的处理状态，取消挂起后恢复 */
+    private EcomLocalStatus holdPrevStatus;
+    /** 由哪条审单规则挂起（人工挂起为空），重新应用规则时只释放规则挂起的订单 */
+    private Long holdRuleId;
+    /** 计划发货时间：按审单规则的截单时间推算（截单前付款当天发，之后次日发） */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime planShipTime;
+    /** 预估重量（kg），审单规则按重量区间匹配，包裹默认重量 */
+    private BigDecimal weight;
+    /** 命中的审单规则名称（逗号分隔） */
+    private String matchedRules;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime auditTime;
     /** 买家留言 */
     private String note;
     private String remark;
@@ -123,4 +139,10 @@ public class EcomOrder extends BaseEntity {
     private Integer itemCount;
     @TableField(exist = false)
     private List<EcomOrderItem> items;
+    /** 未取消的包裹数 */
+    @TableField(exist = false)
+    private Integer packageCount;
+    /** 详情：订单的包裹（含已取消） */
+    @TableField(exist = false)
+    private List<EcomPackage> packages;
 }

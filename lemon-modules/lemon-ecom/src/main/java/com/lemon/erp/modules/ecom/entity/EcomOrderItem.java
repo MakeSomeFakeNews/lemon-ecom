@@ -43,4 +43,10 @@ public class EcomOrderItem extends BaseEntity {
     private String materialSpec;
     @TableField(exist = false)
     private String unit;
+    /** 详情：已分配到未取消包裹的件数 */
+    @TableField(exist = false)
+    private BigDecimal allocatedQty;
+    /** 详情：其中已打单 / 已发货（拆分时不能再分配）的件数 */
+    @TableField(exist = false)
+    private BigDecimal lockedQty;
 }

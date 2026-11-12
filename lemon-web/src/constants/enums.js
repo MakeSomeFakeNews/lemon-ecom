@@ -235,6 +235,12 @@ export const AssigneeType = Object.freeze({
   INITIATOR: 'INITIATOR',
 })
 
+/** com.lemon.erp.modules.ecom.connector.AuthType */
+export const AuthType = Object.freeze({
+  OAUTH: 'OAUTH', // 卖家在平台授权页面同意后回调换取令牌
+  KEYS: 'KEYS', // 直接填写平台后台生成的密钥 / 令牌
+})
+
 /** com.lemon.erp.modules.fin.model.AuxItem */
 export const AuxItem = Object.freeze({
   DEPT: 'DEPT',
@@ -316,6 +322,15 @@ export const ConditionOperator = Object.freeze({
   LE: 'LE',
   IN: 'IN', // 属于其中之一
   CONTAINS: 'CONTAINS', // 文本包含
+})
+
+/** com.lemon.erp.modules.ecom.connector.ConnectorCapability */
+export const ConnectorCapability = Object.freeze({
+  ORDERS: 'ORDERS', // 拉取订单
+  SHIP_CONFIRM: 'SHIP_CONFIRM', // 回传发货
+  INVENTORY_PUSH: 'INVENTORY_PUSH', // 回传可售库存
+  LISTINGS: 'LISTINGS', // 拉取在线商品
+  PLATFORM_STOCK: 'PLATFORM_STOCK', // 拉取平台仓库存
 })
 
 /** com.lemon.erp.modules.fin.model.ConsumableStatus（字典 fin_consumable_status） */
@@ -403,11 +418,22 @@ export const DocStatus = Object.freeze({
   DONE: 'DONE',
 })
 
+/** com.lemon.erp.modules.ecom.model.EcomCarrier（字典 ecom_carrier） */
+export const EcomCarrier = Object.freeze({
+  FOURPX: 'FOURPX', // 递四方 4PX
+  YUNEXPRESS: 'YUNEXPRESS', // 云途物流 YunExpress
+})
+
 /** com.lemon.erp.modules.ecom.model.EcomLocalStatus（字典 ecom_local_status） */
 export const EcomLocalStatus = Object.freeze({
-  PENDING: 'PENDING', // 待处理
+  PENDING: 'PENDING', // 待审核
+  ON_HOLD: 'ON_HOLD', // 已挂起
   EXCEPTION: 'EXCEPTION', // 异常
+  OUT_OF_STOCK: 'OUT_OF_STOCK', // 缺货
+  AUDITED: 'AUDITED', // 待打单
+  LABELED: 'LABELED', // 待发货
   OUTBOUND: 'OUTBOUND', // 已出库
+  PARTIAL: 'PARTIAL', // 部分发货
   SHIPPED: 'SHIPPED', // 已发货
   CLOSED: 'CLOSED', // 已关闭
 })
@@ -419,6 +445,14 @@ export const EcomOrderStatus = Object.freeze({
   SHIPPED: 'SHIPPED', // 已发货
   CANCELLED: 'CANCELLED', // 已取消
   REFUNDED: 'REFUNDED', // 已退款
+})
+
+/** com.lemon.erp.modules.ecom.model.EcomPackageStatus（字典 ecom_package_status） */
+export const EcomPackageStatus = Object.freeze({
+  WAIT_LABEL: 'WAIT_LABEL', // 待打单
+  LABELED: 'LABELED', // 待发货
+  SHIPPED: 'SHIPPED', // 已发货
+  CANCELLED: 'CANCELLED', // 已取消
 })
 
 /** com.lemon.erp.modules.ecom.model.EcomPlatform（字典 ecom_platform） */
@@ -433,6 +467,7 @@ export const EcomPlatform = Object.freeze({
   TEMU: 'TEMU', // Temu
   WALMART: 'WALMART', // 沃尔玛
   OZON: 'OZON', // Ozon
+  MERCADO_LIBRE: 'MERCADO_LIBRE', // 美客多 Mercado Libre
   OTHER: 'OTHER', // 其他
 })
 
@@ -1044,6 +1079,13 @@ export const StockOutType = Object.freeze({
   ASSEMBLY: 'ASSEMBLY', // 组装拆卸
 })
 
+/** com.lemon.erp.modules.ecom.model.StoreAuthStatus */
+export const StoreAuthStatus = Object.freeze({
+  NONE: 'NONE', // 未授权
+  AUTHORIZED: 'AUTHORIZED', // 已授权
+  REAUTH: 'REAUTH', // 需重新授权
+})
+
 /** com.lemon.erp.modules.scm.model.SupplierConfirm（字典 scm_supplier_confirm） */
 export const SupplierConfirm = Object.freeze({
   ACCEPTED: 'ACCEPTED',
@@ -1056,6 +1098,16 @@ export const SupplierLevel = Object.freeze({
   B: 'B', // B 良好
   C: 'C', // C 合格
   D: 'D', // D 待改进
+})
+
+/** com.lemon.erp.modules.ecom.model.SyncType（字典 ecom_sync_type） */
+export const SyncType = Object.freeze({
+  ORDERS: 'ORDERS', // 拉取订单
+  SHIP_CONFIRM: 'SHIP_CONFIRM', // 回传发货
+  INVENTORY_PUSH: 'INVENTORY_PUSH', // 回传库存
+  LISTINGS: 'LISTINGS', // 拉取在线商品
+  PLATFORM_STOCK: 'PLATFORM_STOCK', // 平台仓库存
+  AUTH: 'AUTH', // 授权
 })
 
 /** com.lemon.erp.modules.scm.model.TradeKind（字典 scm_trade_kind） */

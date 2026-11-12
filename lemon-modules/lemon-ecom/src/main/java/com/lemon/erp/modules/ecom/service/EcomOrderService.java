@@ -21,24 +21,18 @@ import com.lemon.erp.modules.ecom.dto.OrderImportRow;
 import com.lemon.erp.modules.ecom.dto.OrderQuery;
 import com.lemon.erp.modules.ecom.dto.OutboundRequest;
 import com.lemon.erp.modules.ecom.dto.ShipRequest;
-import com.lemon.erp.modules.ecom.entity.EcomListing;
 import com.lemon.erp.modules.ecom.entity.EcomOrder;
 import com.lemon.erp.modules.ecom.entity.EcomOrderItem;
 import com.lemon.erp.modules.ecom.entity.EcomStore;
 import com.lemon.erp.modules.ecom.mapper.EcomInboundItemMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomOrderItemMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomOrderMapper;
+import com.lemon.erp.modules.ecom.mapper.EcomPackageItemMapper;
+import com.lemon.erp.modules.ecom.mapper.EcomPackageMapper;
 import com.lemon.erp.modules.ecom.model.EcomConstants;
 import com.lemon.erp.modules.ecom.model.EcomLocalStatus;
 import com.lemon.erp.modules.ecom.model.EcomOrderStatus;
 import com.lemon.erp.modules.ecom.model.FulfillmentType;
-import com.lemon.erp.modules.scm.dto.TradeDocItemRequest;
-import com.lemon.erp.modules.scm.dto.TradeDocRequest;
-import com.lemon.erp.modules.scm.entity.ScmTradeDoc;
-import com.lemon.erp.modules.scm.model.TradeKind;
-import com.lemon.erp.modules.scm.service.ScmTradeDocService;
-import com.lemon.erp.modules.wms.model.StockBizType;
-import com.lemon.erp.modules.wms.service.StockCostService;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
 import lombok.RequiredArgsConstructor;
@@ -55,6 +49,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -71,16 +67,23 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class EcomOrderService {
 
-    /** 出库明细的单价精度 */
-    private static final int PRICE_SCALE = 4;
+    /** 可以直接出库（不经过包裹）的处理状态 */
+    private static final Set<EcomLocalStatus> OUTBOUND_ALLOWED = EnumSet.of(EcomLocalStatus.PENDING, EcomLocalStatus.EXCEPTION, EcomLocalStatus.OUT_OF_STOCK);
+    /** 不能取消的处理状态（已出库的走退货退款） */
+    private static final Set<EcomLocalStatus> CANCEL_DENIED = EnumSet.of(EcomLocalStatus.OUTBOUND, EcomLocalStatus.SHIPPED, EcomLocalStatus.PARTIAL,
+            EcomLocalStatus.CLOSED);
+    /** 不能修改收件信息的处理状态（已打单的面单上已是原地址） */
+    private static final Set<EcomLocalStatus> EDIT_DENIED = EnumSet.of(EcomLocalStatus.SHIPPED, EcomLocalStatus.CLOSED, EcomLocalStatus.PARTIAL,
+            EcomLocalStatus.LABELED);
 
     private final EcomOrderMapper orderMapper;
     private final EcomOrderItemMapper itemMapper;
     private final EcomInboundItemMapper inboundItemMapper;
+    private final EcomPackageMapper packageMapper;
+    private final EcomPackageItemMapper packageItemMapper;
     private final EcomStoreService storeService;
-    private final EcomListingService listingService;
-    private final ScmTradeDocService tradeDocService;
-    private final StockCostService stockCostService;
+    private final EcomOutboundSupport outboundSupport;
+    private final EcomPackageService packageService;
     private final ExchangeRateProvider rateProvider;
     private final Validator validator;
     private final TransactionTemplate transactionTemplate;
@@ -95,9 +98,32 @@ public class EcomOrderService {
         return PageResult.of(page);
     }
 
+    /**
+     * 各处理状态的订单数（列表的状态标签页），条件与列表相同、不含处理状态
+     *
+     * @return 处理状态 → 订单数
+     */
+    @DataPermission(table = "ecom_order", deptColumn = "dept_id", userColumn = "create_by")
+    public Map<String, Long> statusCounts(OrderQuery query) {
+        Map<String, Long> out = new LinkedHashMap<>();
+        for (Map<String, Object> row : orderMapper.countByLocalStatus(query)) {
+            out.put(String.valueOf(row.get("localStatus")), ((Number) row.get("cnt")).longValue());
+        }
+        return out;
+    }
+
     public EcomOrder detail(Long id) {
         EcomOrder o = DataScopes.require(EcomConstants.ORDER_RULE, () -> orderMapper.selectDetail(id), "ecom.error.orderNotFound");
-        o.setItems(itemMapper.selectByOrderId(id));
+        List<EcomOrderItem> items = itemMapper.selectByOrderId(id);
+        Map<Long, Map<String, Object>> alloc = new HashMap<>();
+        packageItemMapper.selectAllocated(id).forEach(r -> alloc.put(((Number) r.get("orderItemId")).longValue(), r));
+        for (EcomOrderItem it : items) {
+            Map<String, Object> r = alloc.get(it.getId());
+            it.setAllocatedQty(r == null ? BigDecimal.ZERO : new BigDecimal(String.valueOf(r.get("qty"))));
+            it.setLockedQty(r == null ? BigDecimal.ZERO : new BigDecimal(String.valueOf(r.get("locked"))));
+        }
+        o.setItems(items);
+        o.setPackages(packageMapper.selectByOrderId(id));
         return o;
     }
 
@@ -281,7 +307,7 @@ public class EcomOrderService {
         o.setRefundAmount(BigDecimal.ZERO);
         o.setCostAmount(BigDecimal.ZERO);
         o.setShippingCost(BigDecimal.ZERO);
-        String exception = match(store.getId(), items);
+        String exception = outboundSupport.match(store.getId(), items);
         o.setException(exception);
         if (o.getStatus() == EcomOrderStatus.CANCELLED) {
             o.setLocalStatus(EcomLocalStatus.CLOSED);
@@ -294,12 +320,27 @@ public class EcomOrderService {
         orderMapper.insert(o);
         items.forEach(i -> i.setOrderId(o.getId()));
         itemMapper.insertBatch(items);
+        // 审单规则（同一事务中同步执行，规则出错不影响写入）
+        eventPublisher.publishEvent(new OrderSavedEvent(o.getId()));
         return true;
+    }
+
+    /** 新订单写入后执行审单规则（EcomOrderOpsService 同步处理） */
+    public record OrderSavedEvent(Long orderId) {
     }
 
     /** 渠道同步发现平台状态变化：取消的未出库订单关闭；平台已发货（FBA）的订单记为平台状态已发货，本地仍需出库记账 */
     private void syncStatus(EcomOrder o, EcomOrderStatus status) {
-        if (status == EcomOrderStatus.CANCELLED && o.getLocalStatus() != EcomLocalStatus.OUTBOUND && o.getLocalStatus() != EcomLocalStatus.SHIPPED) {
+        if (status == EcomOrderStatus.CANCELLED && !CANCEL_DENIED.contains(o.getLocalStatus())) {
+            if (packageService.hasLabeled(o.getId())) {
+                // 已打单的订单被买家取消：拦截（挂起），由人工取消包裹面单后再关闭
+                orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getStatus, status)
+                        .set(EcomOrder::getHoldPrevStatus, o.getLocalStatus() == EcomLocalStatus.ON_HOLD ? o.getHoldPrevStatus() : o.getLocalStatus())
+                        .set(EcomOrder::getLocalStatus, EcomLocalStatus.ON_HOLD).set(EcomOrder::getHoldRuleId, null)
+                        .set(EcomOrder::getHoldReason, Messages.get("ecom.text.ops.platformCancelledHold")).eq(EcomOrder::getId, o.getId()));
+                return;
+            }
+            packageService.releaseOrder(o.getId());
             orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getStatus, status).set(EcomOrder::getLocalStatus, EcomLocalStatus.CLOSED)
                     .eq(EcomOrder::getId, o.getId()));
             return;
@@ -322,27 +363,6 @@ public class EcomOrderService {
         return Decimals.money(total.multiply(rate).divide(Decimals.HUNDRED, 6, RoundingMode.HALF_UP));
     }
 
-    /**
-     * 按在线商品映射填写各行的物料和数量；返回未匹配的说明（没有则为 null）
-     */
-    private String match(Long storeId, List<EcomOrderItem> items) {
-        Map<String, EcomListing> listings = listingService.byStoreSkus(storeId,
-                items.stream().map(EcomOrderItem::getSellerSku).collect(Collectors.toSet()));
-        List<String> missing = new ArrayList<>();
-        for (EcomOrderItem it : items) {
-            EcomListing l = listings.get(it.getSellerSku());
-            if (l == null || l.getMaterialId() == null) {
-                it.setMaterialId(null);
-                it.setMaterialQty(null);
-                missing.add(it.getSellerSku());
-            } else {
-                it.setMaterialId(l.getMaterialId());
-                it.setMaterialQty(Decimals.qty(it.getQty().multiply(Decimals.nz(l.getPackQty()).signum() > 0 ? l.getPackQty() : BigDecimal.ONE)));
-            }
-        }
-        return missing.isEmpty() ? null : Messages.get("ecom.text.skuUnmapped", String.join(", ", missing));
-    }
-
     /** 利润（本位币）= 本位币金额 − (佣金 + 配送费 + 其他费用 + 退款) × 汇率 − 商品成本 − 物流成本 */
     static BigDecimal profitOf(EcomOrder o) {
         BigDecimal feesFc = Decimals.nz(o.getPlatformFee()).add(Decimals.nz(o.getFulfillmentFee())).add(Decimals.nz(o.getOtherFee()))
@@ -361,7 +381,7 @@ public class EcomOrderService {
             throw new BizException("ecom.error.orderStatusNotAllow", o.getPlatformOrderNo());
         }
         List<EcomOrderItem> items = itemMapper.selectByOrderId(id);
-        String exception = match(o.getStoreId(), items);
+        String exception = outboundSupport.match(o.getStoreId(), items);
         items.forEach(itemMapper::updateById);
         orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getException, exception)
                 .set(EcomOrder::getLocalStatus, exception == null ? EcomLocalStatus.PENDING : EcomLocalStatus.EXCEPTION).eq(EcomOrder::getId, id));
@@ -397,7 +417,7 @@ public class EcomOrderService {
     @Transactional
     public void outboundOne(Long id, Long warehouseId, LocalDate bizDate) {
         EcomOrder o = require(id);
-        if (o.getLocalStatus() != EcomLocalStatus.PENDING && o.getLocalStatus() != EcomLocalStatus.EXCEPTION) {
+        if (!OUTBOUND_ALLOWED.contains(o.getLocalStatus())) {
             throw new BizException("ecom.error.orderStatusNotAllow", o.getPlatformOrderNo());
         }
         if (o.getStatus() == EcomOrderStatus.CANCELLED || o.getStatus() == EcomOrderStatus.REFUNDED) {
@@ -406,56 +426,35 @@ public class EcomOrderService {
         if (o.getStatus() == EcomOrderStatus.PENDING) {
             throw new BizException("ecom.error.orderUnpaid", o.getPlatformOrderNo());
         }
+        if (packageService.hasActive(id)) {
+            throw new BizException("ecom.error.ops.orderHasPackages", o.getPlatformOrderNo());
+        }
         EcomStore store = storeService.requireEnabled(o.getStoreId());
         List<EcomOrderItem> items = itemMapper.selectByOrderId(id);
-        String exception = match(store.getId(), items);
+        String exception = outboundSupport.match(store.getId(), items);
         if (exception != null) {
             throw new BizException("ecom.error.orderSkuUnmapped", exception);
         }
-        Long wh = warehouseId != null ? warehouseId : o.getFulfillment() == FulfillmentType.PLATFORM ? store.getPlatformWarehouseId() : store.getWarehouseId();
+        // 仓库：指定的 > 平台配送取店铺平台仓 > 审单规则指定的发货仓 > 店铺默认发货仓
+        Long wh = warehouseId != null ? warehouseId : o.getFulfillment() == FulfillmentType.PLATFORM ? store.getPlatformWarehouseId()
+                : o.getWarehouseId() != null ? o.getWarehouseId() : store.getWarehouseId();
         if (wh == null) {
             throw new BizException("ecom.error.storePlatformWarehouseMissing", store.getName());
         }
-        BigDecimal rate = Decimals.nz(o.getExchangeRate());
-        List<TradeDocItemRequest> lines = new ArrayList<>();
-        for (EcomOrderItem it : items) {
-            BigDecimal lineFc = it.getAmount().add(Decimals.nz(it.getShipping())).add(Decimals.nz(it.getTax())).subtract(Decimals.nz(it.getDiscount()));
-            BigDecimal lineBase = lineFc.multiply(rate);
-            BigDecimal price = it.getMaterialQty().signum() > 0 ? lineBase.divide(it.getMaterialQty(), PRICE_SCALE, RoundingMode.HALF_UP) : BigDecimal.ZERO;
-            if (price.signum() < 0) {
-                price = BigDecimal.ZERO;
-            }
-            lines.add(new TradeDocItemRequest(null, null, null, null, null, it.getMaterialQty(), null, it.getSellerSku(), it.getMaterialId(),
-                    price, BigDecimal.ZERO, null));
-        }
         LocalDate date = bizDate == null ? LocalDate.now() : bizDate;
-        TradeDocRequest req = new TradeDocRequest(null, wh, date, Messages.get("ecom.text.outboundRemark", store.getName(), o.getPlatformOrderNo()),
-                null, lines, store.getCustomerId(), null);
-        Long docId = tradeDocService.create(TradeKind.SALES_OUT, req);
-        ScmTradeDoc doc = tradeDocService.detail(TradeKind.SALES_OUT, docId);
-
-        // 成本：出库单的计价流水，同一物料多行按数量分摊
-        Map<Long, StockCostService.CostSum> costs = doc.getWmsDocId() == null ? Map.of()
-                : stockCostService.docCosts(StockBizType.OUT, List.of(doc.getWmsDocId()));
-        Map<Long, BigDecimal> qtyByMaterial = items.stream().collect(Collectors.toMap(EcomOrderItem::getMaterialId, EcomOrderItem::getMaterialQty, BigDecimal::add));
-        BigDecimal cost = BigDecimal.ZERO;
-        for (EcomOrderItem it : items) {
-            StockCostService.CostSum sum = costs.get(it.getMaterialId());
-            BigDecimal c = BigDecimal.ZERO;
-            if (sum != null && sum.amount() != null) {
-                BigDecimal total = sum.amount().abs();
-                BigDecimal q = qtyByMaterial.get(it.getMaterialId());
-                c = q.signum() > 0 ? Decimals.money(total.multiply(it.getMaterialQty()).divide(q, 6, RoundingMode.HALF_UP)) : total;
-            }
-            it.setCost(c);
-            cost = cost.add(c);
+        List<EcomOutboundSupport.Line> lines = items.stream().map(EcomOutboundSupport.Line::whole).toList();
+        EcomOutboundSupport.Result r = outboundSupport.outbound(o, store, wh, date, lines,
+                Messages.get("ecom.text.outboundRemark", store.getName(), o.getPlatformOrderNo()));
+        for (int i = 0; i < items.size(); i++) {
+            EcomOrderItem it = items.get(i);
+            it.setCost(r.costs().get(i));
             itemMapper.updateById(it);
         }
         BigDecimal shippingCost = o.getFulfillment() == FulfillmentType.PLATFORM ? landedCost(store.getId(), items) : Decimals.nz(o.getShippingCost());
-        o.setTradeDocId(docId);
-        o.setTradeDocNo(doc.getDocNo());
+        o.setTradeDocId(r.docId());
+        o.setTradeDocNo(r.docNo());
         o.setWarehouseId(wh);
-        o.setCostAmount(cost);
+        o.setCostAmount(r.totalCost());
         o.setShippingCost(shippingCost);
         o.setException(null);
         o.setLocalStatus(o.getStatus() == EcomOrderStatus.SHIPPED ? EcomLocalStatus.SHIPPED : EcomLocalStatus.OUTBOUND);
@@ -509,18 +508,22 @@ public class EcomOrderService {
     @Transactional
     public void cancel(Long id) {
         EcomOrder o = require(id);
-        if (o.getLocalStatus() == EcomLocalStatus.OUTBOUND || o.getLocalStatus() == EcomLocalStatus.SHIPPED) {
+        if (CANCEL_DENIED.contains(o.getLocalStatus())) {
             throw new BizException("ecom.error.orderOutboundCannotCancel", o.getPlatformOrderNo());
         }
+        if (packageService.hasLabeled(id)) {
+            throw new BizException("ecom.error.ops.orderHasLabeledPackage", o.getPlatformOrderNo());
+        }
+        packageService.releaseOrder(id);
         orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getStatus, EcomOrderStatus.CANCELLED)
-                .set(EcomOrder::getLocalStatus, EcomLocalStatus.CLOSED).eq(EcomOrder::getId, id));
+                .set(EcomOrder::getLocalStatus, EcomLocalStatus.CLOSED).set(EcomOrder::getHoldReason, null).eq(EcomOrder::getId, id));
     }
 
     /** 修改收件信息、备注（未发货时） */
     @Transactional
     public void update(Long id, OrderEditRequest req) {
         EcomOrder o = require(id);
-        if (o.getLocalStatus() == EcomLocalStatus.SHIPPED || o.getLocalStatus() == EcomLocalStatus.CLOSED) {
+        if (EDIT_DENIED.contains(o.getLocalStatus())) {
             throw new BizException("ecom.error.orderStatusNotAllow", o.getPlatformOrderNo());
         }
         o.setShipName(req.shipName());
@@ -535,6 +538,7 @@ public class EcomOrderService {
             o.setFulfillment(req.fulfillment());
         }
         orderMapper.updateById(o);
+        orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getWeight, req.weight()).eq(EcomOrder::getId, id));
     }
 
     // ---------------------------------------------------------------- 费用与退款回写

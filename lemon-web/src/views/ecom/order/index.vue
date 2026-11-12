@@ -5,9 +5,6 @@
         <a-form-item :label="$t('ecomOrder.common.store')" name="storeId">
           <StoreSelect v-model:value="query.storeId" :placeholder="$t('common.placeholder.all')" />
         </a-form-item>
-        <a-form-item :label="$t('ecomOrder.order.localStatus')" name="localStatus">
-          <a-select v-model:value="query.localStatus" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_local_status)" />
-        </a-form-item>
         <a-form-item :label="$t('ecomOrder.order.orderDate')" name="range" data-wide>
           <a-range-picker v-model:value="query.range" value-format="YYYY-MM-DD" style="width: 100%" />
         </a-form-item>
@@ -29,16 +26,31 @@
         <a-form-item :label="$t('ecomOrder.order.overdueOnly')" name="overdue">
           <a-switch v-model:checked="query.overdue" @change="search" />
         </a-form-item>
+        <a-form-item :label="$t('ecomOrder.ops.urgencySort')" name="urgency">
+          <a-switch v-model:checked="query.urgency" @change="search" />
+        </a-form-item>
       </SearchForm>
     </a-card>
 
     <a-card :bordered="false" class="page-card table-card">
-      <TableToolbar :exporter="exportAll" v-model:size="size" v-model:checked="checked" v-model:show-search="showSearch" :columns="columns" @refresh="load">
-        <a-button v-perm="'ecom:order:import'" @click="importModal.open()">
+      <a-tabs v-model:active-key="tab" size="small" class="status-tabs" @change="onTab">
+        <a-tab-pane v-for="tb in ORDER_TABS" :key="tb.key">
+          <template #tab>
+            {{ $t(tb.label) }}<span v-if="tb.key !== 'all'" class="tab-count">{{ tabCount(tb) }}</span>
+          </template>
+        </a-tab-pane>
+      </a-tabs>
+      <TableToolbar :exporter="exportAll" v-model:size="size" v-model:checked="checked" v-model:show-search="showSearch" :columns="columns" @refresh="reload">
+        <a-button v-if="tab === 'all' || tab === 'pending'" v-perm="'ecom:order:import'" @click="importModal.open()">
           <template #icon><UploadOutlined /></template>{{ $t('ecomOrder.order.import') }}
         </a-button>
-        <a-button v-perm="'ecom:order:outbound'" type="primary" :disabled="!selectedKeys.length" @click="outboundModal.open(selectedKeys)">
-          <template #icon><ExportOutlined /></template>{{ $t('ecomOrder.order.batchOutbound') }}
+        <template v-for="a in batchActions" :key="a.key">
+          <a-button v-perm="a.perm" :type="a.primary ? 'primary' : 'default'" :disabled="!selectedKeys.length" @click="a.run">
+            <template #icon><component :is="a.icon" /></template>{{ a.label }}
+          </a-button>
+        </template>
+        <a-button v-if="tab === 'toLabel' || tab === 'toShip'" v-perm="'ecom:package:list'" @click="router.push('/ecom/package')">
+          <template #icon><PrinterOutlined /></template>{{ $t('ecomOrder.ops.toPackages') }}
         </a-button>
         <span v-if="selectedKeys.length" class="selected-tip">
           {{ $t('common.table.selected', { n: selectedKeys.length }) }} <a @click="selectedKeys = []">{{ $t('common.action.clear') }}</a>
@@ -52,7 +64,7 @@
         :data-source="list"
         :loading="loading"
         :pagination="pagination"
-        :row-selection="selection"
+        :row-selection="rowSelection"
         :scroll="{ x: scrollX + 32, y: '100%' }"
         @change="onTableChange"
       >
@@ -76,7 +88,7 @@
           </template>
           <template v-else-if="column.key === 'localStatus'">
             <DictTag type="ecom_local_status" :value="record.localStatus" />
-            <a-tooltip v-if="record.localStatus === EcomLocalStatus.EXCEPTION && record.exception" :title="record.exception">
+            <a-tooltip v-if="record.localStatus === EcomLocalStatus.ON_HOLD ? record.holdReason : record.exception" :title="record.localStatus === EcomLocalStatus.ON_HOLD ? record.holdReason : record.exception">
               <ExclamationCircleOutlined class="exception-icon" />
             </a-tooltip>
           </template>
@@ -85,6 +97,8 @@
           </template>
           <template v-else-if="column.key === 'shipBy'">
             <span :class="{ 'overdue-text': isOverdue(record) }">{{ record.shipBy || '-' }}</span>
+            <a-tag v-if="dueHours(record)" color="warning" :bordered="false" class="due-tag">{{ $t('ecomOrder.ops.dueIn', { h: dueHours(record) }) }}</a-tag>
+            <div v-if="record.planShipTime" class="sub-text">{{ $t('ecomOrder.ops.planShip', { time: record.planShipTime.slice(5, 16) }) }}</div>
           </template>
           <template v-else-if="column.key === 'trackingNo'">
             <div>{{ record.trackingNo || '-' }}</div>
@@ -101,11 +115,22 @@
       </a-table>
     </a-card>
 
-    <OrderDetail ref="detail" @changed="load" @outbound="(o) => outboundModal.open([o.id])" @ship="(o) => shipModal.open(o)" @edit="(o) => editDrawer.open(o)" @return="toReturn" />
+    <OrderDetail
+      ref="detail"
+      @changed="afterChange"
+      @outbound="(o) => outboundModal.open([o.id])"
+      @ship="(o) => shipModal.open(o)"
+      @edit="(o) => editDrawer.open(o)"
+      @return="toReturn"
+      @hold="(o) => holdModal.open([o.id])"
+      @split="(o) => splitModal.open(o)"
+    />
     <OutboundModal ref="outboundModal" @done="afterChange" />
     <ShipModal ref="shipModal" @done="afterChange" />
     <OrderEditDrawer ref="editDrawer" @success="afterChange" />
-    <OrderImportModal ref="importModal" @success="load" />
+    <OrderImportModal ref="importModal" @success="reload" />
+    <HoldModal ref="holdModal" @done="afterChange" />
+    <SplitModal ref="splitModal" @done="afterChange" />
   </div>
 </template>
 
@@ -113,19 +138,47 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { CarOutlined, ExclamationCircleOutlined, ExportOutlined, ReloadOutlined, RollbackOutlined, UploadOutlined } from '@ant-design/icons-vue'
+import { Modal, message } from 'ant-design-vue'
+import {
+  AuditOutlined,
+  CarOutlined,
+  ExclamationCircleOutlined,
+  ExportOutlined,
+  FilterOutlined,
+  MergeCellsOutlined,
+  PauseCircleOutlined,
+  PlayCircleOutlined,
+  PrinterOutlined,
+  ReloadOutlined,
+  RollbackOutlined,
+  ScissorOutlined,
+  SyncOutlined,
+  UploadOutlined
+} from '@ant-design/icons-vue'
 import SearchForm from '@/components/SearchForm.vue'
 import TableToolbar from '@/components/TableToolbar.vue'
 import DictTag from '@/components/DictTag.vue'
 import StoreSelect from '@/components/ecom/StoreSelect.vue'
 import TableActions from '@/components/common/TableActions.vue'
-import { actionColumn } from '@/components/common/tableActions'
 import OrderDetail from './OrderDetail.vue'
 import OutboundModal from './OutboundModal.vue'
 import ShipModal from './ShipModal.vue'
 import OrderEditDrawer from './OrderEditDrawer.vue'
 import OrderImportModal from './OrderImportModal.vue'
-import { cancelEcomOrder, pageEcomOrder, rematchEcomOrder } from '@/api/ecom/order'
+import HoldModal from './HoldModal.vue'
+import SplitModal from './SplitModal.vue'
+import { orderColumns } from './columns'
+import {
+  applyEcomOrderRules,
+  auditEcomOrders,
+  cancelEcomOrder,
+  ecomOrderStatusCounts,
+  mergeEcomOrders,
+  pageEcomOrder,
+  recheckEcomOrders,
+  rematchEcomOrder,
+  unholdEcomOrders
+} from '@/api/ecom/order'
 import { useAction } from '@/composables/useAction'
 import { useColumns } from '@/composables/useColumns'
 import { useDict } from '@/composables/useDict'
@@ -133,69 +186,38 @@ import { useRouteOpen } from '@/composables/useRouteOpen'
 import { useTable } from '@/composables/useTable'
 import { toOptions } from '@/utils/dict'
 import { EcomLocalStatus } from '@/constants/enums'
-import { baseMoney, canCancel, canEdit, canOutbound, canRematch, canReturn, canShip, fcMoney, isOverdue } from './order'
+import {
+  ORDER_RESULT_KEYS,
+  ORDER_TABS,
+  baseMoney,
+  canAudit,
+  canCancel,
+  canEdit,
+  canHold,
+  canOutbound,
+  canRecheck,
+  canRematch,
+  canReturn,
+  canShip,
+  canSplit,
+  canUnhold,
+  dueHours,
+  fcMoney,
+  isOverdue,
+  showBatchResult,
+  tabOfStatus
+} from './order'
 
 /**
- * 平台订单：导入 / 同步的订单按处理状态流转：待处理 → 出库（生成销售出库单）→ 发货（填写物流、回传平台）；
- * SKU 未匹配等为异常，处理后重新匹配、出库；未出库的可取消，出库后走退货退款
+ * 平台订单（作业台）：按处理状态分标签页——待审核（审单规则 / 人工审核）→ 待打单（已生成包裹，到「包裹打单」申请运单号）→ 待发货 → 已发货；
+ * 缺货的补货后重新检查库存，异常（SKU 未匹配）与挂起的单独一页。批量操作逐单处理，有失败的弹窗列出原因。
+ * 平台配送订单、不走包裹的简单情况仍可直接出库、发货
  */
 const { t } = useI18n()
 const router = useRouter()
 const dict = useDict('ecom_platform', 'ecom_order_status', 'ecom_local_status', 'ecom_fulfillment')
 
-const columns = [
-  { title: t('ecomOrder.common.platformOrderNo'), key: 'platformOrderNo', dataIndex: 'platformOrderNo', width: 190 },
-  { title: t('ecomOrder.common.store'), dataIndex: 'storeName', width: 150 },
-  { title: t('ecomOrder.common.platform'), key: 'platform', dataIndex: 'platform', width: 100, dict: 'ecom_platform' },
-  { title: t('ecomOrder.order.orderTime'), dataIndex: 'orderTime', width: 170 },
-  {
-    title: t('ecomOrder.order.buyer'),
-    key: 'buyer',
-    width: 160,
-    exportColumns: [
-      { title: t('ecomOrder.order.buyer'), dataIndex: 'buyerName' },
-      { title: t('ecomOrder.order.country'), dataIndex: 'shipCountry' }
-    ]
-  },
-  { title: t('ecomOrder.order.itemCount'), dataIndex: 'itemCount', width: 90, align: 'right' },
-  {
-    title: t('ecomOrder.order.paid'),
-    key: 'paid',
-    width: 150,
-    align: 'right',
-    exportColumns: [
-      { title: t('ecomOrder.common.currency'), dataIndex: 'currency' },
-      { title: t('ecomOrder.order.paid'), dataIndex: 'totalAmount' },
-      { title: t('ecomOrder.order.paidBase'), dataIndex: 'totalBase' }
-    ]
-  },
-  { title: t('ecomOrder.order.status'), key: 'status', dataIndex: 'status', width: 100, dict: 'ecom_order_status' },
-  {
-    title: t('ecomOrder.order.localStatus'),
-    key: 'localStatus',
-    dataIndex: 'localStatus',
-    width: 110,
-    dict: 'ecom_local_status',
-    exportColumns: [
-      { title: t('ecomOrder.order.localStatus'), dataIndex: 'localStatus', dict: 'ecom_local_status' },
-      { title: t('ecomOrder.order.exception'), dataIndex: 'exception' }
-    ]
-  },
-  { title: t('ecomOrder.order.fulfillment'), key: 'fulfillment', dataIndex: 'fulfillment', width: 110, dict: 'ecom_fulfillment' },
-  { title: t('ecomOrder.order.shipBy'), key: 'shipBy', dataIndex: 'shipBy', width: 170 },
-  {
-    title: t('ecomOrder.common.trackingNo'),
-    key: 'trackingNo',
-    width: 170,
-    exportColumns: [
-      { title: t('ecomOrder.common.carrier'), dataIndex: 'carrier' },
-      { title: t('ecomOrder.common.trackingNo'), dataIndex: 'trackingNo' }
-    ]
-  },
-  { title: t('ecomOrder.order.profit'), key: 'profit', dataIndex: 'profit', width: 120, align: 'right' },
-  // 查看、编辑、出库 / 发货（按状态互斥）、更多
-  actionColumn(4, [t('common.action.view')])
-]
+const columns = orderColumns()
 const { checked, visibleColumns, scrollX } = useColumns(columns, 'ecom-order')
 const showSearch = ref(true)
 
@@ -203,30 +225,52 @@ const emptyQuery = () => ({
   storeId: undefined,
   platform: undefined,
   status: undefined,
-  localStatus: undefined,
   fulfillment: undefined,
   keyword: undefined,
   country: undefined,
   range: undefined,
-  overdue: false
+  overdue: false,
+  urgency: false
 })
 const query = reactive(emptyQuery())
 // 从看板、首页待办跳转过来时带上处理状态 / 只看逾期（?localStatus=PENDING、?overdue=1）
 const route = useRoute()
-if (route.query.localStatus) query.localStatus = String(route.query.localStatus)
+const tab = ref(route.query.localStatus ? tabOfStatus(String(route.query.localStatus)) : 'pending')
 if (route.query.overdue === '1' || route.query.overdue === 'true') query.overdue = true
-const { list, loading, size, pagination, selectedKeys, rowSelection, load, search, onTableChange, exportAll } = useTable(pageEcomOrder, query, {
-  params: ({ range, overdue, country, ...rest }) => ({
-    ...rest,
-    country: country?.trim().toUpperCase() || undefined,
-    beginDate: range?.[0],
-    endDate: range?.[1],
-    overdue: overdue || undefined
-  })
-})
-/** 只有待处理 / 异常的订单可以勾选批量出库 */
-const selection = computed(() => ({ ...rowSelection, getCheckboxProps: (r) => ({ disabled: !canOutbound(r) }) }))
 
+const baseParams = ({ range, overdue, country, urgency, ...rest }) => ({
+  ...rest,
+  country: country?.trim().toUpperCase() || undefined,
+  beginDate: range?.[0],
+  endDate: range?.[1],
+  overdue: overdue || undefined,
+  sort: urgency ? 'urgency' : undefined
+})
+const { list, loading, size, pagination, selectedKeys, rowSelection, load, search: doSearch, onTableChange, exportAll } = useTable(pageEcomOrder, query, {
+  params: (q) => {
+    const statuses = ORDER_TABS.find((x) => x.key === tab.value)?.statuses || []
+    return { ...baseParams(q), localStatuses: statuses.length ? statuses.join(',') : undefined }
+  }
+})
+
+const counts = ref({})
+async function loadCounts() {
+  counts.value = (await ecomOrderStatusCounts(baseParams({ ...query }))) || {}
+}
+const tabCount = (tb) => tb.statuses.reduce((sum, s) => sum + (counts.value[s] || 0), 0)
+
+function reload() {
+  load()
+  loadCounts()
+}
+function search() {
+  doSearch()
+  loadCounts()
+}
+function onTab() {
+  selectedKeys.value = []
+  doSearch()
+}
 function resetQuery() {
   Object.assign(query, emptyQuery())
   search()
@@ -237,33 +281,94 @@ const outboundModal = ref()
 const shipModal = ref()
 const editDrawer = ref()
 const importModal = ref()
+const holdModal = ref()
+const splitModal = ref()
 
 const openDetail = (record) => detail.value.open(record.id)
-/** 出库、发货、修改后：刷新列表和打开中的详情，清掉已不能出库的勾选 */
+/** 处理后：刷新列表、数量和打开中的详情，清掉勾选 */
 function afterChange() {
-  load()
+  reload()
   detail.value?.reload()
   selectedKeys.value = []
 }
 useRouteOpen({ id: (id) => detail.value.open(id), keyword: (kw) => (query.keyword = kw), reload: () => search() })
-onMounted(load)
+onMounted(reload)
+
+/** 批量接口：确认 → 调用 → 列出失败 → 刷新 */
+function runBatch(api, confirmTitle, content) {
+  const ids = [...selectedKeys.value]
+  const exec = async () => {
+    showBatchResult(await api(ids), ids.length, ORDER_RESULT_KEYS)
+    afterChange()
+  }
+  if (!confirmTitle) return exec()
+  Modal.confirm({ title: confirmTitle, content, onOk: exec })
+}
+
+const BATCH = {
+  audit: () => ({
+    key: 'audit', label: t('ecomOrder.ops.batchAudit'), icon: AuditOutlined, perm: 'ecom:order:audit', primary: true,
+    run: () => runBatch(auditEcomOrders, t('ecomOrder.ops.auditConfirm', { n: selectedKeys.value.length }), t('ecomOrder.ops.auditHint'))
+  }),
+  rules: () => ({ key: 'rules', label: t('ecomOrder.ops.applyRules'), icon: FilterOutlined, perm: 'ecom:order:audit', run: () => runBatch(applyEcomOrderRules) }),
+  recheck: () => ({ key: 'recheck', label: t('ecomOrder.ops.recheck'), icon: SyncOutlined, perm: 'ecom:order:audit', primary: true, run: () => runBatch(recheckEcomOrders) }),
+  hold: () => ({ key: 'hold', label: t('ecomOrder.ops.hold'), icon: PauseCircleOutlined, perm: 'ecom:order:audit', run: () => holdModal.value.open(selectedKeys.value) }),
+  unhold: () => ({
+    key: 'unhold', label: t('ecomOrder.ops.unhold'), icon: PlayCircleOutlined, perm: 'ecom:order:audit',
+    run: () => runBatch(unholdEcomOrders, t('ecomOrder.ops.unholdConfirm', { n: selectedKeys.value.length }))
+  }),
+  merge: () => ({
+    key: 'merge', label: t('ecomOrder.ops.merge'), icon: MergeCellsOutlined, perm: 'ecom:order:merge',
+    run: () => Modal.confirm({
+      title: t('ecomOrder.ops.mergeConfirm', { n: selectedKeys.value.length }),
+      content: t('ecomOrder.ops.mergeHint'),
+      onOk: async () => {
+        await mergeEcomOrders(selectedKeys.value)
+        message.success(t('ecomOrder.ops.merged'))
+        afterChange()
+      }
+    })
+  }),
+  outbound: () => ({ key: 'outbound', label: t('ecomOrder.order.batchOutbound'), icon: ExportOutlined, perm: 'ecom:order:outbound', run: () => outboundModal.value.open(selectedKeys.value) })
+}
+
+/** 各标签页的批量操作 */
+const batchActions = computed(() => {
+  const keys = {
+    pending: ['audit', 'rules', 'hold', 'outbound'],
+    outOfStock: ['recheck', 'hold', 'outbound'],
+    toLabel: ['merge', 'recheck', 'hold'],
+    toShip: ['hold'],
+    shipped: [],
+    abnormal: ['unhold', 'rules', 'audit'],
+    all: ['outbound']
+  }[tab.value]
+  return keys.map((k) => BATCH[k]())
+})
 
 const rematch = useAction(rematchEcomOrder, { successKey: 'ecomOrder.order.rematched', reload: afterChange })
 const cancel = useAction(cancelEcomOrder, { successKey: 'ecomOrder.order.cancelled', reload: afterChange })
+const auditOne = async (id) => {
+  showBatchResult(await auditEcomOrders([id]), 1, ORDER_RESULT_KEYS)
+  afterChange()
+}
+const recheckOne = async (id) => {
+  showBatchResult(await recheckEcomOrders([id]), 1, ORDER_RESULT_KEYS)
+  afterChange()
+}
+const unholdOne = useAction((id) => unholdEcomOrders([id]), { successKey: 'ecomOrder.ops.unheld', reload: afterChange })
 const toReturn = (record) => router.push({ path: '/ecom/return', query: { orderId: record.id } })
 
 const rowActions = (record) => [
   { type: 'view', onClick: () => openDetail(record) },
   { type: 'edit', perm: 'ecom:order:edit', show: canEdit(record), onClick: () => editDrawer.value.open(record) },
-  {
-    key: 'outbound',
-    label: t('ecomOrder.order.outbound'),
-    icon: ExportOutlined,
-    perm: 'ecom:order:outbound',
-    show: canOutbound(record),
-    onClick: () => outboundModal.value.open([record.id])
-  },
+  { key: 'audit', label: t('ecomOrder.ops.audit'), icon: AuditOutlined, perm: 'ecom:order:audit', show: canAudit(record), onClick: () => auditOne(record.id) },
+  { key: 'recheck', label: t('ecomOrder.ops.recheck'), icon: SyncOutlined, perm: 'ecom:order:audit', show: canRecheck(record), onClick: () => recheckOne(record.id) },
   { key: 'ship', label: t('ecomOrder.order.ship'), icon: CarOutlined, perm: 'ecom:order:ship', show: canShip(record), onClick: () => shipModal.value.open(record) },
+  { key: 'outbound', label: t('ecomOrder.order.outbound'), icon: ExportOutlined, perm: 'ecom:order:outbound', show: canOutbound(record), more: true, onClick: () => outboundModal.value.open([record.id]) },
+  { key: 'split', label: t('ecomOrder.ops.split'), icon: ScissorOutlined, perm: 'ecom:order:merge', show: canSplit(record), more: true, onClick: () => splitModal.value.open(record) },
+  { key: 'hold', label: t('ecomOrder.ops.hold'), icon: PauseCircleOutlined, perm: 'ecom:order:audit', show: canHold(record), more: true, onClick: () => holdModal.value.open([record.id]) },
+  { key: 'unhold', label: t('ecomOrder.ops.unhold'), icon: PlayCircleOutlined, perm: 'ecom:order:audit', show: canUnhold(record), more: true, onClick: () => unholdOne(record.id) },
   {
     key: 'rematch',
     label: t('ecomOrder.order.rematch'),
@@ -299,10 +404,24 @@ const rowActions = (record) => [
 .selected-tip {
   color: var(--app-text-3);
 }
+.status-tabs {
+  margin-top: -8px;
+}
+.status-tabs :deep(.ant-tabs-nav) {
+  margin-bottom: 8px;
+}
+.tab-count {
+  margin-left: 4px;
+  color: var(--app-text-3);
+  font-size: 12px;
+}
 .exception-icon {
   margin-left: 4px;
   color: var(--ant-color-error, #ff4d4f);
   cursor: help;
+}
+.due-tag {
+  margin-left: 4px;
 }
 .overdue-text {
   color: var(--ant-color-error, #ff4d4f);

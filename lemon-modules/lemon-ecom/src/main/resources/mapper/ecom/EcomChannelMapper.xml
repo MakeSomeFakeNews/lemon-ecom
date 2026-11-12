@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomChannelMapper">
+
+    <select id="selectPushCandidates" resultType="com.lemon.erp.modules.ecom.entity.EcomListing">
+        SELECT l.id, l.store_id, l.seller_sku, l.platform_item_id, l.material_id, l.pack_qty, l.last_pushed_qty
+        FROM ecom_listing l
+        WHERE l.store_id = #{storeId} AND l.fulfillment = 'SELLER' AND l.status = 'ACTIVE' AND l.material_id IS NOT NULL
+        ORDER BY l.id
+    </select>
+
+    <update id="updatePushed">
+        UPDATE ecom_listing
+        SET last_pushed_qty = CASE id
+            <foreach collection="items" item="i">WHEN #{i.id} THEN #{i.lastPushedQty} </foreach>
+            END,
+            last_pushed_time = #{time}
+        WHERE id IN <foreach collection="items" item="i" open="(" separator="," close=")">#{i.id}</foreach>
+    </update>
+
+    <select id="selectLatestLogs" resultType="com.lemon.erp.modules.ecom.dto.ChannelHubViews$LogStat">
+        SELECT l.store_id, l.sync_type, l.success, l.start_time, l.message
+        FROM ecom_sync_log l
+        JOIN (SELECT MAX(id) AS id FROM ecom_sync_log
+              <where>
+                  <if test="storeIds != null and storeIds.size() > 0">
+                      store_id IN <foreach collection="storeIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+                  </if>
+              </where>
+              GROUP BY store_id, sync_type) x ON x.id = l.id
+    </select>
+
+    <select id="selectFailCounts" resultType="com.lemon.erp.modules.ecom.dto.ChannelHubViews$LogStat">
+        SELECT store_id, sync_type, COUNT(*) AS failures
+        FROM ecom_sync_log
+        WHERE success = 0 AND start_time &gt;= #{since}
+        GROUP BY store_id, sync_type
+    </select>
+
+</mapper>

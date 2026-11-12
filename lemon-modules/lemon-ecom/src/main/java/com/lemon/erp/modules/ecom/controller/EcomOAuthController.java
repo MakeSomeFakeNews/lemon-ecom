@@ -33,7 +33,7 @@ public class EcomOAuthController {
         String detail;
         boolean ok;
         try {
-            EcomStore store = syncService.oauthCallback(params.get("state"), params);
+            EcomStore store = syncService.oauthCallback(platform, params.get("state"), params);
             ok = true;
             title = Messages.get("ecom.text.oauthSuccess");
             detail = Messages.get("ecom.text.oauthSuccessDetail", store.getName());

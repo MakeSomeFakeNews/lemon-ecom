@@ -38,18 +38,30 @@
           </template>
           <template v-else-if="column.key === 'platform'">
             <DictTag type="ecom_platform" :value="record.platform" />
+            <a-tooltip v-if="!byPlatform[record.platform]" :title="$t('ecom.hub.unsupportedTip')">
+              <DisconnectOutlined class="sub-text" />
+            </a-tooltip>
           </template>
           <template v-else-if="column.key === 'marketplace'">
             <DictTag type="ecom_marketplace" :value="record.marketplace" />
           </template>
+          <template v-else-if="column.key === 'sandbox'">
+            <a-tag v-if="record.sandbox === 1" color="orange" :bordered="false">{{ $t('ecom.hub.sandbox') }}</a-tag>
+            <a-tag v-else color="blue" :bordered="false">{{ $t('ecom.hub.production') }}</a-tag>
+          </template>
           <template v-else-if="column.key === 'listingCount'">{{ num(record.listingCount) }}</template>
-          <template v-else-if="column.key === 'hasCredentials'">
-            <a-tag v-if="record.hasCredentials" color="success" :bordered="false"><CheckCircleOutlined /> {{ $t('ecom.store.authorized') }}</a-tag>
-            <a-tag v-else :bordered="false">{{ $t('ecom.store.unauthorized') }}</a-tag>
+          <template v-else-if="column.key === 'authStatus'">
+            <AuthStatusTag :status="record.authStatus" />
+            <div v-if="record.authStatus === StoreAuthStatus.AUTHORIZED && record.authorizedTime" class="sub-text">
+              {{ $t('ecom.hub.authorizedAt', { time: record.authorizedTime }) }}
+            </div>
           </template>
           <template v-else-if="column.key === 'lastSyncTime'">
             <span v-if="record.lastSyncTime">{{ record.lastSyncTime }}</span>
             <span v-else class="sub-text">{{ $t('ecom.store.neverSynced') }}</span>
+            <a-tooltip v-if="record.lastSyncMessage" :title="record.lastSyncMessage">
+              <div class="error-text"><ExclamationCircleOutlined /> {{ record.lastSyncMessage }}</div>
+            </a-tooltip>
           </template>
           <template v-else-if="column.key === 'status'">
             <DictTag type="sys_common_status" :value="record.status" />
@@ -62,21 +74,36 @@
     </a-card>
 
     <StoreForm ref="formRef" @success="load" />
+    <StoreSyncDialog ref="syncRef" @done="load" />
+    <SyncLogDrawer ref="logRef" />
   </div>
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { h, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Modal, message } from 'ant-design-vue'
-import { ApiOutlined, CheckCircleOutlined, PlusOutlined, SyncOutlined } from '@ant-design/icons-vue'
+import {
+  ApiOutlined,
+  CloudUploadOutlined,
+  DisconnectOutlined,
+  ExclamationCircleOutlined,
+  LinkOutlined,
+  PlusOutlined,
+  SyncOutlined,
+  TagsOutlined
+} from '@ant-design/icons-vue'
 import DictTag from '@/components/DictTag.vue'
 import SearchForm from '@/components/SearchForm.vue'
 import TableToolbar from '@/components/TableToolbar.vue'
 import TableActions from '@/components/common/TableActions.vue'
 import { actionColumn } from '@/components/common/tableActions'
 import StoreForm from './StoreForm.vue'
-import { changeStoreStatus, deleteStore, pageStore, syncStore, testStore } from '@/api/ecom/store'
+import StoreSyncDialog from './StoreSyncDialog.vue'
+import SyncLogDrawer from './SyncLogDrawer.vue'
+import AuthStatusTag from './AuthStatusTag.vue'
+import { supports, useConnectors } from './connectors'
+import { changeStoreStatus, deleteStore, pageStore, storeAuthorizeUrl, syncStoreListings, testStore } from '@/api/ecom/store'
 import { useAction } from '@/composables/useAction'
 import { useColumns } from '@/composables/useColumns'
 import { useDict } from '@/composables/useDict'
@@ -84,25 +111,29 @@ import { useTable } from '@/composables/useTable'
 import { toOptions } from '@/utils/dict'
 import { num } from '@/utils/number'
 import { STATUS_DISABLED, STATUS_ENABLED } from '@/utils/constants'
+import { AuthType, ConnectorCapability, StoreAuthStatus } from '@/constants/enums'
 
 const { t } = useI18n()
 const dict = useDict('sys_common_status', 'ecom_platform', 'ecom_marketplace')
+const { byPlatform } = useConnectors()
 
+const authLabel = (s) => t(`ecom.hub.auth.${s || StoreAuthStatus.NONE}`)
 const columns = [
   { title: t('ecom.common.store'), key: 'name', width: 200, exportValue: (r) => `${r.code} ${r.name}` },
-  { title: t('ecom.store.platform'), key: 'platform', dataIndex: 'platform', width: 110, dict: 'ecom_platform' },
-  { title: t('ecom.store.marketplace'), key: 'marketplace', dataIndex: 'marketplace', width: 100, dict: 'ecom_marketplace' },
+  { title: t('ecom.store.platform'), key: 'platform', dataIndex: 'platform', width: 130, dict: 'ecom_platform' },
+  { title: t('ecom.store.marketplace'), key: 'marketplace', dataIndex: 'marketplace', width: 90, dict: 'ecom_marketplace' },
+  { title: t('ecom.hub.env'), key: 'sandbox', width: 80, exportValue: (r) => (r.sandbox === 1 ? t('ecom.hub.sandbox') : t('ecom.hub.production')) },
+  { title: t('ecom.hub.authStatus'), key: 'authStatus', width: 190, exportValue: (r) => authLabel(r.authStatus) },
+  { title: t('ecom.hub.lastSync'), key: 'lastSyncTime', dataIndex: 'lastSyncTime', width: 220, ellipsis: true },
   { title: t('ecom.store.currency'), dataIndex: 'currency', width: 80 },
   { title: t('ecom.store.customer'), dataIndex: 'customerName', width: 180, ellipsis: true },
   { title: t('ecom.store.warehouse'), dataIndex: 'warehouseName', width: 150, ellipsis: true },
   { title: t('ecom.store.platformWarehouse'), dataIndex: 'platformWarehouseName', width: 150, ellipsis: true },
   { title: t('ecom.store.listingCount'), key: 'listingCount', dataIndex: 'listingCount', width: 110, align: 'right' },
   { title: t('ecom.store.owner'), dataIndex: 'ownerName', width: 110 },
-  { title: t('ecom.store.credentials'), key: 'hasCredentials', width: 110, exportValue: (r) => (r.hasCredentials ? t('ecom.store.authorized') : t('ecom.store.unauthorized')) },
-  { title: t('ecom.store.lastSyncTime'), key: 'lastSyncTime', dataIndex: 'lastSyncTime', width: 170 },
   { title: t('common.field.status'), key: 'status', dataIndex: 'status', width: 90, dict: 'sys_common_status' },
   { title: t('common.field.remark'), dataIndex: 'remark', width: 160, ellipsis: true },
-  // 编辑、同步、启停、删除直接显示，测试授权在「更多」中
+  // 编辑、授权 / 测试、同步订单直接显示，其余在「更多」中
   actionColumn(4)
 ]
 const { checked, visibleColumns, scrollX } = useColumns(columns, 'ecom-store')
@@ -118,6 +149,8 @@ function resetQuery() {
 }
 
 const formRef = ref()
+const syncRef = ref()
+const logRef = ref()
 
 const remove = useAction(deleteStore, { successKey: 'common.msg.deleteSuccess', reload: () => load() })
 
@@ -135,63 +168,137 @@ const toggleStatus = useAction((record) => changeStoreStatus(record.id, record.s
   reload: () => load()
 })
 
-/** 测试渠道授权：成功提示授权有效，失败由拦截器提示后端返回的原因 */
-const testingId = ref()
-async function test(record) {
-  testingId.value = record.id
+/** 正在执行的操作：店铺 ID + 操作，按钮显示加载中 */
+const running = ref('')
+async function runFor(record, key, fn) {
+  running.value = `${record.id}:${key}`
   try {
-    await testStore(record.id)
-    message.success(t('ecom.store.testOk', { name: record.name }))
+    await fn()
   } finally {
-    testingId.value = undefined
+    running.value = ''
   }
 }
 
-/** 手工同步订单：结果带 message 表示失败 */
-const syncingId = ref()
-async function sync(record) {
-  syncingId.value = record.id
-  try {
-    const r = await syncStore(record.id)
+/** 测试渠道授权：成功提示授权有效，失败由拦截器提示后端返回的原因；结果写授权日志，刷新授权状态 */
+const test = (record) =>
+  runFor(record, 'test', async () => {
+    try {
+      await testStore(record.id)
+      message.success(t('ecom.store.testOk', { name: record.name }))
+    } finally {
+      load()
+    }
+  })
+
+/** OAuth 授权：新窗口打开平台授权页，卖家同意后平台回调本系统保存令牌；回到这里刷新授权状态 */
+const authorize = (record) =>
+  runFor(record, 'auth', async () => {
+    const url = await storeAuthorizeUrl(record.id)
+    window.open(url, '_blank', 'noopener')
+    Modal.confirm({
+      title: t('ecom.hub.authorizeTitle'),
+      content: h('div', [
+        h('p', t('ecom.hub.authorizeContent')),
+        h('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, [h(LinkOutlined), ' ', t('ecom.hub.authorizeLink')])
+      ]),
+      okText: t('ecom.hub.authorizeDone'),
+      onOk: () => load()
+    })
+  })
+
+/** 拉取在线商品 */
+const syncListings = (record) =>
+  runFor(record, 'listings', async () => {
+    const r = await syncStoreListings(record.id)
     if (r.message) {
-      Modal.warning({ title: t('ecom.store.syncFailed', { name: r.storeName || record.name }), content: r.message })
+      Modal.warning({ title: t('ecom.hub.actionFailed', { name: record.name, action: t('ecom.hub.syncListings') }), content: r.message })
     } else {
-      message.success(t('ecom.store.syncDone', { name: r.storeName || record.name, fetched: r.fetched, created: r.created, updated: r.updated }))
+      message.success(t('ecom.hub.syncListingsDone', { name: record.name, fetched: r.fetched, created: r.created, updated: r.updated }))
     }
     load()
-  } finally {
-    syncingId.value = undefined
-  }
-}
+  })
 
 const rowActions = (record) => {
   const enabled = record.status === STATUS_ENABLED
+  const connector = byPlatform.value[record.platform]
+  const oauth = connector?.authType === AuthType.OAUTH
   const noCred = !record.hasCredentials
+  const unsupported = !connector ? t('ecom.hub.unsupportedTip') : undefined
+  /** 需要授权、启用、平台支持该能力的操作 */
+  const gate = (capability) => {
+    if (!connector) return { disabled: true, tip: unsupported }
+    if (capability && !supports(connector, capability)) return { disabled: true, tip: t('ecom.hub.channel.capUnsupported') }
+    if (noCred) return { disabled: true, tip: t('ecom.store.needCred') }
+    if (!enabled) return { disabled: true, tip: t('ecom.store.needEnabled') }
+    return {}
+  }
+  const loadingOf = (key) => running.value === `${record.id}:${key}`
   return [
     { type: 'edit', perm: 'ecom:store:edit', onClick: () => formRef.value.openEdit(record) },
+    oauth
+      ? {
+          key: 'auth',
+          label: t('ecom.hub.authorize'),
+          icon: ApiOutlined,
+          perm: 'ecom:store:auth',
+          disabled: !enabled,
+          tip: !enabled ? t('ecom.store.needEnabled') : undefined,
+          loading: loadingOf('auth'),
+          onClick: () => authorize(record)
+        }
+      : {
+          key: 'test',
+          label: t('ecom.store.testAuth'),
+          icon: ApiOutlined,
+          perm: 'ecom:store:sync',
+          ...(connector ? (noCred ? { disabled: true, tip: t('ecom.store.needCred') } : {}) : { disabled: true, tip: unsupported }),
+          loading: loadingOf('test'),
+          onClick: () => test(record)
+        },
     {
       key: 'sync',
-      label: t('ecom.store.sync'),
+      label: t('ecom.hub.syncOrders'),
       icon: SyncOutlined,
       perm: 'ecom:store:sync',
-      disabled: noCred || !enabled,
-      tip: noCred ? t('ecom.store.needCred') : !enabled ? t('ecom.store.needEnabled') : undefined,
-      loading: syncingId.value === record.id,
-      onClick: () => sync(record)
+      ...gate(ConnectorCapability.ORDERS),
+      onClick: () => syncRef.value.open(record, 'orders')
     },
-    { type: enabled ? 'disable' : 'enable', key: 'toggle', perm: 'ecom:store:edit', onClick: () => toggleStatus(record) },
-    { type: 'delete', perm: 'ecom:store:remove', confirm: t('ecom.store.confirmDelete', { name: record.name }), onClick: () => remove(record.id) },
     {
-      key: 'test',
-      label: t('ecom.store.testAuth'),
-      icon: ApiOutlined,
-      perm: 'ecom:store:sync',
+      key: 'listings',
+      label: t('ecom.hub.syncListings'),
+      icon: TagsOutlined,
+      perm: 'ecom:store:syncListing',
       more: true,
-      disabled: noCred,
-      tip: noCred ? t('ecom.store.needCred') : undefined,
-      loading: testingId.value === record.id,
-      onClick: () => test(record)
-    }
+      ...gate(ConnectorCapability.LISTINGS),
+      loading: loadingOf('listings'),
+      onClick: () => syncListings(record)
+    },
+    {
+      key: 'push',
+      label: t('ecom.hub.pushInventory'),
+      icon: CloudUploadOutlined,
+      perm: 'ecom:store:push',
+      more: true,
+      ...gate(ConnectorCapability.INVENTORY_PUSH),
+      onClick: () => syncRef.value.open(record, 'inventory')
+    },
+    ...(oauth
+      ? [
+          {
+            key: 'test',
+            label: t('ecom.store.testAuth'),
+            icon: ApiOutlined,
+            perm: 'ecom:store:sync',
+            more: true,
+            ...(noCred ? { disabled: true, tip: t('ecom.store.needCred') } : {}),
+            loading: loadingOf('test'),
+            onClick: () => test(record)
+          }
+        ]
+      : []),
+    { type: 'log', key: 'logs', label: t('ecom.hub.logs'), more: true, onClick: () => logRef.value.open(record) },
+    { type: enabled ? 'disable' : 'enable', key: 'toggle', perm: 'ecom:store:edit', more: true, onClick: () => toggleStatus(record) },
+    { type: 'delete', perm: 'ecom:store:remove', more: true, confirm: t('ecom.store.confirmDelete', { name: record.name }), onClick: () => remove(record.id) }
   ]
 }
 </script>
@@ -200,5 +307,12 @@ const rowActions = (record) => {
 .sub-text {
   color: var(--app-text-3);
   font-size: 12px;
+}
+.error-text {
+  color: var(--ant-color-error, #ff4d4f);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

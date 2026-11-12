@@ -4,7 +4,30 @@
 
     <sql id="columns">
         o.*, s.name AS store_name, s.platform, w.name AS warehouse_name, ch.name AS channel_name,
-        (SELECT COUNT(*) FROM ecom_order_item oi WHERE oi.order_id = o.id) AS item_count
+        (SELECT COUNT(*) FROM ecom_order_item oi WHERE oi.order_id = o.id) AS item_count,
+        (SELECT COUNT(DISTINCT pi.package_id) FROM ecom_package_item pi JOIN ecom_package p ON p.id = pi.package_id
+          WHERE pi.order_id = o.id AND p.status &lt;&gt; 'CANCELLED') AS package_count
+    </sql>
+
+    <sql id="filters">
+        <if test="q.storeId != null">AND o.store_id = #{q.storeId}</if>
+        <if test="q.platform != null">AND s.platform = #{q.platform}</if>
+        <if test="q.status != null">AND o.status = #{q.status}</if>
+        <if test="q.fulfillment != null">AND o.fulfillment = #{q.fulfillment}</if>
+        <if test="q.country != null and q.country != ''">AND o.ship_country = #{q.country}</if>
+        <if test="q.beginTime != null">AND o.order_time &gt;= #{q.beginTime}</if>
+        <if test="q.endExclusive != null">AND o.order_time &lt; #{q.endExclusive}</if>
+        <if test="q.overdue != null and q.overdue">
+            AND o.ship_by &lt; CURRENT_TIMESTAMP
+            AND o.local_status IN ('PENDING', 'ON_HOLD', 'EXCEPTION', 'OUT_OF_STOCK', 'AUDITED', 'LABELED', 'OUTBOUND', 'PARTIAL')
+        </if>
+        <if test="q.keyword != null and q.keyword != ''">
+            AND (o.platform_order_no LIKE CONCAT('%', #{q.keyword}, '%') OR o.buyer_name LIKE CONCAT('%', #{q.keyword}, '%')
+                 OR o.ship_name LIKE CONCAT('%', #{q.keyword}, '%') OR o.tracking_no LIKE CONCAT('%', #{q.keyword}, '%')
+                 OR EXISTS (SELECT 1 FROM ecom_order_item oi WHERE oi.order_id = o.id AND oi.seller_sku LIKE CONCAT('%', #{q.keyword}, '%'))
+                 OR EXISTS (SELECT 1 FROM ecom_package_item pi JOIN ecom_package p ON p.id = pi.package_id
+                            WHERE pi.order_id = o.id AND (p.package_no = #{q.keyword} OR p.tracking_no = #{q.keyword})))
+        </if>
     </sql>
 
     <sql id="joins">
@@ -18,24 +41,36 @@
         SELECT <include refid="columns"/>
         <include refid="joins"/>
         <where>
-            <if test="q.storeId != null">o.store_id = #{q.storeId}</if>
-            <if test="q.platform != null">AND s.platform = #{q.platform}</if>
-            <if test="q.status != null">AND o.status = #{q.status}</if>
+            <include refid="filters"/>
             <if test="q.localStatus != null">AND o.local_status = #{q.localStatus}</if>
-            <if test="q.fulfillment != null">AND o.fulfillment = #{q.fulfillment}</if>
-            <if test="q.country != null and q.country != ''">AND o.ship_country = #{q.country}</if>
-            <if test="q.beginTime != null">AND o.order_time &gt;= #{q.beginTime}</if>
-            <if test="q.endExclusive != null">AND o.order_time &lt; #{q.endExclusive}</if>
-            <if test="q.overdue != null and q.overdue">
-                AND o.ship_by &lt; CURRENT_TIMESTAMP AND o.local_status IN ('PENDING', 'EXCEPTION', 'OUTBOUND')
-            </if>
-            <if test="q.keyword != null and q.keyword != ''">
-                AND (o.platform_order_no LIKE CONCAT('%', #{q.keyword}, '%') OR o.buyer_name LIKE CONCAT('%', #{q.keyword}, '%')
-                     OR o.ship_name LIKE CONCAT('%', #{q.keyword}, '%') OR o.tracking_no LIKE CONCAT('%', #{q.keyword}, '%')
-                     OR EXISTS (SELECT 1 FROM ecom_order_item oi WHERE oi.order_id = o.id AND oi.seller_sku LIKE CONCAT('%', #{q.keyword}, '%')))
+            <if test="q.localStatuses != null and q.localStatuses.size() > 0">
+                AND o.local_status IN <foreach collection="q.localStatuses" item="ls" open="(" separator="," close=")">#{ls}</foreach>
             </if>
         </where>
-        ORDER BY o.order_time DESC, o.id DESC
+        <choose>
+            <when test="q.urgencySort">
+                ORDER BY CASE WHEN COALESCE(o.ship_by, o.plan_ship_time) IS NULL THEN 1 ELSE 0 END, COALESCE(o.ship_by, o.plan_ship_time), o.order_time, o.id
+            </when>
+            <otherwise>ORDER BY o.order_time DESC, o.id DESC</otherwise>
+        </choose>
+    </select>
+
+    <!-- 各处理状态的订单数（状态标签页），条件与列表相同（不含处理状态） -->
+    <select id="countByLocalStatus" resultType="java.util.Map">
+        SELECT o.local_status AS "localStatus", COUNT(*) AS "cnt"
+        FROM ecom_order o
+        JOIN ecom_store s ON s.id = o.store_id
+        <where>
+            <include refid="filters"/>
+        </where>
+        GROUP BY o.local_status
+    </select>
+
+    <select id="selectByIdsForUpdate" resultType="com.lemon.erp.modules.ecom.entity.EcomOrder">
+        SELECT o.* FROM ecom_order o WHERE o.id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        ORDER BY o.id
+        FOR UPDATE
     </select>
 
     <select id="selectDetail" resultType="com.lemon.erp.modules.ecom.entity.EcomOrder">

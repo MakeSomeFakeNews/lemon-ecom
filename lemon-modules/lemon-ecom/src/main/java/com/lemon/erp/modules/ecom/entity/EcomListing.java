@@ -98,4 +98,11 @@ public class EcomListing extends BaseEntity {
     /** 导入时用店铺编码定位店铺 */
     @TableField(exist = false)
     private String storeCode;
+
+    /** 最近一次回传给平台的可售数量（渠道同步中心只回传和上次不同的） */
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private BigDecimal lastPushedQty;
+    /** 最近一次回传库存的时间 */
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private java.time.LocalDateTime lastPushedTime;
 }

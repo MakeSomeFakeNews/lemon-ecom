@@ -5,6 +5,7 @@
     <sql id="columns">
         s.id, s.code, s.name, s.platform, s.marketplace, s.currency, s.timezone, s.customer_id, s.warehouse_id, s.platform_warehouse_id,
         s.commission_rate, s.lead_days, s.safety_days, s.owner_id, s.seller_id, s.last_sync_time, s.status, s.remark, s.create_time, s.update_time,
+        s.sandbox, s.api_base_url, s.order_sync, s.inventory_sync, s.inventory_buffer, s.authorized_time, s.last_sync_message,
         CASE WHEN s.credentials IS NOT NULL AND s.credentials &lt;&gt; '' THEN 1 ELSE 0 END AS has_credentials,
         c.name AS customer_name, w.name AS warehouse_name, pw.name AS platform_warehouse_name, u.nickname AS owner_name,
         COALESCE(l.listing_count, 0) AS listing_count

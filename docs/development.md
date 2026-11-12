@@ -439,6 +439,37 @@ public void onOrderApproved(FlowFinishedEvent e) {
 - 渠道接口、大模型等外部调用都不在事务中；批量出库、定时同步逐条处理、每条一个事务，一条失败不影响其他；同步按「店铺 + 平台订单号」幂等，重复拉取不会重复入库。
 - 集成测试 `lemon-admin/src/test/java/com/lemon/erp/modules/ecom/EcomTests.java`：订单全流程（店铺建客户、在线商品与 SKU 唯一、导入与重复跳过、汇率折算与佣金估算、异常订单与重新匹配、出库成本与利润、发货运费试算与回传、取消限制、退货入库与退款、结算导入 / 确认 / 收款核销）、头程货件与平台配送订单（审批、在途调拨、签收、单件头程成本分摊到订单物流成本）、运费试算与物流渠道；进销存报表 `JxcReportTests`、`MarginAdjustReportTests`。
 
+### 订单作业
+
+自发货订单的日常处理在系统中完成，平台配送订单和简单情况仍可直接「出库 → 发货」。
+
+| 环节 | 说明 |
+| --- | --- |
+| 处理状态 | `EcomLocalStatus`：待审核 PENDING → 待打单 AUDITED（已生成包裹）/ 缺货 OUT_OF_STOCK → 待发货 LABELED（已取运单号）→ 已发货 SHIPPED；拆分后只发出一部分为部分发货 PARTIAL；另有已挂起 ON_HOLD（记录挂起前状态，取消挂起后恢复）、异常 EXCEPTION（SKU 未映射等）、已关闭 CLOSED；已出库 OUTBOUND 用于不经包裹直接出库的订单。订单页按状态分标签页并显示数量 |
+| 审单规则 | `ecom_order_rule`（页面「订单规则」）：按优先级逐条匹配，条件（店铺、平台、配送方式、收件国家、平台 SKU / 物料、本位币金额区间、重量区间）留空不限；动作：发货仓、物流渠道、截单时间取第一条设置了它的规则，任一条要求人工审核就挂起，否则有规则要求自动审核时自动审核，「命中后停止」不再往下匹配。订单写入后在同一事务中执行，也可对选中订单「重新应用规则」（会释放由规则挂起的订单，人工挂起的不释放） |
+| 审核与库存 | 审核时按发货仓可用量（空闲库存 − 其他未发货包裹已占用）检查，够则生成包裹进入待打单，不够进入缺货；补货后「重新检查库存」。挂起、已取消 / 退款的订单不能打单或发货；平台取消已打单的订单时自动挂起并写明原因 |
+| 包裹 | `ecom_package` / `ecom_package_item`（单号前缀 PK）：一个包裹对应一个或多个订单的部分或全部行、一个仓库、一个物流渠道、运单号与面单。**合并**：同店铺、同收件地址、都待打单的订单合成一个包裹；**拆分**：按行和件数分到多个包裹，各自检查库存。发货时包裹里每个订单各自生成销售出库，成本记到订单，运费按订单金额分摊到物流成本；订单全部发完后回传平台（每个平台订单回传同一运单号） |
+| 物流商对接 | `ecom/carrier` 包的 `CarrierConnector`（与平台连接器分开）：下单取号、取面单 PDF、取消、查轨迹，声明授权字段和正式 / 测试地址，由 `CarrierRegistry` 管理。物流渠道上选择对接物流商并填写加密授权、环境与自定义地址；已实现 **4PX 递四方**（`open.4px.com`，测试 `open-test.4px.com`，MD5 签名）和 **云途 YunExpress**（`oms.api.yunexpress.com`，测试 `omsapi.uat.yunexpress.com`，Basic 认证），均按公开文档实现、待真实账号联调。没对接的渠道手工填写运单号。面单保存在附件目录 `ecom-label/yyyy/MM/` |
+| 批量打单与发货 | 页面「包裹打单」：批量申请运单号、合并打印面单（OpenPDF 合并）、打印拣货单（按仓库分组、按库位区域 → 拣货顺序 → 编码汇总，模板 `ecom.pickList`）、批量发货；页面「扫描发货」：扫运单号确认发货。订单详情可「重新回传发货」（`POST /ecom/order/{id}/ship-confirm`） |
+
+接口：`/ecom/order` 的 `status-counts`、`audit`、`recheck`、`apply-rules`、`hold` / `unhold`、`merge`、`{id}/split`、`{id}/ship-confirm`；`/ecom/package`（分页、申请运单 `{id}/label` / `labels`、面单文件、`pick-list`、`ship`、`scan`、`{id}/cancel`、`{id}/track`）；`/ecom/order-rule`；`/ecom/logistics/carriers`。权限 `ecom:orderRule:*`、`ecom:order:audit`、`ecom:order:merge`、`ecom:package:label`、`ecom:package:ship`。测试 `EcomOrderOpsTests`、`CarrierConnectorTests`（本地 HttpServer 模拟物流商）。
+
+已知限制：部分发货只在订单全部发完时回传平台；拆分成多个包裹的订单退货时按第一张出库单处理；重量规则依赖订单上的预估重量（物料没有重量字段）。
+
+### 多平台渠道接入
+
+一个系统管理多个平台、每个平台多个店铺：店铺记录平台、授权信息（AES-256-GCM 加密，只写不读）、环境（沙箱 / 正式）和可选的自定义接口地址；调用平台接口时框架按店铺组装 `ConnectorContext` 交给该平台的连接器。
+
+| 部分 | 说明 |
+| --- | --- |
+| 连接器 SPI | `connector/ChannelConnector`：`info()` 声明授权方式 `AuthType`（OAUTH / KEYS）、授权字段 `CredentialField`、正式与沙箱地址、能力 `ConnectorCapability`（ORDERS、SHIP_CONFIRM、INVENTORY_PUSH、LISTINGS、PLATFORM_STOCK）和文档地址；按能力实现 `fetchOrders`、`confirmShipment`、`pushInventory`、`fetchListings`，OAuth 平台再实现 `authorizeUrl`、`exchangeCode`、`ensureToken`（刷新后 `ctx.updateCredentials` 加密写回）。地址一律取 `ctx.baseUrl(info)`：店铺填了自定义地址时用它（测试时指向模拟服务器），否则按环境取默认地址。签名工具 `ConnectorSigns`，HTTP 工具 `HttpJson` |
+| 已实现的平台 | 亚马逊 SP-API（含静态沙箱）、速卖通、虾皮 Shopee（官方沙箱 `partner.test-stable.shopeemobile.com`）、Lazada（按站点选网关，用测试店铺）、TikTok Shop（Partner Center 测试店铺）、Temu（半托管 / 本土卖家，按区域选网关）、eBay（沙箱 `api.sandbox.ebay.com`）、Shopify（Admin GraphQL，开发商店）、沃尔玛（沙箱 `sandbox.walmartapis.com`）、Ozon（FBS / FBO）、美客多。均按官方公开文档实现，每个连接器有模拟服务器单元测试（`lemon-ecom/src/test/.../connector`，验证签名、授权、分页、报文与错误），**尚未用真实开发者账号联调**，各连接器 javadoc 中列出了需要核对的点。平台物流（Lazada、虾皮 SLS、Ozon、美客多 me2）的运单号由平台生成，不能由 ERP 回传 |
+| 授权 | OAuth：店铺上「授权」调 `POST /ecom/store/{id}/authorize-url` 打开平台授权页，平台回调 `GET /api/ecom/oauth/callback/{平台}`（匿名访问，按签名的 state 确定租户与店铺，30 分钟有效），换取令牌后合并保存、记录授权时间与卖家 ID。回调地址默认按请求推算，部署在反向代理后要配置 `lemon.ecom.public-url`（含 `/api` 的后端外网地址），并在平台开发者后台登记。KEYS：直接填写密钥。修改店铺时提交的授权字段与已保存的合并（留空不修改，OAuth 令牌保留） |
+| 同步 | 拉取订单（定时 `ecom.orderSync` 每 30 分钟，增量水位为上次同步时间往前重叠 2 小时）、回传发货（发货事务提交后）、回传库存（`ecom.inventoryPush` 每 15 分钟，自发货在售已映射的商品，可售 = ⌊默认发货仓空闲库存 ÷ 多件装⌋ − 保留数量，只推变化的）、拉取在线商品（`ecom.listingSync` 每天，不覆盖已有映射，SKU 等于物料编码时自动映射）、令牌维护（`ecom.tokenRefresh` 每小时，失败标记需重新授权），日志 `ecom_sync_log` 保留 90 天（`ecom.syncLogClean`） |
+| 页面 | 平台店铺：按连接器声明动态生成授权表单（敏感字段密码框、已设置提示、OAuth 字段只读）、环境开关、高级设置（自定义地址）、同步开关；操作授权、同步订单、同步商品、回传库存、测试授权、同步日志。渠道接入（`/ecom/channel`）：按平台列出各店铺授权状态、环境、各能力最近一次结果与 24 小时失败次数，以及全部同步日志 |
+
+新增平台：实现 `ChannelConnector` 并注册为 Bean，在 `EcomPlatform` 与字典 `ecom_platform` 中加入平台（前端 `npm run gen:enums`，`locales/en-US/dict.js` 补英文），授权字段的显示名称写进 `ecom.properties`（`ecom.label.cred.<平台>.*`）；订单、库存、店铺页面不用改。测试 `EcomSyncHubTests`（用测试连接器覆盖授权、回调、同步、库存回传、商品同步、令牌刷新）。
+
 ## 财务管理
 
 代码在 `modules/fin`，前端 `views/fin`、`components/fin`。

@@ -1,6 +1,21 @@
 // 菜单名称英文翻译：键为 sys_menu.id（与 sql/init.sql 一致），中文直接使用数据库中的名称
 export default {
   17: 'E-commerce', // 电商
+  440: 'Channels', // 渠道接入
+  4400: 'Authorize Store', // 店铺授权
+  4401: 'Sync Listings', // 同步商品
+  4402: 'Push Inventory', // 回传库存
+  // 订单作业（订单与售后 982 下的页面，平台订单 423 的按钮）
+  432: 'Order Rules', // 订单规则
+  433: 'Packages', // 包裹打单
+  434: 'Scan to Ship', // 扫描发货
+  4320: 'Add Rule', // 规则新增
+  4321: 'Edit Rule', // 规则修改
+  4322: 'Delete Rule', // 规则删除
+  4323: 'Review Orders', // 订单审核
+  4324: 'Merge / Split Orders', // 合并拆分
+  4330: 'Get Tracking Numbers', // 申请运单
+  4331: 'Ship Packages', // 包裹发货
   981: 'Stores & Listings', // 店铺与商品
   982: 'Orders & After-sales', // 订单与售后
   983: 'Inventory & Logistics', // 库存与物流

@@ -657,6 +657,7 @@ export default {
     'TEMU': 'Temu', // Temu
     'WALMART': 'Walmart', // 沃尔玛
     'OZON': 'Ozon', // Ozon
+    'MERCADO_LIBRE': 'Mercado Libre', // 美客多
     'OTHER': 'Other', // 其他
   },
   // 配送方式
@@ -678,14 +679,6 @@ export default {
     'SHIPPED': 'Shipped', // 已发货
     'CANCELLED': 'Cancelled', // 已取消
     'REFUNDED': 'Refunded', // 已退款
-  },
-  // 订单处理状态
-  ecom_local_status: {
-    'PENDING': 'Pending', // 待处理
-    'EXCEPTION': 'Exception', // 异常
-    'OUTBOUND': 'Shipped Out', // 已出库
-    'SHIPPED': 'Shipped', // 已发货
-    'CLOSED': 'Closed', // 已关闭
   },
   // 货件状态
   ecom_inbound_status: {
@@ -773,5 +766,39 @@ export default {
     'NOT_NEEDED': 'No Longer Needed', // 买家不想要
     'LATE': 'Arrived Too Late', // 送达太迟
     'OTHER': 'Other', // 其他
+  },
+  // 订单处理状态
+  ecom_local_status: {
+    'PENDING': 'To Review', // 待审核
+    'ON_HOLD': 'On Hold', // 已挂起
+    'EXCEPTION': 'Exception', // 异常
+    'OUT_OF_STOCK': 'Out of Stock', // 缺货
+    'AUDITED': 'To Label', // 待打单
+    'LABELED': 'To Ship', // 待发货
+    'OUTBOUND': 'Shipped Out', // 已出库
+    'PARTIAL': 'Partially Shipped', // 部分发货
+    'SHIPPED': 'Shipped', // 已发货
+    'CLOSED': 'Closed', // 已关闭
+  },
+  // 包裹状态
+  ecom_package_status: {
+    'WAIT_LABEL': 'To Label', // 待打单
+    'LABELED': 'To Ship', // 待发货
+    'SHIPPED': 'Shipped', // 已发货
+    'CANCELLED': 'Cancelled', // 已取消
+  },
+  // 对接物流商
+  ecom_carrier: {
+    'FOURPX': '4PX', // 递四方 4PX
+    'YUNEXPRESS': 'YunExpress', // 云途物流
+  },
+  // 渠道同步类型
+  ecom_sync_type: {
+    'ORDERS': 'Fetch Orders', // 拉取订单
+    'SHIP_CONFIRM': 'Confirm Shipment', // 回传发货
+    'INVENTORY_PUSH': 'Push Inventory', // 回传库存
+    'LISTINGS': 'Fetch Listings', // 拉取商品
+    'PLATFORM_STOCK': 'Platform Stock', // 平台仓库存
+    'AUTH': 'Authorization', // 授权
   },
 }

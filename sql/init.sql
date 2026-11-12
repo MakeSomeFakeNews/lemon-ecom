@@ -5416,3 +5416,174 @@ INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, s
 ('ecom_sync_type', '拉取商品', 'LISTINGS', 'purple', 4, 1, 1, NOW(), NOW()),
 ('ecom_sync_type', '平台仓库存', 'PLATFORM_STOCK', 'orange', 5, 1, 1, NOW(), NOW()),
 ('ecom_sync_type', '授权', 'AUTH', 'gold', 6, 1, 1, NOW(), NOW());
+INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, builtin, create_time, update_time) VALUES ('ecom_platform', '美客多', 'MERCADO_LIBRE', 'gold', 12, 1, 1, NOW(), NOW());
+
+-- ---------------------------------------------------------------- 渠道同步中心：库存回传水位、同步日志索引、渠道接入页面与店铺按钮
+ALTER TABLE ecom_listing ADD COLUMN last_pushed_qty DECIMAL(18, 4) DEFAULT NULL COMMENT '最近一次回传给平台的可售数量（只回传和上次不同的）';
+ALTER TABLE ecom_listing ADD COLUMN last_pushed_time DATETIME DEFAULT NULL COMMENT '最近一次回传库存的时间';
+CREATE INDEX idx_ecom_sync_log_type ON ecom_sync_log (store_id, sync_type);
+CREATE INDEX idx_ecom_sync_log_time ON ecom_sync_log (start_time);
+
+INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time) VALUES
+(440, 981, '渠道接入', 'C', 'channel', 'ecom/channel/index', 'ecom:channel:list', 'ApiOutlined', 3, 1, 1, NOW(), NOW()),
+(4400, 421, '店铺授权', 'F', NULL, NULL, 'ecom:store:auth', NULL, 5, 1, 1, NOW(), NOW()),
+(4401, 421, '同步商品', 'F', NULL, NULL, 'ecom:store:syncListing', NULL, 6, 1, 1, NOW(), NOW()),
+(4402, 421, '回传库存', 'F', NULL, NULL, 'ecom:store:push', NULL, 7, 1, 1, NOW(), NOW());
+
+-- 电商运营：渠道接入与店铺授权、同步商品、回传库存；普通用户、总经理只读渠道接入
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT g.role_id, g.menu_id FROM (
+    SELECT 5 AS role_id, 440 AS menu_id UNION ALL SELECT 5, 4400 UNION ALL SELECT 5, 4401 UNION ALL SELECT 5, 4402
+    UNION ALL SELECT 2, 440 UNION ALL SELECT 3, 440
+) g
+WHERE EXISTS (SELECT 1 FROM sys_role r WHERE r.id = g.role_id)
+  AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = g.role_id AND x.menu_id = g.menu_id);
+
+-- ---------------------------------------------------------------- 跨境电商：订单作业闭环（审单规则、审核与缺货、挂起、合并 / 拆分包裹、物流商面单、批量打单、扫描发货）
+
+-- 平台订单：挂起、截单、重量、命中规则、审核时间
+ALTER TABLE ecom_order ADD COLUMN hold_reason VARCHAR(255) DEFAULT NULL COMMENT '挂起原因（审单规则要求人工审核或人工拦截）';
+ALTER TABLE ecom_order ADD COLUMN hold_prev_status VARCHAR(16) DEFAULT NULL COMMENT '挂起前的处理状态，取消挂起后恢复';
+ALTER TABLE ecom_order ADD COLUMN hold_rule_id BIGINT DEFAULT NULL COMMENT '挂起的审单规则（人工挂起为空）';
+ALTER TABLE ecom_order ADD COLUMN plan_ship_time DATETIME DEFAULT NULL COMMENT '计划发货时间（按审单规则的截单时间推算）';
+ALTER TABLE ecom_order ADD COLUMN weight DECIMAL(18, 3) DEFAULT NULL COMMENT '预估重量（kg），审单规则按重量区间匹配';
+ALTER TABLE ecom_order ADD COLUMN matched_rules VARCHAR(255) DEFAULT NULL COMMENT '命中的审单规则名称';
+ALTER TABLE ecom_order ADD COLUMN audit_time DATETIME DEFAULT NULL COMMENT '审核通过时间';
+CREATE INDEX idx_ecom_order_ship_by ON ecom_order (ship_by);
+
+-- 物流渠道：对接物流商面单接口
+ALTER TABLE ecom_logistics_channel ADD COLUMN carrier VARCHAR(16) DEFAULT NULL COMMENT '对接的物流商(字典 ecom_carrier) FOURPX递四方 YUNEXPRESS云途，为空未对接（手工填写运单号）';
+ALTER TABLE ecom_logistics_channel ADD COLUMN carrier_service VARCHAR(64) DEFAULT NULL COMMENT '物流商产品 / 运输方式代码（4PX logistics_product_code、云途 ShippingMethodCode）';
+ALTER TABLE ecom_logistics_channel ADD COLUMN carrier_credentials TEXT COMMENT '物流商授权（JSON，加密保存，enc: 前缀）';
+ALTER TABLE ecom_logistics_channel ADD COLUMN carrier_sandbox TINYINT NOT NULL DEFAULT 0 COMMENT '物流商接口环境 1测试 0正式';
+ALTER TABLE ecom_logistics_channel ADD COLUMN carrier_api_url VARCHAR(255) DEFAULT NULL COMMENT '自定义物流商接口地址，为空按环境取默认地址';
+
+DROP TABLE IF EXISTS ecom_order_rule;
+CREATE TABLE ecom_order_rule (
+    id            BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id     BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    name          VARCHAR(64)    NOT NULL COMMENT '规则名称',
+    priority      INT            NOT NULL DEFAULT 100 COMMENT '优先级，数字小的先匹配',
+    status        TINYINT        NOT NULL DEFAULT 1 COMMENT '状态 1启用 0停用',
+    store_ids     VARCHAR(500)            DEFAULT NULL COMMENT '条件：店铺 ID（逗号分隔），为空不限',
+    platforms     VARCHAR(255)            DEFAULT NULL COMMENT '条件：平台（逗号分隔）',
+    fulfillment   VARCHAR(16)             DEFAULT NULL COMMENT '条件：配送方式(字典 ecom_fulfillment)',
+    countries     VARCHAR(500)            DEFAULT NULL COMMENT '条件：收件国家 / 地区代码（逗号分隔）',
+    skus          VARCHAR(1000)           DEFAULT NULL COMMENT '条件：平台 SKU（逗号分隔，任一行命中）',
+    material_ids  VARCHAR(500)            DEFAULT NULL COMMENT '条件：本地物料 ID（逗号分隔，任一行命中）',
+    amount_min    DECIMAL(18, 2)          DEFAULT NULL COMMENT '条件：订单金额下限（本位币，含）',
+    amount_max    DECIMAL(18, 2)          DEFAULT NULL COMMENT '条件：订单金额上限（本位币，含）',
+    weight_min    DECIMAL(18, 3)          DEFAULT NULL COMMENT '条件：重量下限（kg，含）',
+    weight_max    DECIMAL(18, 3)          DEFAULT NULL COMMENT '条件：重量上限（kg，含）',
+    warehouse_id  BIGINT                  DEFAULT NULL COMMENT '动作：指定发货仓',
+    channel_id    BIGINT                  DEFAULT NULL COMMENT '动作：指定物流渠道',
+    hold_order    TINYINT        NOT NULL DEFAULT 0 COMMENT '动作：标记需人工审核（挂起） 1是 0否',
+    hold_reason   VARCHAR(255)            DEFAULT NULL COMMENT '挂起原因',
+    auto_audit    TINYINT        NOT NULL DEFAULT 0 COMMENT '动作：自动审核通过 1是 0否',
+    cutoff_time   TIME                    DEFAULT NULL COMMENT '动作：截单时间（之前付款当天发货，之后次日）',
+    stop_on_match TINYINT        NOT NULL DEFAULT 0 COMMENT '命中后不再匹配后续规则 1是 0否',
+    remark        VARCHAR(255)            DEFAULT NULL COMMENT '备注',
+    create_time   DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time   DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_order_rule_priority (status, priority)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '审单规则';
+
+DROP TABLE IF EXISTS ecom_package_item;
+DROP TABLE IF EXISTS ecom_package;
+CREATE TABLE ecom_package (
+    id               BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id        BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    package_no       VARCHAR(32)    NOT NULL COMMENT '包裹号（编码规则 PK），向物流商下单的客户单号',
+    store_id         BIGINT         NOT NULL COMMENT '店铺',
+    warehouse_id     BIGINT         NOT NULL COMMENT '发货仓',
+    channel_id       BIGINT                  DEFAULT NULL COMMENT '物流渠道',
+    carrier          VARCHAR(16)             DEFAULT NULL COMMENT '对接的物流商(字典 ecom_carrier)',
+    carrier_name     VARCHAR(64)             DEFAULT NULL COMMENT '承运商名称（回传平台）',
+    carrier_order_no VARCHAR(64)             DEFAULT NULL COMMENT '物流商订单号（取面单、取消用）',
+    tracking_no      VARCHAR(64)             DEFAULT NULL COMMENT '运单号（跟踪号）',
+    label_file       VARCHAR(255)            DEFAULT NULL COMMENT '面单 PDF（附件目录下的相对路径）',
+    label_time       DATETIME                DEFAULT NULL COMMENT '取得运单号时间',
+    print_count      INT            NOT NULL DEFAULT 0 COMMENT '面单打印次数',
+    weight           DECIMAL(18, 3)          DEFAULT NULL COMMENT '重量（kg）',
+    shipping_cost    DECIMAL(18, 2)          DEFAULT NULL COMMENT '运费（本位币），发货时按订单金额分摊到订单的物流成本',
+    status           VARCHAR(16)    NOT NULL DEFAULT 'WAIT_LABEL' COMMENT '状态(字典 ecom_package_status) WAIT_LABEL待打单 LABELED待发货 SHIPPED已发货 CANCELLED已取消',
+    ship_time        DATETIME                DEFAULT NULL COMMENT '发货时间',
+    ship_name        VARCHAR(64)             DEFAULT NULL COMMENT '收件人（快照）',
+    ship_country     VARCHAR(8)              DEFAULT NULL COMMENT '收件国家（快照）',
+    error_msg        VARCHAR(500)            DEFAULT NULL COMMENT '最近一次申请运单号 / 取面单失败的原因',
+    remark           VARCHAR(255)            DEFAULT NULL COMMENT '备注',
+    create_by        BIGINT                  DEFAULT NULL COMMENT '创建人',
+    create_time      DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time      DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_package_no (package_no, tenant_id),
+    KEY idx_ecom_package_tracking (tracking_no),
+    KEY idx_ecom_package_status (status, warehouse_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '包裹（一个或多个平台订单的全部或部分行，一个运单号）';
+
+CREATE TABLE ecom_package_item (
+    id            BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id     BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    package_id    BIGINT         NOT NULL COMMENT '包裹',
+    order_id      BIGINT         NOT NULL COMMENT '平台订单',
+    order_item_id BIGINT         NOT NULL COMMENT '平台订单明细',
+    material_id   BIGINT         NOT NULL COMMENT '物料',
+    qty           DECIMAL(18, 4) NOT NULL COMMENT '件数（平台 SKU）',
+    material_qty  DECIMAL(18, 4) NOT NULL COMMENT '物料数量',
+    cost          DECIMAL(18, 2)          DEFAULT NULL COMMENT '出库成本（本位币）',
+    trade_doc_id  BIGINT                  DEFAULT NULL COMMENT '发货时生成的销售出库单(scm_trade_doc)',
+    trade_doc_no  VARCHAR(32)             DEFAULT NULL COMMENT '销售出库单号',
+    create_time   DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time   DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_package_item_pkg (package_id),
+    KEY idx_ecom_package_item_order (order_id),
+    KEY idx_ecom_package_item_material (material_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '包裹明细';
+
+-- 菜单：订单与售后下的订单规则、包裹打单、扫描发货；平台订单的审核、合并拆分按钮
+INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time) VALUES
+(432, 982, '订单规则', 'C', 'order-rule', 'ecom/order-rule/index', 'ecom:orderRule:list', 'FilterOutlined', 3, 1, 1, NOW(), NOW()),
+(433, 982, '包裹打单', 'C', 'package', 'ecom/package/index', 'ecom:package:list', 'InboxOutlined', 4, 1, 1, NOW(), NOW()),
+(434, 982, '扫描发货', 'C', 'scan-ship', 'ecom/scan-ship/index', 'ecom:package:ship', 'ScanOutlined', 5, 1, 1, NOW(), NOW()),
+(4320, 432, '规则新增', 'F', NULL, NULL, 'ecom:orderRule:add', NULL, 1, 1, 1, NOW(), NOW()),
+(4321, 432, '规则修改', 'F', NULL, NULL, 'ecom:orderRule:edit', NULL, 2, 1, 1, NOW(), NOW()),
+(4322, 432, '规则删除', 'F', NULL, NULL, 'ecom:orderRule:remove', NULL, 3, 1, 1, NOW(), NOW()),
+(4323, 423, '订单审核', 'F', NULL, NULL, 'ecom:order:audit', NULL, 6, 1, 1, NOW(), NOW()),
+(4324, 423, '合并拆分', 'F', NULL, NULL, 'ecom:order:merge', NULL, 7, 1, 1, NOW(), NOW()),
+(4330, 433, '申请运单', 'F', NULL, NULL, 'ecom:package:label', NULL, 1, 1, 1, NOW(), NOW()),
+(4331, 433, '包裹发货', 'F', NULL, NULL, 'ecom:package:ship', NULL, 2, 1, 1, NOW(), NOW());
+
+-- 字典：订单处理状态细化（待处理改为待审核，增加已挂起、缺货、待打单、待发货、部分发货），包裹状态，对接的物流商
+UPDATE sys_dict_data SET dict_label = '待审核', sort = 1 WHERE dict_type = 'ecom_local_status' AND dict_value = 'PENDING';
+UPDATE sys_dict_data SET sort = 3 WHERE dict_type = 'ecom_local_status' AND dict_value = 'EXCEPTION';
+UPDATE sys_dict_data SET sort = 7 WHERE dict_type = 'ecom_local_status' AND dict_value = 'OUTBOUND';
+UPDATE sys_dict_data SET sort = 9 WHERE dict_type = 'ecom_local_status' AND dict_value = 'SHIPPED';
+UPDATE sys_dict_data SET sort = 10 WHERE dict_type = 'ecom_local_status' AND dict_value = 'CLOSED';
+INSERT INTO sys_dict_type (id, name, type, kind, status, remark, create_time, update_time) VALUES
+(230, '包裹状态', 'ecom_package_status', 'SYSTEM', 1, '平台订单包裹的打单、发货状态', NOW(), NOW()),
+(231, '对接物流商', 'ecom_carrier', 'SYSTEM', 1, '物流渠道对接的物流商面单接口', NOW(), NOW());
+INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, builtin, create_time, update_time) VALUES
+('ecom_local_status', '已挂起', 'ON_HOLD', 'volcano', 2, 1, 1, NOW(), NOW()),
+('ecom_local_status', '缺货', 'OUT_OF_STOCK', 'magenta', 4, 1, 1, NOW(), NOW()),
+('ecom_local_status', '待打单', 'AUDITED', 'cyan', 5, 1, 1, NOW(), NOW()),
+('ecom_local_status', '待发货', 'LABELED', 'blue', 6, 1, 1, NOW(), NOW()),
+('ecom_local_status', '部分发货', 'PARTIAL', 'gold', 8, 1, 1, NOW(), NOW()),
+('ecom_package_status', '待打单', 'WAIT_LABEL', 'orange', 1, 1, 1, NOW(), NOW()),
+('ecom_package_status', '待发货', 'LABELED', 'blue', 2, 1, 1, NOW(), NOW()),
+('ecom_package_status', '已发货', 'SHIPPED', 'green', 3, 1, 1, NOW(), NOW()),
+('ecom_package_status', '已取消', 'CANCELLED', 'default', 4, 1, 1, NOW(), NOW()),
+('ecom_carrier', '递四方 4PX', 'FOURPX', 'blue', 1, 1, 1, NOW(), NOW()),
+('ecom_carrier', '云途物流', 'YUNEXPRESS', 'green', 2, 1, 1, NOW(), NOW());
+
+-- 内置角色：电商运营全部；仓库管理员打单、发货、扫描；普通用户、总经理只读
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT g.role_id, g.menu_id FROM (
+    SELECT 5 AS role_id, 432 AS menu_id UNION ALL SELECT 5, 433 UNION ALL SELECT 5, 434 UNION ALL SELECT 5, 4320 UNION ALL SELECT 5, 4321
+    UNION ALL SELECT 5, 4322 UNION ALL SELECT 5, 4323 UNION ALL SELECT 5, 4324 UNION ALL SELECT 5, 4330 UNION ALL SELECT 5, 4331
+    UNION ALL SELECT 6, 17 UNION ALL SELECT 6, 982 UNION ALL SELECT 6, 433 UNION ALL SELECT 6, 434 UNION ALL SELECT 6, 4330 UNION ALL SELECT 6, 4331
+    UNION ALL SELECT 2, 432 UNION ALL SELECT 2, 433 UNION ALL SELECT 3, 432 UNION ALL SELECT 3, 433
+) g
+WHERE EXISTS (SELECT 1 FROM sys_role r WHERE r.id = g.role_id)
+  AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = g.role_id AND x.menu_id = g.menu_id);

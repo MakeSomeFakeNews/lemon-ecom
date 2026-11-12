@@ -56,6 +56,22 @@ public class EcomLogisticsController {
         return R.ok(logisticsService.estimate(country, weight));
     }
 
+    /** 可对接的物流商面单接口：授权字段、正式 / 测试地址（渠道表单使用） */
+    @GetMapping("/carriers")
+    @PreAuthorize("@ss.hasPerm('ecom:logistics:list')")
+    public R<List<EcomLogisticsService.CarrierView>> carriers() {
+        return R.ok(logisticsService.carriers());
+    }
+
+    /** 清除物流商授权 */
+    @DeleteMapping("/{id}/carrier-credentials")
+    @PreAuthorize("@ss.hasPerm('ecom:logistics:edit')")
+    @OperLog(title = "物流渠道", type = OperType.UPDATE) // i18n-ignore 操作日志标题存库
+    public R<Void> clearCarrierCredentials(@PathVariable Long id) {
+        logisticsService.clearCarrierCredentials(id);
+        return R.ok();
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("@ss.hasPerm('ecom:logistics:list')")
     public R<EcomLogisticsChannel> get(@PathVariable Long id) {

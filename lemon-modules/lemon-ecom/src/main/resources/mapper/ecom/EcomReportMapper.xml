@@ -23,9 +23,12 @@
     </select>
 
     <select id="selectOrderCounts" resultType="map">
+        <!-- 待处理 = 待审核；异常 = 异常、挂起、缺货；逾期 = 承诺发货时间已过且还没有全部发出 -->
         SELECT SUM(CASE WHEN o.local_status = 'PENDING' THEN 1 ELSE 0 END) AS pending,
-               SUM(CASE WHEN o.local_status = 'EXCEPTION' THEN 1 ELSE 0 END) AS exception,
-               SUM(CASE WHEN o.ship_by &lt; #{now} AND o.local_status IN ('PENDING', 'EXCEPTION', 'OUTBOUND') THEN 1 ELSE 0 END) AS overdue
+               SUM(CASE WHEN o.local_status IN ('EXCEPTION', 'ON_HOLD', 'OUT_OF_STOCK') THEN 1 ELSE 0 END) AS exception,
+               SUM(CASE WHEN o.ship_by &lt; #{now}
+                         AND o.local_status IN ('PENDING', 'ON_HOLD', 'EXCEPTION', 'OUT_OF_STOCK', 'AUDITED', 'LABELED', 'OUTBOUND', 'PARTIAL')
+                        THEN 1 ELSE 0 END) AS overdue
         FROM ecom_order o
         WHERE o.status &lt;&gt; 'CANCELLED'
     </select>

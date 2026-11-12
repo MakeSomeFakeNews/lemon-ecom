@@ -8,6 +8,7 @@ import com.lemon.erp.modules.ecom.entity.EcomStore;
 import com.lemon.erp.modules.ecom.model.EcomOrderStatus;
 import com.lemon.erp.modules.ecom.model.EcomPlatform;
 import com.lemon.erp.modules.ecom.model.FulfillmentType;
+import com.lemon.erp.modules.ecom.model.ListingStatus;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 
@@ -24,10 +25,27 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 亚马逊 Selling Partner API（Orders API v0）：LWA 刷新令牌换取访问令牌后调用 getOrders / getOrderItems，
- * 发货回传使用 confirmShipment。授权信息：region（NA / EU / FE）、marketplaceId、clientId、clientSecret、refreshToken。
+ * 亚马逊 Selling Partner API：LWA 刷新令牌换取访问令牌后调用
+ * <ul>
+ *   <li>订单（Orders API v0）：getOrders 按 LastUpdatedAfter + NextToken 分页、getOrderItems；FulfillmentChannel = AFN（FBA）映射为平台仓配送</li>
+ *   <li>回传发货：confirmShipment</li>
+ *   <li>回传库存（Listings Items API 2021-08-01）：patchListingsItem 替换 fulfillment_availability（渠道 DEFAULT，即自发货库存），
+ *       productType 用通用值 PRODUCT（只改报价属性时亚马逊接受）；FBA 库存由亚马逊维护，不回传</li>
+ *   <li>在线商品：searchListingsItems（includedData = summaries,offers,fulfillmentAvailability，pageToken 分页，每页 20）</li>
+ * </ul>
+ * 授权信息：region（NA / EU / FE）、marketplaceId、clientId、clientSecret、refreshToken，
+ * sellingPartnerId（卖家 ID / Merchant Token，Listings 接口路径需要；店铺上填写了卖家 ID 时优先用店铺的）。
  * <p>
- * 说明：接口按亚马逊公开文档实现，尚未用真实卖家账号联调；getOrders 限速约每分钟 1 次（突发 20），定时同步间隔不要过短
+ * 地址：店铺填写了自定义地址时业务接口与 LWA 令牌接口都指向它（令牌为 {自定义地址}/auth/o2/token），否则按区域与沙箱开关选择。
+ * 访问令牌（约 1 小时有效）缓存在授权信息 accessToken / accessTokenExpiresAt（毫秒）中，提前 60 秒刷新；
+ * accessTokenOwner 记录令牌对应的 refreshToken 摘要，卖家更换 refreshToken 后立即重新换取。
+ * <p>
+ * 编码约定：订单明细 sellerSku = SellerSKU（亚马逊必有），platformItemId = ASIN；在线商品 platformItemId = ASIN，
+ * fulfillment 按 fulfillmentAvailability 的渠道（DEFAULT 自发货，AMAZON_* 平台仓），status：summaries.status 含 BUYABLE 为在售，
+ * 其他为下架，没有 summaries 为信息不完整。
+ * <p>
+ * 说明：接口按亚马逊公开文档实现，尚未用真实卖家账号联调；getOrders 限速约每分钟 1 次（突发 20），定时同步间隔不要过短；
+ * patchListingsItem 限速每秒 5 次，库存回传逐个 SKU 调用，部分失败时其余 SKU 照常提交，最后汇总报错
  */
 @Component
 public class AmazonSpConnector implements ChannelConnector {
@@ -48,11 +66,31 @@ public class AmazonSpConnector implements ChannelConnector {
             CredentialField.text("marketplaceId", "ecom.label.cred.marketplaceId", true),
             CredentialField.text("clientId", "ecom.label.cred.clientId", true),
             CredentialField.secret("clientSecret", "ecom.label.cred.clientSecret"),
-            CredentialField.secret("refreshToken", "ecom.label.cred.refreshToken")),
+            CredentialField.secret("refreshToken", "ecom.label.cred.refreshToken"),
+            CredentialField.text("sellingPartnerId", "ecom.label.cred.amazonSellingPartnerId", false)),
             ENDPOINTS.get("NA"), SANDBOX_ENDPOINTS.get("NA"),
-            java.util.EnumSet.of(ConnectorCapability.ORDERS, ConnectorCapability.SHIP_CONFIRM),
+            java.util.EnumSet.of(ConnectorCapability.ORDERS, ConnectorCapability.SHIP_CONFIRM, ConnectorCapability.INVENTORY_PUSH,
+                    ConnectorCapability.LISTINGS),
             "https://developer-docs.amazon.com/sp-api/");
     private static final DateTimeFormatter ISO = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
+    private static final String LISTINGS_PATH = "/listings/2021-08-01/items/";
+    private static final int LISTING_PAGE_SIZE = 20;
+    private static final int MAX_LISTING_PAGES = 250;
+    private static final int MAX_ORDER_PAGES = 20;
+    /** 提前刷新访问令牌的秒数 */
+    private static final long TOKEN_SKEW_SECONDS = 60;
+    /** 商品详情页域名（按 marketplaceId，未列出的不生成链接） */
+    private static final Map<String, String> MARKETPLACE_DOMAINS = Map.ofEntries(
+            Map.entry("ATVPDKIKX0DER", "www.amazon.com"), Map.entry("A2EUQ1WTGCTBG2", "www.amazon.ca"),
+            Map.entry("A1AM78C64UM0Y8", "www.amazon.com.mx"), Map.entry("A2Q3Y263D00KWC", "www.amazon.com.br"),
+            Map.entry("A1F83G8C2ARO7P", "www.amazon.co.uk"), Map.entry("A1PA6795UKMFR9", "www.amazon.de"),
+            Map.entry("A13V1IB3VIYZZH", "www.amazon.fr"), Map.entry("APJ6JRA9NG5V4", "www.amazon.it"),
+            Map.entry("A1RKKUPIHCS9HS", "www.amazon.es"), Map.entry("A1805IZSGTT6HS", "www.amazon.nl"),
+            Map.entry("A2NODRKZP88ZB9", "www.amazon.se"), Map.entry("A1C3SOZRARQ6R3", "www.amazon.pl"),
+            Map.entry("A33AVAJ2PDY3EV", "www.amazon.com.tr"), Map.entry("A2VIGQ35RCS4UG", "www.amazon.ae"),
+            Map.entry("A17E79C6D8DWNP", "www.amazon.sa"), Map.entry("A21TJRUUN4KGV", "www.amazon.in"),
+            Map.entry("A1VC38T7YXB528", "www.amazon.co.jp"), Map.entry("A39IBJ37TRP1C6", "www.amazon.com.au"),
+            Map.entry("A19VAU5U5O7RUS", "www.amazon.sg"));
 
     @Override
     public ConnectorInfo info() {
@@ -64,8 +102,7 @@ public class AmazonSpConnector implements ChannelConnector {
         EcomStore store = ctx.store();
         StoreCredentials c = ctx.credentials();
         String endpoint = endpoint(ctx);
-        String token = accessToken(c);
-        Map<String, String> headers = Map.of("x-amz-access-token", token, "Accept", "application/json");
+        Map<String, String> headers = headers(ctx);
         String marketplace = c.require("marketplaceId");
         String after = since.atOffset(ZoneOffset.UTC).format(ISO);
         List<OrderDraft> drafts = new ArrayList<>();
@@ -88,19 +125,21 @@ public class AmazonSpConnector implements ChannelConnector {
             }
             nextToken = HttpJson.text(payload, "NextToken");
             pages++;
-        } while (nextToken != null && pages < 20);
+        } while (nextToken != null && pages < MAX_ORDER_PAGES);
         return drafts;
     }
 
     private List<JsonNode> orderItems(String endpoint, Map<String, String> headers, String orderId) {
         List<JsonNode> items = new ArrayList<>();
         String nextToken = null;
+        int pages = 0;
         do {
-            String url = endpoint + "/orders/v0/orders/" + enc(orderId) + "/orderItems" + (nextToken == null ? "" : "?NextToken=" + enc(nextToken));
+            String url = endpoint + "/orders/v0/orders/" + path(orderId) + "/orderItems" + (nextToken == null ? "" : "?NextToken=" + enc(nextToken));
             JsonNode payload = HttpJson.get(url, headers, PLATFORM).path("payload");
             payload.path("OrderItems").forEach(items::add);
             nextToken = HttpJson.text(payload, "NextToken");
-        } while (nextToken != null);
+            pages++;
+        } while (nextToken != null && pages < MAX_ORDER_PAGES);
         return items;
     }
 
@@ -152,7 +191,7 @@ public class AmazonSpConnector implements ChannelConnector {
     public void confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
         StoreCredentials c = ctx.credentials();
         String endpoint = endpoint(ctx);
-        Map<String, String> headers = Map.of("x-amz-access-token", accessToken(c), "Accept", "application/json");
+        Map<String, String> headers = headers(ctx);
         List<Map<String, Object>> lines = new ArrayList<>();
         for (EcomOrderItem it : items) {
             if (it.getPlatformLineId() == null) {
@@ -169,19 +208,189 @@ public class AmazonSpConnector implements ChannelConnector {
         Map<String, Object> body = new HashMap<>();
         body.put("marketplaceId", c.require("marketplaceId"));
         body.put("packageDetail", pkg);
-        HttpJson.postJson(endpoint + "/orders/v0/orders/" + enc(order.getPlatformOrderNo()) + "/shipmentConfirmation", headers, body, PLATFORM);
+        HttpJson.postJson(endpoint + "/orders/v0/orders/" + path(order.getPlatformOrderNo()) + "/shipmentConfirmation", headers, body, PLATFORM);
     }
 
-    /** LWA：refresh_token 换 access_token */
-    private static String accessToken(StoreCredentials c) {
+    // ---------------------------------------------------------------- 库存与在线商品
+
+    @Override
+    public void pushInventory(ConnectorContext ctx, List<InventoryUpdate> updates) {
+        if (updates == null || updates.isEmpty()) {
+            return;
+        }
+        String endpoint = endpoint(ctx);
+        Map<String, String> headers = headers(ctx);
+        String sellerId = sellerId(ctx);
+        String marketplace = ctx.credentials().require("marketplaceId");
+        List<String> failures = new ArrayList<>();
+        for (InventoryUpdate u : updates) {
+            int qty = u.qty() == null ? 0 : Math.max(0, u.qty().setScale(0, java.math.RoundingMode.DOWN).intValue());
+            Map<String, Object> availability = new LinkedHashMap<>();
+            availability.put("fulfillment_channel_code", "DEFAULT");
+            availability.put("quantity", qty);
+            Map<String, Object> patch = new LinkedHashMap<>();
+            patch.put("op", "replace");
+            patch.put("path", "/attributes/fulfillment_availability");
+            patch.put("value", List.of(availability));
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("productType", "PRODUCT");
+            body.put("patches", List.of(patch));
+            String url = endpoint + LISTINGS_PATH + path(sellerId) + "/" + path(u.sellerSku()) + "?marketplaceIds=" + enc(marketplace);
+            try {
+                JsonNode resp = HttpJson.request("PATCH", url, headers, body, PLATFORM);
+                if (!"ACCEPTED".equals(HttpJson.text(resp, "status"))) {
+                    failures.add(u.sellerSku() + ": " + issues(resp));
+                }
+            } catch (BizException e) {
+                failures.add(u.sellerSku() + ": " + e.getMessage());
+            }
+        }
+        if (!failures.isEmpty()) {
+            throw new BizException("ecom.error.connectorCallFailed", PLATFORM, HttpJson.abbreviate(String.join("; ", failures)));
+        }
+    }
+
+    private static String issues(JsonNode resp) {
+        List<String> list = new ArrayList<>();
+        for (JsonNode i : resp.path("issues")) {
+            list.add(HttpJson.text(i, "code") + " " + HttpJson.text(i, "message"));
+        }
+        return list.isEmpty() ? resp.toString() : String.join(", ", list);
+    }
+
+    @Override
+    public List<ListingDraft> fetchListings(ConnectorContext ctx) {
+        String endpoint = endpoint(ctx);
+        Map<String, String> headers = headers(ctx);
+        String sellerId = sellerId(ctx);
+        String marketplace = ctx.credentials().require("marketplaceId");
+        String currency = ctx.store() == null ? null : ctx.store().getCurrency();
+        List<ListingDraft> drafts = new ArrayList<>();
+        String pageToken = null;
+        int pages = 0;
+        do {
+            StringBuilder url = new StringBuilder(endpoint).append(LISTINGS_PATH).append(path(sellerId))
+                    .append("?marketplaceIds=").append(enc(marketplace))
+                    .append("&includedData=").append(enc("summaries,offers,fulfillmentAvailability"))
+                    .append("&pageSize=").append(LISTING_PAGE_SIZE);
+            if (pageToken != null) {
+                url.append("&pageToken=").append(enc(pageToken));
+            }
+            JsonNode resp = HttpJson.get(url.toString(), headers, PLATFORM);
+            for (JsonNode item : resp.path("items")) {
+                drafts.add(toListing(item, marketplace, currency));
+            }
+            pageToken = HttpJson.text(resp.path("pagination"), "nextToken");
+            pages++;
+        } while (pageToken != null && pages < MAX_LISTING_PAGES);
+        return drafts;
+    }
+
+    private static ListingDraft toListing(JsonNode item, String marketplace, String storeCurrency) {
+        JsonNode summary = forMarketplace(item.path("summaries"), marketplace);
+        JsonNode offer = null;
+        for (JsonNode o : item.path("offers")) {
+            if ((marketplace.equals(HttpJson.text(o, "marketplaceId")) || HttpJson.text(o, "marketplaceId") == null)
+                    && (offer == null || "B2C".equals(HttpJson.text(o, "offerType")))) {
+                offer = o;
+            }
+        }
+        String fulfillment = null;
+        java.math.BigDecimal qty = null;
+        for (JsonNode f : item.path("fulfillmentAvailability")) {
+            String channel = HttpJson.text(f, "fulfillmentChannelCode");
+            boolean seller = "DEFAULT".equals(channel);
+            if (fulfillment == null || seller) {
+                fulfillment = seller ? FulfillmentType.SELLER.name() : FulfillmentType.PLATFORM.name();
+                qty = HttpJson.decimal(f, "quantity");
+            }
+        }
+        String asin = summary == null ? null : HttpJson.text(summary, "asin");
+        String status;
+        if (summary == null) {
+            status = ListingStatus.INCOMPLETE.name();
+        } else {
+            boolean buyable = false;
+            for (JsonNode st : summary.path("status")) {
+                buyable |= "BUYABLE".equals(st.asString());
+            }
+            status = buyable ? ListingStatus.ACTIVE.name() : ListingStatus.INACTIVE.name();
+        }
+        String domain = MARKETPLACE_DOMAINS.get(marketplace);
+        String currency = offer == null ? null : HttpJson.text(offer.path("price"), "currencyCode");
+        return new ListingDraft(HttpJson.text(item, "sku"), asin, null,
+                summary == null ? null : HttpJson.text(summary, "itemName"), null,
+                offer == null ? null : HttpJson.decimal(offer, "price", "amount"), currency == null ? storeCurrency : currency, qty,
+                fulfillment, status, summary == null ? null : HttpJson.text(summary.path("mainImage"), "link"),
+                asin == null || domain == null ? null : "https://" + domain + "/dp/" + asin);
+    }
+
+    private static JsonNode forMarketplace(JsonNode list, String marketplace) {
+        JsonNode first = null;
+        for (JsonNode n : list) {
+            if (marketplace.equals(HttpJson.text(n, "marketplaceId"))) {
+                return n;
+            }
+            if (first == null) {
+                first = n;
+            }
+        }
+        return first;
+    }
+
+    /** Listings 接口路径中的卖家 ID：店铺上的卖家 ID 优先，否则取授权信息 sellingPartnerId */
+    private static String sellerId(ConnectorContext ctx) {
+        String id = ctx.store() == null ? null : ctx.store().getSellerId();
+        return id != null && !id.isBlank() ? id.trim() : ctx.credentials().require("sellingPartnerId");
+    }
+
+    // ---------------------------------------------------------------- 令牌与地址
+
+    private Map<String, String> headers(ConnectorContext ctx) {
+        ensureToken(ctx);
+        return Map.of("x-amz-access-token", ctx.credentials().require("accessToken"), "Accept", "application/json");
+    }
+
+    /** LWA：refresh_token 换 access_token，缓存到授权信息，快过期或 refreshToken 变更后重新换取 */
+    @Override
+    public void ensureToken(ConnectorContext ctx) {
+        StoreCredentials c = ctx.credentials();
+        String owner = tokenOwner(c.require("refreshToken"), c.require("clientId"));
+        String expires = c.get("accessTokenExpiresAt");
+        if (c.get("accessToken") != null && owner.equals(c.get("accessTokenOwner")) && expires != null
+                && parseLong(expires) - TOKEN_SKEW_SECONDS * 1000 > System.currentTimeMillis()) {
+            return;
+        }
         String form = "grant_type=refresh_token&refresh_token=" + enc(c.require("refreshToken")) + "&client_id=" + enc(c.require("clientId"))
                 + "&client_secret=" + enc(c.require("clientSecret"));
-        JsonNode resp = HttpJson.postForm(LWA_URL, Map.of(), form, PLATFORM);
+        JsonNode resp = HttpJson.postForm(tokenUrl(ctx), Map.of(), form, PLATFORM);
         String token = HttpJson.text(resp, "access_token");
         if (token == null) {
             throw new BizException("ecom.error.connectorAuthFailed", PLATFORM, HttpJson.abbreviate(resp.toString()));
         }
-        return token;
+        long expiresIn = resp.path("expires_in").asLong(3600);
+        Map<String, String> changes = new HashMap<>();
+        changes.put("accessToken", token);
+        changes.put("accessTokenExpiresAt", String.valueOf(System.currentTimeMillis() + expiresIn * 1000));
+        changes.put("accessTokenOwner", owner);
+        ctx.updateCredentials(changes);
+    }
+
+    /** LWA 令牌地址：有自定义地址时为 {自定义地址}/auth/o2/token（模拟服务器、私有网关），否则为亚马逊 LWA */
+    static String tokenUrl(ConnectorContext ctx) {
+        return ctx.baseUrlOverride() != null ? ctx.baseUrlOverride() + "/auth/o2/token" : LWA_URL;
+    }
+
+    private static String tokenOwner(String refreshToken, String clientId) {
+        return ConnectorSigns.sha256Hex(clientId + "|" + refreshToken).substring(0, 16);
+    }
+
+    private static long parseLong(String s) {
+        try {
+            return Long.parseLong(s);
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     private static String endpoint(ConnectorContext ctx) {
@@ -233,5 +442,10 @@ public class AmazonSpConnector implements ChannelConnector {
 
     private static String enc(String s) {
         return URLEncoder.encode(s, StandardCharsets.UTF_8);
+    }
+
+    /** 路径段编码（空格为 %20，SKU 中的 / 等字符也要编码） */
+    private static String path(String s) {
+        return enc(s).replace("+", "%20");
     }
 }

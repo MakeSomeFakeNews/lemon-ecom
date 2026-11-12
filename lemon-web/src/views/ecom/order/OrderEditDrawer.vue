@@ -42,6 +42,11 @@
             <a-select v-model:value="form.fulfillment" :options="toOptions(dict.ecom_fulfillment)" />
           </a-form-item>
         </a-col>
+        <a-col :span="12">
+          <a-form-item :label="$t('ecomOrder.ops.weight')" name="weight">
+            <a-input-number v-model:value="form.weight" :min="0" :precision="3" :addon-after="$t('ecomOrder.common.kg')" class="full" />
+          </a-form-item>
+        </a-col>
         <a-col :span="24">
           <a-form-item :label="$t('common.field.remark')" name="remark">
             <a-textarea v-model:value="form.remark" :maxlength="255" :auto-size="{ minRows: 2, maxRows: 4 }" />
@@ -60,12 +65,12 @@ import { useDict } from '@/composables/useDict'
 import { useFormDrawer } from '@/composables/useFormDrawer'
 import { toOptions } from '@/utils/dict'
 
-/** 修改平台订单的收件信息、配送方式、备注（未发货时，PUT /ecom/order/{id}）；ref 调用 open(order) */
+/** 修改平台订单的收件信息、配送方式、预估重量、备注（未打单、未发货时，PUT /ecom/order/{id}）；ref 调用 open(order) */
 const emit = defineEmits(['success'])
 const { t } = useI18n()
 const dict = useDict('ecom_fulfillment')
 
-const FIELDS = ['shipName', 'shipPhone', 'shipCountry', 'shipState', 'shipCity', 'shipPostcode', 'shipAddress', 'fulfillment', 'remark']
+const FIELDS = ['shipName', 'shipPhone', 'shipCountry', 'shipState', 'shipCity', 'shipPostcode', 'shipAddress', 'fulfillment', 'weight', 'remark']
 const emptyForm = () => Object.fromEntries(FIELDS.map((k) => [k, undefined]))
 const rules = {
   shipCountry: [{ max: 8, message: t('common.rule.maxLength', { name: t('ecomOrder.order.shipCountry'), max: 8 }) }],
@@ -74,7 +79,10 @@ const rules = {
 
 const drawer = useFormDrawer({
   emptyForm,
-  fetch: (record) => getEcomOrder(record.id),
+  fetch: async (record) => {
+    const d = await getEcomOrder(record.id)
+    return { ...d, weight: d.weight == null ? undefined : Number(d.weight) }
+  },
   create: () => Promise.reject(new Error('unsupported')),
   update: updateEcomOrder,
   toPayload: (f) => Object.fromEntries(FIELDS.map((k) => [k, f[k] === '' ? null : f[k]])),
@@ -84,3 +92,9 @@ const { formRef, form } = drawer
 
 defineExpose({ open: (order) => drawer.openEdit(order) })
 </script>
+
+<style scoped>
+.full {
+  width: 100%;
+}
+</style>
