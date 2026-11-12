@@ -24,4 +24,6 @@ public class EcomSettlementItem extends BaseEntity {
     private String sellerSku;
     private BigDecimal amount;
     private String description;
+    /** 结算报告中的原始类型名（按费用映射识别类型） */
+    private String rawType;
 }

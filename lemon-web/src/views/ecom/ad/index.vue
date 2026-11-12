@@ -2,30 +2,43 @@
   <div class="table-page">
     <a-card :bordered="false" class="page-card">
       <div class="filters">
-        <StoreSelect v-model:value="query.storeId" :placeholder="$t('ecomReport.common.allStores')" class="filter" />
+        <StoreSelect v-model:value="query.storeId" allow-clear :placeholder="$t('ecomAds.common.allStores')" class="filter" />
         <a-range-picker v-model:value="query.range" value-format="YYYY-MM-DD" :allow-clear="false" :presets="presets" />
-        <a-input
-          v-if="tab === 'daily'"
-          v-model:value="query.keyword"
-          allow-clear
-          :placeholder="$t('ecomReport.ad.keywordPlaceholder')"
-          class="filter"
-          @press-enter="search"
-        />
         <a-button type="primary" @click="search">
           <template #icon><SearchOutlined /></template>{{ $t('common.action.query') }}
         </a-button>
-        <span class="sub-text">{{ $t('ecomReport.ad.acosTip') }}</span>
+        <a-tooltip :title="$t('ecomAds.metric.tip')"><InfoCircleOutlined class="tip-icon" /></a-tooltip>
       </div>
     </a-card>
 
     <a-card :bordered="false" class="page-card table-card">
-      <a-tabs v-model:active-key="tab">
-        <a-tab-pane key="summary" :tab="$t('ecomReport.ad.summary')">
-          <AdSummary :params="params" :active="tab === 'summary'" />
+      <a-tabs v-model:active-key="tab" destroy-inactive-tab-pane>
+        <a-tab-pane key="overview" :tab="$t('ecomAds.tabs.overview')">
+          <AdOverview :params="params" @open-tab="(k) => (tab = k)" />
         </a-tab-pane>
-        <a-tab-pane key="daily" :tab="$t('ecomReport.ad.daily')">
+        <a-tab-pane key="campaigns" :tab="$t('ecomAds.tabs.campaigns')">
+          <AdCampaigns :params="params" />
+        </a-tab-pane>
+        <a-tab-pane key="searchTerms" :tab="$t('ecomAds.tabs.searchTerms')">
+          <AdSearchTerms :params="params" />
+        </a-tab-pane>
+        <a-tab-pane key="tacos" :tab="$t('ecomAds.tabs.tacos')">
+          <AdTacos :params="params" />
+        </a-tab-pane>
+        <a-tab-pane v-if="userStore.hasPerm('ecom:adRule:list')" key="rules" :tab="$t('ecomAds.tabs.rules')">
+          <RuleList embedded @logs="tab = 'logs'" />
+        </a-tab-pane>
+        <a-tab-pane key="schedules" :tab="$t('ecomAds.tabs.schedules')">
+          <AdSchedules :store-id="params.storeId" />
+        </a-tab-pane>
+        <a-tab-pane v-if="userStore.hasPerm('ecom:adRule:list')" key="logs" :tab="$t('ecomAds.tabs.logs')">
+          <RuleLogs :store-id="params.storeId" />
+        </a-tab-pane>
+        <a-tab-pane key="daily" :tab="$t('ecomAds.tabs.daily')">
           <AdDaily :params="params" :active="tab === 'daily'" />
+        </a-tab-pane>
+        <a-tab-pane key="auth" :tab="$t('ecomAds.tabs.auth')">
+          <AdAuth />
         </a-tab-pane>
       </a-tabs>
     </a-card>
@@ -34,21 +47,32 @@
 
 <script setup>
 import { reactive, ref } from 'vue'
-import { SearchOutlined } from '@ant-design/icons-vue'
+import { InfoCircleOutlined, SearchOutlined } from '@ant-design/icons-vue'
+import dayjs from 'dayjs'
 import StoreSelect from '@/components/ecom/StoreSelect.vue'
-import { lastDays, rangeParams, rangePresets } from '@/components/ecom/ecomReport'
-import AdSummary from './AdSummary.vue'
+import { rangePresets } from '@/components/ecom/ecomReport'
+import { useUserStore } from '@/store/user'
+import AdOverview from './AdOverview.vue'
+import AdCampaigns from './AdCampaigns.vue'
+import AdSearchTerms from './AdSearchTerms.vue'
+import AdTacos from './AdTacos.vue'
+import AdSchedules from './AdSchedules.vue'
 import AdDaily from './AdDaily.vue'
+import AdAuth from './AdAuth.vue'
+import RuleList from '../ad-rule/RuleList.vue'
+import RuleLogs from '../ad-rule/RuleLogs.vue'
 
 /**
- * 广告数据：「汇总」按店铺 / 广告活动 / SKU 汇总曝光、点击、花费、ACOS 等，「明细」为导入的广告日报。
- * 筛选条件在顶部共用，点「查询」后生效（params 替换为新对象，当前页签重新加载，另一个页签切换过去时再加载）
+ * 广告管理：概览（指标卡含环比 / 同比、趋势）、活动（活动 → 广告组 → 投放的层级报表与维护、导入报告、同步）、搜索词（零转化建议否定）、
+ * SKU 与 TACOS、规则、分时策略、执行日志、日报明细、广告授权。店铺与日期范围在顶部共用，点「查询」后生效（params 替换为新对象）
  */
+const userStore = useUserStore()
 const presets = rangePresets()
-const tab = ref('summary')
-/** 默认近 30 天 */
-const query = reactive({ storeId: undefined, range: lastDays(30), keyword: '' })
-const toParams = () => ({ storeId: query.storeId || undefined, ...rangeParams(query.range), keyword: query.keyword?.trim() || undefined })
+const tab = ref('overview')
+/** 默认近 30 天，截至昨天（广告报告一般次日才有） */
+const yesterday = dayjs().subtract(1, 'day')
+const query = reactive({ storeId: undefined, range: [yesterday.subtract(29, 'day').format('YYYY-MM-DD'), yesterday.format('YYYY-MM-DD')] })
+const toParams = () => ({ storeId: query.storeId || undefined, beginDate: query.range?.[0], endDate: query.range?.[1] })
 const params = ref(toParams())
 
 function search() {
@@ -66,8 +90,8 @@ function search() {
 .filter {
   width: 220px;
 }
-.sub-text {
+.tip-icon {
   color: var(--app-text-3);
-  font-size: 12px;
+  cursor: help;
 }
 </style>

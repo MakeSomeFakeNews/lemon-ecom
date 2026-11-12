@@ -124,6 +124,35 @@ public class EcomStore extends BaseEntity {
     @Size(max = 255, message = "{ecom.valid.remarkCannotExceedCharacters}")
     private String remark;
 
+    // ---------------------------------------------------------------- 广告接口（与渠道授权分开，只在「广告数据 → 广告授权」中维护）
+
+    /** 广告接口授权（JSON，CredentialCipher 加密保存），不随店铺读写 */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private String adsCredentials;
+
+    /** 广告接口环境：1 沙箱 / 测试，0 正式 */
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private Integer adsSandbox;
+
+    /** 广告接口自定义地址，为空按环境取默认地址 */
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private String adsBaseUrl;
+
+    /** 广告配置文件 ID（亚马逊 profileId） */
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private String adsProfileId;
+
+    /** 每天自动同步广告结构与报告 1 是 0 否 */
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private Integer adsSync;
+
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private LocalDateTime adsLastSyncTime;
+
+    /** 最近一次广告同步失败的原因，成功为空 */
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private String adsLastSyncMessage;
+
     @TableField(exist = false)
     private String customerName;
     @TableField(exist = false)

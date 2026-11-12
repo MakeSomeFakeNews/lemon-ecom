@@ -6,6 +6,8 @@ import com.lemon.erp.modules.ecom.dto.PurchaseSuggestRow;
 import com.lemon.erp.modules.ecom.dto.ReplenishRow;
 import com.lemon.erp.modules.ecom.dto.ReplenishTransit;
 import com.lemon.erp.modules.ecom.dto.ReplenishWeights;
+import com.lemon.erp.modules.ecom.analytics.dto.DailyForecast;
+import com.lemon.erp.modules.ecom.analytics.service.EcomForecastService;
 import com.lemon.erp.modules.ecom.entity.EcomReplenishSetting;
 import com.lemon.erp.modules.ecom.mapper.EcomReplenishMapper;
 import com.lemon.erp.modules.ecom.model.ReplenishLevel;
@@ -50,6 +52,13 @@ import java.util.stream.Stream;
 @RequiredArgsConstructor
 public class EcomReplenishService {
 
+    /** 按预测时取的天数（与预测服务的上限一致） */
+    static final int FORECAST_DAYS = 90;
+    static final String SOURCE_WEIGHTED = "WEIGHTED";
+    static final String SOURCE_FORECAST = "FORECAST";
+    static final String SOURCE_MANUAL = "MANUAL";
+
+
     private static final int DEFAULT_LEAD_DAYS = 30;
     private static final int DEFAULT_SAFETY_DAYS = 15;
     /** 采购周期来源 */
@@ -62,6 +71,7 @@ public class EcomReplenishService {
     private final WmsMaterialService materialService;
     private final ScmQueryService scmQueryService;
     private final EcomBundleService bundleService;
+    private final EcomForecastService forecastService;
 
     /** 平台仓补货建议（默认加权） */
     public List<ReplenishRow> rows(Long storeId, String keyword, ReplenishLevel level) {
@@ -90,6 +100,16 @@ public class EcomReplenishService {
         List<ReplenishRow> rows = raw.stream().filter(r -> components.containsKey(r.getListingId())).toList();
         rows.forEach(r -> r.setComponents(components.get(r.getListingId())));
         fillBundles(rows.stream().filter(EcomReplenishService::isBundle).toList());
+        if (weights.forecast() && !rows.isEmpty()) {
+            Map<Long, DailyForecast> forecasts = forecastService.dailyForecast(rows.stream().map(ReplenishRow::getListingId).toList(), FORECAST_DAYS);
+            for (ReplenishRow r : rows) {
+                DailyForecast f = forecasts.get(r.getListingId());
+                if (f != null && !f.daily().isEmpty()) {
+                    r.setForecastDaily(f.daily());
+                    r.setForecastMethod(f.method() == null ? null : f.method().name());
+                }
+            }
+        }
         Map<Long, EcomReplenishSetting> listingSettings = settingService.byListings(rows.stream().map(ReplenishRow::getListingId).toList());
         Map<Long, EcomReplenishSetting> materialSettings = settingService.byMaterials(
                 rows.stream().map(ReplenishRow::getMaterialId).filter(Objects::nonNull).distinct().toList());
@@ -176,7 +196,19 @@ public class EcomReplenishService {
         r.setWeightedDaily(weighted);
         BigDecimal override = pick(listing, EcomReplenishSetting::getDailySales);
         r.setDailyOverridden(override != null);
-        BigDecimal daily = override != null ? override : weighted.multiply(factor).setScale(4, RoundingMode.HALF_UP);
+        BigDecimal base = weighted;
+        r.setDailySource(SOURCE_WEIGHTED);
+        if (r.getForecastDaily() != null) {
+            // 按预测：取未来「补货周期 + 安全天数」天（最多 90 天）的预测平均，已含趋势与促销系数
+            List<BigDecimal> f = r.getForecastDaily();
+            int n = Math.max(1, Math.min(f.size(), lead + safety));
+            base = f.subList(0, n).stream().reduce(BigDecimal.ZERO, BigDecimal::add).divide(BigDecimal.valueOf(n), 4, RoundingMode.HALF_UP);
+            r.setDailySource(SOURCE_FORECAST);
+        }
+        if (override != null) {
+            r.setDailySource(SOURCE_MANUAL);
+        }
+        BigDecimal daily = override != null ? override : base.multiply(factor).setScale(4, RoundingMode.HALF_UP);
         r.setDailySales(daily);
         BigDecimal platform = Decimals.nz(r.getPlatformQty());
         BigDecimal transit = Decimals.nz(r.getInTransitQty());

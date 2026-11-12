@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.analytics.mapper.EcomForecastEventMapper">
+
+    <!-- storeId 不为空时只取该店铺和全部店铺的事件 -->
+    <select id="selectOverlap" resultType="com.lemon.erp.modules.ecom.analytics.entity.EcomForecastEvent">
+        SELECT e.id, e.name, e.start_date, e.end_date, e.store_id, e.factor, e.remark, e.create_time, e.update_time, s.name AS store_name
+        FROM ecom_forecast_event e
+        LEFT JOIN ecom_store s ON s.id = e.store_id
+        <where>
+            <if test="from != null">e.end_date &gt;= #{from}</if>
+            <if test="to != null">AND e.start_date &lt;= #{to}</if>
+            <if test="storeId != null">AND (e.store_id IS NULL OR e.store_id = #{storeId})</if>
+        </where>
+        ORDER BY e.start_date, e.id
+    </select>
+
+</mapper>

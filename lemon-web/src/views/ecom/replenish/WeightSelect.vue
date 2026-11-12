@@ -31,7 +31,7 @@ const props = defineProps({ value: Object })
 const emit = defineEmits(['update:value'])
 const { t } = useI18n()
 
-const same = (a, b) => PERIODS.every((k) => Number(a?.[k] || 0) === Number(b?.[k] || 0))
+const same = (a, b) => !!a?.forecast === !!b?.forecast && PERIODS.every((k) => Number(a?.[k] || 0) === Number(b?.[k] || 0))
 const custom = ref(false)
 const preset = computed(() => (custom.value ? CUSTOM : WEIGHT_PRESETS.find((p) => same(p.weights, props.value))?.key || CUSTOM))
 const presetOptions = computed(() => [
@@ -45,7 +45,7 @@ function onPreset(key) {
 }
 function onWeight(k, v) {
   custom.value = true
-  emit('update:value', { ...props.value, [k]: v ?? undefined })
+  emit('update:value', { ...props.value, forecast: undefined, [k]: v ?? undefined })
 }
 </script>
 

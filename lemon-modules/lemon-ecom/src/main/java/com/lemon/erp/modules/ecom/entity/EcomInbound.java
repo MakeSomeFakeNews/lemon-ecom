@@ -43,6 +43,8 @@ public class EcomInbound extends BaseEntity {
     private BigDecimal freight;
     /** 关税（本位币） */
     private BigDecimal duty;
+    /** 进口增值税（本位币）：可抵扣的进项，不计入头程成本 */
+    private BigDecimal importVat;
     /** 其他费用（本位币） */
     private BigDecimal otherCost;
     private BigDecimal totalQty;

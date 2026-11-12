@@ -136,6 +136,8 @@ export default {
       ecom_marketplace: 'Marketplace',
       ecom_transport_mode: 'Transport Mode',
       ecom_return_reason: 'Return Reason',
+      ecom_payout_channel: 'Payment Channel',
+      ecom_cs_language: 'Template Language',
       scm_customer_level: 'Customer Level',
       scm_carrier: 'Carrier',
       fin_asset_category: 'Asset Category',

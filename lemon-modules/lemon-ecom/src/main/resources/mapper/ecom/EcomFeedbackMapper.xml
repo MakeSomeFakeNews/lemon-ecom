@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomFeedbackMapper">
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.cs.entity.EcomFeedback">
+        SELECT f.*, s.name AS store_name, u.nickname AS handler_name
+        FROM ecom_feedback f
+        JOIN ecom_store s ON s.id = f.store_id
+        LEFT JOIN sys_user u ON u.id = f.handler_id
+        <where>
+            <if test="q.storeId != null">AND f.store_id = #{q.storeId}</if>
+            <if test="q.platform != null">AND f.platform = #{q.platform}</if>
+            <if test="q.maxRating != null">AND f.rating &lt;= #{q.maxRating}</if>
+            <if test="q.minRating != null">AND f.rating &gt;= #{q.minRating}</if>
+            <if test="q.handleStatus != null">AND f.handle_status = #{q.handleStatus}</if>
+            <if test="q.beginDate != null">AND f.feedback_date &gt;= #{q.beginDate}</if>
+            <if test="q.endDate != null">AND f.feedback_date &lt;= #{q.endDate}</if>
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (f.comments LIKE CONCAT('%', #{q.keyword}, '%') OR f.rater LIKE CONCAT('%', #{q.keyword}, '%')
+                     OR f.platform_order_no LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY CASE WHEN f.handle_status = 'PENDING' THEN 0 WHEN f.handle_status = 'PROCESSING' THEN 1 ELSE 2 END, f.feedback_date DESC, f.id DESC
+    </select>
+
+</mapper>

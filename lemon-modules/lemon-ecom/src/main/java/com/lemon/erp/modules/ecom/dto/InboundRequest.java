@@ -38,7 +38,17 @@ public record InboundRequest(
         @DecimalMin(value = "0", message = "{ecom.valid.feeCannotNegative}")
         @Digits(integer = 16, fraction = 2, message = "{ecom.valid.amountDecimals}") BigDecimal otherCost,
         @Size(max = 255, message = "{ecom.valid.remarkCannotExceedCharacters}") String remark,
-        @NotEmpty(message = "{ecom.valid.addLineItems}") @Size(max = 500, message = "{ecom.valid.lineItemsCannotExceed}") List<@Valid @NotNull Item> items) {
+        @NotEmpty(message = "{ecom.valid.addLineItems}") @Size(max = 500, message = "{ecom.valid.lineItemsCannotExceed}") List<@Valid @NotNull Item> items,
+        @DecimalMin(value = "0", message = "{ecom.valid.feeCannotNegative}")
+        @Digits(integer = 16, fraction = 2, message = "{ecom.valid.amountDecimals}") BigDecimal importVat) {
+
+    /** 不带进口增值税（发货计划生成货件等） */
+    public InboundRequest(Long storeId, String shipmentId, Long fromWarehouseId, Long toWarehouseId, Long channelId, String carrier, String trackingNo,
+                          LocalDate shipDate, LocalDate etaDate, Integer boxCount, BigDecimal weight, BigDecimal volume, BigDecimal freight, BigDecimal duty,
+                          BigDecimal otherCost, String remark, List<Item> items) {
+        this(storeId, shipmentId, fromWarehouseId, toWarehouseId, channelId, carrier, trackingNo, shipDate, etaDate, boxCount, weight, volume, freight, duty,
+                otherCost, remark, items, null);
+    }
 
     /**
      * 明细：物料（必填）与平台 SKU（可空，用于对照平台货件）；listingId（可空，没有时按 店铺 + 平台 SKU 识别）用于按平台 SKU 计件数，

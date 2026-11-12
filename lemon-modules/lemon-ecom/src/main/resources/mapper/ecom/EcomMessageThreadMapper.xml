@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomMessageThreadMapper">
+
+    <sql id="columns">
+        t.*, s.name AS store_name, u.nickname AS owner_name
+    </sql>
+
+    <sql id="joins">
+        FROM ecom_message_thread t
+        JOIN ecom_store s ON s.id = t.store_id
+        LEFT JOIN sys_user u ON u.id = t.owner_id
+    </sql>
+
+    <!-- 列表条件（不含状态） -->
+    <sql id="filters">
+        <if test="q.storeId != null">AND t.store_id = #{q.storeId}</if>
+        <if test="q.platform != null">AND t.platform = #{q.platform}</if>
+        <if test="q.ownerId != null">AND t.owner_id = #{q.ownerId}</if>
+        <if test="q.unread != null and q.unread">AND t.unread &gt; 0</if>
+        <if test="q.keyword != null and q.keyword != ''">
+            AND (t.buyer_name LIKE CONCAT('%', #{q.keyword}, '%') OR t.platform_order_no LIKE CONCAT('%', #{q.keyword}, '%')
+                 OR t.last_message LIKE CONCAT('%', #{q.keyword}, '%') OR t.tags LIKE CONCAT('%', #{q.keyword}, '%'))
+        </if>
+    </sql>
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.cs.entity.EcomMessageThread">
+        SELECT <include refid="columns"/>,
+               CASE WHEN t.status = 'PENDING' AND t.reply_deadline &lt; #{q.now} THEN 1 ELSE 0 END AS overdue
+        <include refid="joins"/>
+        <where>
+            <include refid="filters"/>
+            <if test="q.status != null">AND t.status = #{q.status}</if>
+            <if test="q.overdue != null and q.overdue">AND t.status = 'PENDING' AND t.reply_deadline &lt; #{q.now}</if>
+        </where>
+        ORDER BY CASE WHEN t.status = 'PENDING' THEN 0 ELSE 1 END, t.last_message_time DESC, t.id DESC
+    </select>
+
+    <select id="selectDetail" resultType="com.lemon.erp.modules.ecom.cs.entity.EcomMessageThread">
+        SELECT <include refid="columns"/>,
+               CASE WHEN t.status = 'PENDING' AND t.reply_deadline &lt; #{now} THEN 1 ELSE 0 END AS overdue
+        <include refid="joins"/>
+        WHERE t.id = #{id}
+    </select>
+
+    <select id="countByStatus" resultType="java.util.Map">
+        SELECT t.status AS status, COUNT(*) AS cnt,
+               SUM(CASE WHEN t.status = 'PENDING' AND t.reply_deadline &lt; #{q.now} THEN 1 ELSE 0 END) AS overdue
+        FROM ecom_message_thread t
+        <where>
+            <include refid="filters"/>
+        </where>
+        GROUP BY t.status
+    </select>
+
+</mapper>

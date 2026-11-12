@@ -1,9 +1,11 @@
 package com.lemon.erp.modules.ecom.service;
 
+import com.lemon.erp.common.exception.BizException;
 import com.lemon.erp.common.util.Decimals;
 import com.lemon.erp.framework.finance.ExchangeRateProvider;
 import com.lemon.erp.modules.ecom.dto.EcomReports;
 import com.lemon.erp.modules.ecom.mapper.EcomReportMapper;
+import com.lemon.erp.modules.ecom.model.ProfitBasis;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -25,6 +27,7 @@ public class EcomReportService {
     private final EcomReportMapper reportMapper;
     private final EcomReplenishService replenishService;
     private final ExchangeRateProvider rateProvider;
+    private final EcomProfitService profitService;
 
     public EcomReports.Overview overview() {
         LocalDate today = LocalDate.now();
@@ -37,7 +40,8 @@ public class EcomReportService {
         o.setTodaySales(dec(day, "sales"));
         o.setMonthOrders(num(month, "orders"));
         o.setMonthSales(dec(month, "sales"));
-        o.setMonthProfit(dec(month, "profit"));
+        // 本月利润与利润报表（订单口径）一致：订单利润再扣除广告花费和不挂订单费用的分摊
+        o.setMonthProfit(profitService.total(ProfitBasis.ORDER, today.withDayOfMonth(1), today, null).getProfit());
         o.setMonthRefund(dec(month, "refund"));
         o.setMonthFees(dec(month, "fees"));
         o.setMonthCost(dec(month, "cost"));
@@ -49,8 +53,47 @@ public class EcomReportService {
         return o;
     }
 
+    /** 按天趋势：利润为订单利润扣除当天的广告花费（当月汇率）和费用分摊，与利润报表的订单口径一致 */
     public List<EcomReports.TrendRow> trend(LocalDate begin, LocalDate end, Long storeId) {
-        return reportMapper.selectTrend(start(begin), endExclusive(end), storeId);
+        List<EcomReports.TrendRow> rows = reportMapper.selectTrend(start(begin), endExclusive(end), storeId);
+        Map<LocalDate, BigDecimal> deduct = new HashMap<>();
+        for (Map<String, Object> m : reportMapper.selectAdSpendByDay(begin, end, storeId)) {
+            LocalDate day = toDate(m.get("day"));
+            BigDecimal rate = rateProvider.rate((String) m.get("currency"), day);
+            if (rate == null) {
+                throw new BizException("ecom.error.exchangeRateMissing", m.get("currency"), day.toString().substring(0, 7));
+            }
+            deduct.merge(day, Decimals.money(new BigDecimal(m.get("spend").toString()).multiply(rate)), BigDecimal::add);
+        }
+        for (Map<String, Object> m : reportMapper.selectAllocationByDay(begin, end, storeId)) {
+            deduct.merge(toDate(m.get("day")), new BigDecimal(m.get("amount").toString()).negate(), BigDecimal::add);
+        }
+        Map<LocalDate, EcomReports.TrendRow> byDay = new java.util.TreeMap<>();
+        rows.forEach(r -> byDay.put(r.getDay(), r));
+        deduct.forEach((day, v) -> {
+            EcomReports.TrendRow r = byDay.computeIfAbsent(day, d -> {
+                EcomReports.TrendRow n = new EcomReports.TrendRow();
+                n.setDay(d);
+                n.setOrders(0L);
+                n.setSales(BigDecimal.ZERO);
+                return n;
+            });
+            r.setProfit(Decimals.money(Decimals.nz(r.getProfit()).subtract(v)));
+        });
+        return new java.util.ArrayList<>(byDay.values());
+    }
+
+    private static LocalDate toDate(Object v) {
+        if (v instanceof LocalDate d) {
+            return d;
+        }
+        if (v instanceof java.sql.Date d) {
+            return d.toLocalDate();
+        }
+        if (v instanceof LocalDateTime t) {
+            return t.toLocalDate();
+        }
+        return LocalDate.parse(v.toString().substring(0, 10));
     }
 
     public List<EcomReports.StoreRow> byStore(LocalDate begin, LocalDate end, Long storeId) {

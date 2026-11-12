@@ -696,6 +696,17 @@ export default {
   },
   // 结算明细类型
   ecom_settlement_item_type: {
+    'LONG_STORAGE': 'Long-term Storage Fee', // 长期仓储费
+    'REMOVAL': 'Removal / Disposal Fee', // 移除 / 弃置费
+    'RETURN_FEE': 'Return Processing Fee', // 退货处理费
+    'INBOUND_FEE': 'Inbound Placement Fee', // 入库配置费
+    'SUBSCRIPTION': 'Subscription Fee', // 订阅费
+    'PROMOTION': 'Promotion Fee', // 促销费
+    'COUPON': 'Coupon', // 优惠券
+    'DEAL': 'Deal Fee', // 秒杀费
+    'REIMBURSEMENT': 'Reimbursement', // 赔偿
+    'RESERVE': 'Reserve / Release', // 预留 / 释放
+    'MARKETPLACE_TAX': 'Marketplace Facilitator Tax', // 平台代收代缴税
     'ORDER': 'Order Revenue', // 订单收入
     'REFUND': 'Refund', // 退款
     'COMMISSION': 'Commission', // 平台佣金
@@ -795,6 +806,9 @@ export default {
   },
   // 渠道同步类型
   ecom_sync_type: {
+    'MESSAGES': 'Buyer Messages', // 买家消息
+    'REVIEWS': 'Reviews', // 评价
+    'REVIEW_REQUEST': 'Review Requests', // 请求评价
     'ORDERS': 'Fetch Orders', // 拉取订单
     'SHIP_CONFIRM': 'Confirm Shipment', // 回传发货
     'INVENTORY_PUSH': 'Push Inventory', // 回传库存
@@ -821,4 +835,123 @@ export default {
     'ORDERED': 'Ordered', // 已下单
     'CLOSED': 'Closed', // 已关闭
   },
+  // 预测方法
+  ecom_forecast_method: {
+    'MA': 'Moving Average', // 移动平均
+    'WMA': 'Weighted Moving Average', // 加权移动平均
+    'HOLT': 'Exponential Smoothing (Holt)', // 指数平滑（Holt）
+    'SEASONAL': 'Weekday Seasonality', // 星期季节性
+  },
+  // ABC 分类
+  ecom_abc_class: {
+    'A': 'Class A', // A 类
+    'B': 'Class B', // B 类
+    'C': 'Class C', // C 类
+  },
+  // 税种
+  ecom_tax_type: {
+    'VAT': 'VAT', // 增值税 VAT
+    'GST': 'GST', // 商品及服务税 GST
+    'SALES_TAX': 'Sales Tax', // 销售税 Sales Tax
+  },
+  // 回款状态
+  ecom_payout_status: {
+    'PENDING': 'Pending', // 未到账
+    'RECEIVED': 'Received', // 已到账
+    'DIFF': 'Difference', // 有差异
+  },
+  // 费用分摊方式
+  ecom_fee_alloc_method: {
+    'SKU': 'By SKU', // 按 SKU 直接归属
+    'QTY': 'By Quantity', // 按销量
+    'SALES': 'By Sales', // 按销售额
+    'STORE': 'Store Level', // 留在店铺
+  },
+  // 收款平台（业务字典）
+  ecom_payout_channel: {
+    'PINGPONG': 'PingPong', // PingPong
+    'LIANLIAN': 'LianLian Pay', // 连连支付
+    'PAYONEER': 'Payoneer', // Payoneer
+    'WORLDFIRST': 'WorldFirst', // 万里汇 WorldFirst
+    'AIRWALLEX': 'Airwallex', // 空中云汇 Airwallex
+    'BANK': 'Bank', // 银行
+    'OTHER': 'Other', // 其他
+  },
+  // 结算明细类型 ecom_settlement_item_type 新增以下取值（合并到已有的 ecom_settlement_item_type 中，原有取值不变）：
+  // 广告类型
+  ecom_ad_type: {
+    'SP': 'Sponsored Products', // 商品推广 SP
+    'SB': 'Sponsored Brands', // 品牌推广 SB
+    'SD': 'Sponsored Display', // 展示型推广 SD
+    'GENERIC': 'Platform Generic', // 平台通用
+  },
+  // 广告状态
+  ecom_ad_status: {
+    'ENABLED': 'Enabled', // 启用
+    'PAUSED': 'Paused', // 暂停
+    'ARCHIVED': 'Archived', // 已归档
+  },
+  // 广告匹配方式
+  ecom_ad_match_type: {
+    'EXACT': 'Exact', // 精准
+    'PHRASE': 'Phrase', // 词组
+    'BROAD': 'Broad', // 广泛
+    'NEGATIVE_EXACT': 'Negative Exact', // 否定精准
+    'NEGATIVE_PHRASE': 'Negative Phrase', // 否定词组
+  },
+  // 广告规则动作
+  ecom_ad_rule_action: {
+    'BID_PERCENT': 'Adjust Bid by %', // 竞价按百分比调整
+    'BID_SET': 'Set Bid', // 竞价调整到固定值
+    'BUDGET_PERCENT': 'Adjust Budget by %', // 日预算按百分比调整
+    'BUDGET_SET': 'Set Budget', // 日预算调整到固定值
+    'PAUSE': 'Pause', // 暂停
+    'ENABLE': 'Enable', // 启用
+    'NOTIFY': 'Notify Only', // 仅提醒
+  },
+  // 广告执行状态
+  ecom_ad_log_status: {
+    'PENDING': 'Pending', // 待处理
+    'APPLIED': 'Applied', // 已执行
+    'MANUAL': 'Done Manually', // 已手工执行
+    'FAILED': 'Failed', // 失败
+    'NOTIFIED': 'Notified', // 仅提醒
+    'IGNORED': 'Ignored', // 已忽略
+  },
+  // 客服会话状态
+  ecom_cs_thread_status: {
+    'PENDING': 'Awaiting Reply', // 待回复
+    'REPLIED': 'Replied', // 已回复
+    'CLOSED': 'Closed', // 已关闭
+  },
+  // 评价处理状态
+  ecom_cs_review_status: {
+    'NONE': 'No Action Needed', // 无需处理
+    'PENDING': 'To Handle', // 待处理
+    'PROCESSING': 'In Progress', // 处理中
+    'RESOLVED': 'Resolved', // 已处理
+  },
+  // 模板语言（业务字典）
+  ecom_cs_language: {
+    'en': 'English', // 英语
+    'de': 'German', // 德语
+    'ja': 'Japanese', // 日语
+    'es': 'Spanish', // 西班牙语
+    'fr': 'French', // 法语
+    'it': 'Italian', // 意大利语
+    'zh': 'Chinese', // 中文
+  },
+  // 售后类型
+  ecom_cs_ticket_type: {
+    'RETURN_REFUND': 'Return and Refund', // 退货退款
+    'REFUND_ONLY': 'Refund Only', // 仅退款
+    'RESEND': 'Resend', // 补发
+  },
+  // 消息发送状态
+  ecom_cs_send_status: {
+    'SENDING': 'Sending', // 发送中
+    'SENT': 'Sent', // 已发送
+    'FAILED': 'Failed', // 发送失败
+  },
+  // 渠道同步类型（追加到已有的 ecom_sync_type 中）
 }

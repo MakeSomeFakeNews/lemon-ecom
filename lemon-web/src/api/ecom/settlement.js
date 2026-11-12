@@ -11,3 +11,7 @@ export const importSettlements = (data) => request.post('/ecom/settlement/import
 /** 确认：佣金 / 配送费 / 退款回写订单；accountId 不为空时按净额生成收款单核销店铺客户的应收 */
 export const confirmSettlement = (id, accountId) => request.post(`/ecom/settlement/${id}/confirm`, null, { params: { accountId } })
 export const deleteSettlement = (id) => request.delete(`/ecom/settlement/${ids(id)}`)
+/** 不挂订单费用的分摊结果 */
+export const settlementAllocations = (id) => request.get(`/ecom/settlement/${id}/allocations`)
+/** 重新分摊：method 为 QTY / SALES，为空按类型默认 */
+export const allocateSettlement = (id, method) => request.post(`/ecom/settlement/${id}/allocate`, null, { params: { method } })

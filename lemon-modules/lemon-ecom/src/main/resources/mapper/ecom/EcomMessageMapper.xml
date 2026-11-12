@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomMessageMapper">
+
+    <select id="selectByThread" resultType="com.lemon.erp.modules.ecom.cs.entity.EcomMessage">
+        SELECT m.*, u.nickname AS sender_name
+        FROM ecom_message m
+        LEFT JOIN sys_user u ON u.id = m.sender_id
+        WHERE m.thread_id = #{threadId}
+        ORDER BY m.sent_time, m.id
+    </select>
+
+    <!-- 同步写入的消息（单条多值 INSERT） -->
+    <insert id="insertBatch">
+        INSERT INTO ecom_message (thread_id, platform_message_id, direction, msg_type, content, attachments, sent_time, send_status,
+                                  create_time, update_time)
+        VALUES
+        <foreach collection="items" item="i" separator=",">
+            (#{i.threadId}, #{i.platformMessageId}, #{i.direction}, #{i.msgType}, #{i.content}, #{i.attachments}, #{i.sentTime}, #{i.sendStatus},
+             CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        </foreach>
+    </insert>
+
+</mapper>

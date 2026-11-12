@@ -46,8 +46,9 @@ public class EcomReplenishController {
     public R<List<ReplenishRow>> rows(@RequestParam(required = false) Long storeId, @RequestParam(required = false) String keyword,
                                       @RequestParam(required = false) ReplenishLevel level,
                                       @RequestParam(required = false) BigDecimal w7, @RequestParam(required = false) BigDecimal w14,
-                                      @RequestParam(required = false) BigDecimal w30, @RequestParam(required = false) BigDecimal w60) {
-        return R.ok(replenishService.rows(storeId, keyword, level, ReplenishWeights.of(w7, w14, w30, w60)));
+                                      @RequestParam(required = false) BigDecimal w30, @RequestParam(required = false) BigDecimal w60,
+                                      @RequestParam(required = false) Boolean forecast) {
+        return R.ok(replenishService.rows(storeId, keyword, level, ReplenishWeights.of(w7, w14, w30, w60).withForecast(forecast)));
     }
 
     /** 本地仓采购建议（物料，汇总全部店铺） */
@@ -55,8 +56,9 @@ public class EcomReplenishController {
     @PreAuthorize("@ss.hasPerm('ecom:replenish:list')")
     public R<List<PurchaseSuggestRow>> purchase(@RequestParam(required = false) String keyword, @RequestParam(required = false) ReplenishLevel level,
                                                 @RequestParam(required = false) BigDecimal w7, @RequestParam(required = false) BigDecimal w14,
-                                                @RequestParam(required = false) BigDecimal w30, @RequestParam(required = false) BigDecimal w60) {
-        return R.ok(replenishService.purchaseRows(keyword, level, ReplenishWeights.of(w7, w14, w30, w60)));
+                                                @RequestParam(required = false) BigDecimal w30, @RequestParam(required = false) BigDecimal w60,
+                                                @RequestParam(required = false) Boolean forecast) {
+        return R.ok(replenishService.purchaseRows(keyword, level, ReplenishWeights.of(w7, w14, w30, w60).withForecast(forecast)));
     }
 
     /** 物料的在途构成：采购订单、头程货件（storeId 只看某店铺的货件） */

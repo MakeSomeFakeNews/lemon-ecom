@@ -6,6 +6,19 @@
  * 用法：import { WorkOrderStatus } from '@/constants/enums'；record.status === WorkOrderStatus.DRAFT
  */
 
+/** com.lemon.erp.modules.ecom.analytics.model.AbcClass（字典 ecom_abc_class） */
+export const AbcClass = Object.freeze({
+  A: 'A',
+  B: 'B',
+  C: 'C',
+})
+
+/** com.lemon.erp.modules.ecom.analytics.model.AbcMetric */
+export const AbcMetric = Object.freeze({
+  SALES: 'SALES', // 销售额
+  PROFIT: 'PROFIT', // 毛利
+})
+
 /** com.lemon.erp.modules.fin.model.AccountCategory（字典 fin_account_category） */
 export const AccountCategory = Object.freeze({
   ASSET: 'ASSET',
@@ -82,6 +95,17 @@ export const AdjustItem = Object.freeze({
 export const AdjustMode = Object.freeze({
   BOTTOM: 'BOTTOM', // 汇总到底部
   ALLOCATE: 'ALLOCATE', // 分摊到各行
+})
+
+/** com.lemon.erp.modules.ecom.ads.AdsCapability */
+export const AdsCapability = Object.freeze({
+  PROFILES: 'PROFILES', // 列出授权账号下的广告配置文件
+  STRUCTURE: 'STRUCTURE', // 拉取广告活动 / 广告组 / 投放结构
+  REPORTS: 'REPORTS', // 拉取广告报告
+  UPDATE_BID: 'UPDATE_BID', // 修改竞价
+  UPDATE_BUDGET: 'UPDATE_BUDGET', // 修改活动日预算
+  UPDATE_STATE: 'UPDATE_STATE', // 暂停 / 启用
+  NEGATIVE_KEYWORDS: 'NEGATIVE_KEYWORDS', // 添加否定关键词
 })
 
 /** com.lemon.erp.framework.ai.AiCleanseField */
@@ -373,6 +397,70 @@ export const CreditControl = Object.freeze({
   NONE: 'NONE', // 不控制
 })
 
+/** com.lemon.erp.modules.ecom.cs.connector.CsCapability */
+export const CsCapability = Object.freeze({
+  MESSAGES: 'MESSAGES', // 拉取买家消息会话与消息
+  SEND_MESSAGE: 'SEND_MESSAGE', // 发送回复
+  REVIEWS: 'REVIEWS', // 拉取商品评价
+  REVIEW_REPLY: 'REVIEW_REPLY', // 回复商品评价
+  REVIEW_REQUEST: 'REVIEW_REQUEST', // 请求买家留评
+})
+
+/** com.lemon.erp.modules.ecom.cs.model.CsDirection */
+export const CsDirection = Object.freeze({
+  BUYER: 'BUYER', // 买家发来的
+  SELLER: 'SELLER', // 卖家
+})
+
+/** com.lemon.erp.modules.ecom.cs.model.CsRecordSource */
+export const CsRecordSource = Object.freeze({
+  IMPORT: 'IMPORT', // Excel 导入
+  SYNC: 'SYNC', // 平台接口同步
+})
+
+/** com.lemon.erp.modules.ecom.cs.model.CsRequestStatus */
+export const CsRequestStatus = Object.freeze({
+  SENT: 'SENT', // 已发送
+  NOT_ELIGIBLE: 'NOT_ELIGIBLE', // 平台判定不符合条件
+  FAILED: 'FAILED', // 调用失败
+})
+
+/** com.lemon.erp.modules.ecom.cs.model.CsReviewStatus（字典 ecom_cs_review_status） */
+export const CsReviewStatus = Object.freeze({
+  NONE: 'NONE', // 无需处理
+  PENDING: 'PENDING', // 待处理
+  PROCESSING: 'PROCESSING', // 处理中
+  RESOLVED: 'RESOLVED', // 已处理
+})
+
+/** com.lemon.erp.modules.ecom.cs.model.CsSendStatus（字典 ecom_cs_send_status） */
+export const CsSendStatus = Object.freeze({
+  SENDING: 'SENDING', // 发送中
+  SENT: 'SENT', // 已发送
+  FAILED: 'FAILED', // 发送失败
+})
+
+/** com.lemon.erp.modules.ecom.cs.model.CsSourceType */
+export const CsSourceType = Object.freeze({
+  THREAD: 'THREAD', // 买家消息会话
+  REVIEW: 'REVIEW', // 商品评价
+  FEEDBACK: 'FEEDBACK', // 店铺反馈
+})
+
+/** com.lemon.erp.modules.ecom.cs.model.CsThreadStatus（字典 ecom_cs_thread_status） */
+export const CsThreadStatus = Object.freeze({
+  PENDING: 'PENDING', // 待回复
+  REPLIED: 'REPLIED', // 已回复
+  CLOSED: 'CLOSED', // 已关闭
+})
+
+/** com.lemon.erp.modules.ecom.cs.model.CsTicketType（字典 ecom_cs_ticket_type） */
+export const CsTicketType = Object.freeze({
+  RETURN_REFUND: 'RETURN_REFUND', // 退货退款
+  REFUND_ONLY: 'REFUND_ONLY', // 仅退款
+  RESEND: 'RESEND', // 补发
+})
+
 /** com.lemon.erp.modules.system.model.CustomFieldType（字典 sys_custom_field_type） */
 export const CustomFieldType = Object.freeze({
   TEXT: 'TEXT',
@@ -416,6 +504,115 @@ export const DocStatus = Object.freeze({
   TRANSIT: 'TRANSIT', // 在途
   APPROVING: 'APPROVING', // 审批中
   DONE: 'DONE',
+})
+
+/** com.lemon.erp.modules.ecom.model.EcomAdAction（字典 ecom_ad_rule_action） */
+export const EcomAdAction = Object.freeze({
+  BID_PERCENT: 'BID_PERCENT', // 竞价按百分比调整
+  BID_SET: 'BID_SET', // 竞价调整到固定值
+  BUDGET_PERCENT: 'BUDGET_PERCENT', // 日预算按百分比调整
+  BUDGET_SET: 'BUDGET_SET', // 日预算调整到固定值
+  PAUSE: 'PAUSE', // 暂停
+  ENABLE: 'ENABLE', // 启用
+  NOTIFY: 'NOTIFY', // 仅提醒
+})
+
+/** com.lemon.erp.modules.ecom.model.EcomAdDailyLevel */
+export const EcomAdDailyLevel = Object.freeze({
+  PRODUCT: 'PRODUCT', // 活动 × 推广商品
+  CAMPAIGN: 'CAMPAIGN', // 只有活动级数据
+})
+
+/** com.lemon.erp.modules.ecom.model.EcomAdLevel */
+export const EcomAdLevel = Object.freeze({
+  CAMPAIGN: 'CAMPAIGN', // 广告活动
+  AD_GROUP: 'AD_GROUP', // 广告组
+  TARGET: 'TARGET', // 投放
+})
+
+/** com.lemon.erp.modules.ecom.model.EcomAdLogSource */
+export const EcomAdLogSource = Object.freeze({
+  RULE: 'RULE', // 广告规则
+  MANUAL: 'MANUAL', // 页面上手工修改竞价 / 预算 / 状态
+})
+
+/** com.lemon.erp.modules.ecom.model.EcomAdLogStatus（字典 ecom_ad_log_status） */
+export const EcomAdLogStatus = Object.freeze({
+  PENDING: 'PENDING', // 待处理的建议
+  APPLIED: 'APPLIED', // 已通过广告接口执行
+  MANUAL: 'MANUAL', // 已手工执行
+  FAILED: 'FAILED', // 执行失败
+  NOTIFIED: 'NOTIFIED', // 仅提醒
+  IGNORED: 'IGNORED', // 已忽略
+})
+
+/** com.lemon.erp.modules.ecom.model.EcomAdMatchType（字典 ecom_ad_match_type） */
+export const EcomAdMatchType = Object.freeze({
+  EXACT: 'EXACT', // 精准
+  PHRASE: 'PHRASE', // 词组
+  BROAD: 'BROAD', // 广泛
+  NEGATIVE_EXACT: 'NEGATIVE_EXACT', // 否定精准
+  NEGATIVE_PHRASE: 'NEGATIVE_PHRASE', // 否定词组
+})
+
+/** com.lemon.erp.modules.ecom.model.EcomAdMetric */
+export const EcomAdMetric = Object.freeze({
+  SPEND: 'SPEND', // 花费
+  SALES: 'SALES', // 广告销售额
+  CLICKS: 'CLICKS', // 点击
+  IMPRESSIONS: 'IMPRESSIONS', // 曝光
+  ORDERS: 'ORDERS', // 广告订单
+  ACOS: 'ACOS', // ACOS
+  ROAS: 'ROAS', // ROAS
+  CTR: 'CTR', // 点击率
+  CPC: 'CPC', // 单次点击成本
+  CVR: 'CVR', // 转化率
+})
+
+/** com.lemon.erp.modules.ecom.model.EcomAdOperator */
+export const EcomAdOperator = Object.freeze({
+  GT: 'GT', // 大于
+  GTE: 'GTE', // 大于等于
+  LT: 'LT', // 小于
+  LTE: 'LTE', // 小于等于
+  EQ: 'EQ', // 等于
+})
+
+/** com.lemon.erp.modules.ecom.model.EcomAdReportType */
+export const EcomAdReportType = Object.freeze({
+  CAMPAIGN: 'CAMPAIGN', // 广告活动报告
+  PRODUCT: 'PRODUCT', // 推广商品报告
+  TARGETING: 'TARGETING', // 投放报告
+  SEARCH_TERM: 'SEARCH_TERM', // 搜索词报告
+})
+
+/** com.lemon.erp.modules.ecom.model.EcomAdRunMode */
+export const EcomAdRunMode = Object.freeze({
+  MANUAL: 'MANUAL', // 手动
+  DAILY: 'DAILY', // 每天在设定的整点执行一次
+})
+
+/** com.lemon.erp.modules.ecom.model.EcomAdStatus（字典 ecom_ad_status） */
+export const EcomAdStatus = Object.freeze({
+  ENABLED: 'ENABLED', // 启用
+  PAUSED: 'PAUSED', // 暂停
+  ARCHIVED: 'ARCHIVED', // 已归档
+})
+
+/** com.lemon.erp.modules.ecom.model.EcomAdTargetType */
+export const EcomAdTargetType = Object.freeze({
+  KEYWORD: 'KEYWORD', // 关键词投放
+  PRODUCT: 'PRODUCT', // 商品 / 类目投放
+  AUTO: 'AUTO', // 自动投放
+  NEGATIVE: 'NEGATIVE', // 否定关键词
+})
+
+/** com.lemon.erp.modules.ecom.model.EcomAdType（字典 ecom_ad_type） */
+export const EcomAdType = Object.freeze({
+  SP: 'SP', // 商品推广
+  SB: 'SB', // 品牌推广
+  SD: 'SD', // 展示型推广
+  GENERIC: 'GENERIC', // 平台通用
 })
 
 /** com.lemon.erp.modules.ecom.model.EcomCarrier（字典 ecom_carrier） */
@@ -493,6 +690,14 @@ export const ExpenseClaimStatus = Object.freeze({
   PAID: 'PAID', // 已付款
 })
 
+/** com.lemon.erp.modules.ecom.model.FeeAllocMethod（字典 ecom_fee_alloc_method） */
+export const FeeAllocMethod = Object.freeze({
+  SKU: 'SKU', // 结算报告带 SKU
+  QTY: 'QTY', // 按结算周期内各 SKU 的销量
+  SALES: 'SALES', // 按结算周期内各 SKU 的本位币销售额
+  STORE: 'STORE', // 结算周期内店铺没有销量
+})
+
 /** com.lemon.erp.modules.fin.model.FeeBearer（字典 fin_fee_bearer） */
 export const FeeBearer = Object.freeze({
   FROM: 'FROM',
@@ -505,6 +710,14 @@ export const FlowStatus = Object.freeze({
   APPROVED: 'APPROVED', // 审批通过
   REJECTED: 'REJECTED', // 审批拒绝
   CANCELED: 'CANCELED', // 发起人撤回或管理员终止
+})
+
+/** com.lemon.erp.modules.ecom.analytics.model.ForecastMethod（字典 ecom_forecast_method） */
+export const ForecastMethod = Object.freeze({
+  MA: 'MA', // 移动平均
+  WMA: 'WMA', // 加权移动平均
+  HOLT: 'HOLT', // 指数平滑
+  SEASONAL: 'SEASONAL', // 星期季节性
 })
 
 /** com.lemon.erp.modules.workflow.model.FormFieldType */
@@ -847,6 +1060,20 @@ export const PasswordComplexity = Object.freeze({
   LETTER_DIGIT_SYMBOL: 'LETTER_DIGIT_SYMBOL',
 })
 
+/** com.lemon.erp.modules.ecom.model.PayoutSource */
+export const PayoutSource = Object.freeze({
+  SETTLEMENT: 'SETTLEMENT', // 结算单导入时生成的应到账记录
+  IMPORT: 'IMPORT', // 导入的银行 / 收款平台流水
+  MANUAL: 'MANUAL', // 手工登记到账
+})
+
+/** com.lemon.erp.modules.ecom.model.PayoutStatus（字典 ecom_payout_status） */
+export const PayoutStatus = Object.freeze({
+  PENDING: 'PENDING', // 未到账
+  RECEIVED: 'RECEIVED', // 已到账
+  DIFF: 'DIFF', // 有差异
+})
+
 /** com.lemon.erp.modules.fin.model.PeriodStatus */
 export const PeriodStatus = Object.freeze({
   OPEN: 'OPEN', // 未结账
@@ -881,6 +1108,25 @@ export const PriceSource = Object.freeze({
   SUPPLIER_PRICE: 'SUPPLIER_PRICE',
   LAST_PRICE: 'LAST_PRICE',
   REF_COST: 'REF_COST',
+})
+
+/** com.lemon.erp.modules.ecom.model.ProfitBasis */
+export const ProfitBasis = Object.freeze({
+  ORDER: 'ORDER', // 订单口径
+  SETTLEMENT: 'SETTLEMENT', // 结算口径
+})
+
+/** com.lemon.erp.modules.ecom.model.ProfitDimension */
+export const ProfitDimension = Object.freeze({
+  STORE: 'STORE',
+  PLATFORM: 'PLATFORM',
+  MARKETPLACE: 'MARKETPLACE',
+  SKU: 'SKU',
+  SPU: 'SPU',
+  MATERIAL: 'MATERIAL',
+  OWNER: 'OWNER',
+  COUNTRY: 'COUNTRY',
+  MONTH: 'MONTH',
 })
 
 /** com.lemon.erp.modules.scm.model.PromoType（字典 scm_promo_type） */
@@ -1005,6 +1251,23 @@ export const SalesChannel = Object.freeze({
   DEALER: 'DEALER',
 })
 
+/** com.lemon.erp.modules.ecom.analytics.model.SalesDimension */
+export const SalesDimension = Object.freeze({
+  SKU: 'SKU', // 店铺 × 平台 SKU
+  SPU: 'SPU', // 店铺 × 父商品
+  MATERIAL: 'MATERIAL', // 本地物料
+  STORE: 'STORE', // 店铺
+  PLATFORM: 'PLATFORM', // 平台
+  COUNTRY: 'COUNTRY', // 收件国家 / 地区
+})
+
+/** com.lemon.erp.modules.ecom.analytics.model.SalesGrain */
+export const SalesGrain = Object.freeze({
+  DAY: 'DAY', // 按日
+  WEEK: 'WEEK', // 按周
+  MONTH: 'MONTH', // 按月
+})
+
 /** com.lemon.erp.modules.wms.model.SerialStatus（字典 wms_serial_status） */
 export const SerialStatus = Object.freeze({
   IN_STOCK: 'IN_STOCK',
@@ -1051,8 +1314,19 @@ export const SettlementItemType = Object.freeze({
   REFUND: 'REFUND', // 退款
   COMMISSION: 'COMMISSION', // 平台佣金
   FULFILLMENT: 'FULFILLMENT', // 配送费
-  STORAGE: 'STORAGE', // 仓储费
+  STORAGE: 'STORAGE', // 月度仓储费
+  LONG_STORAGE: 'LONG_STORAGE', // 长期仓储费
+  REMOVAL: 'REMOVAL', // 移除 / 弃置费
+  RETURN_FEE: 'RETURN_FEE', // 退货处理费
+  INBOUND_FEE: 'INBOUND_FEE', // 入库配置费
+  SUBSCRIPTION: 'SUBSCRIPTION', // 订阅费
+  PROMOTION: 'PROMOTION', // 促销费
+  COUPON: 'COUPON', // 优惠券
+  DEAL: 'DEAL', // 秒杀
   AD: 'AD', // 广告费
+  REIMBURSEMENT: 'REIMBURSEMENT', // 赔偿
+  RESERVE: 'RESERVE', // 预留 / 释放
+  MARKETPLACE_TAX: 'MARKETPLACE_TAX', // 平台代收代缴税
   OTHER: 'OTHER', // 其他费用
   ADJUSTMENT: 'ADJUSTMENT', // 调整
 })
@@ -1158,6 +1432,16 @@ export const SyncType = Object.freeze({
   LISTINGS: 'LISTINGS', // 拉取在线商品
   PLATFORM_STOCK: 'PLATFORM_STOCK', // 平台仓库存
   AUTH: 'AUTH', // 授权
+  MESSAGES: 'MESSAGES', // 买家消息
+  REVIEWS: 'REVIEWS', // 评价
+  REVIEW_REQUEST: 'REVIEW_REQUEST', // 请求评价
+})
+
+/** com.lemon.erp.modules.ecom.model.TaxType（字典 ecom_tax_type） */
+export const TaxType = Object.freeze({
+  VAT: 'VAT', // 增值税
+  GST: 'GST', // 商品及服务税
+  SALES_TAX: 'SALES_TAX', // 销售税
 })
 
 /** com.lemon.erp.modules.scm.model.TradeKind（字典 scm_trade_kind） */

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomFeeAllocationMapper">
+
+    <insert id="insertBatch">
+        INSERT INTO ecom_fee_allocation (settlement_id, settlement_item_id, store_id, seller_sku, item_type, method, alloc_date, basis_value, amount,
+                                         amount_base, create_time, update_time)
+        VALUES
+        <foreach collection="items" item="i" separator=",">
+            (#{i.settlementId}, #{i.settlementItemId}, #{i.storeId}, #{i.sellerSku}, #{i.itemType}, #{i.method}, #{i.allocDate}, #{i.basisValue}, #{i.amount},
+             #{i.amountBase}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        </foreach>
+    </insert>
+
+    <select id="selectBySettlement" resultType="com.lemon.erp.modules.ecom.entity.EcomFeeAllocation">
+        SELECT a.*
+        FROM ecom_fee_allocation a
+        WHERE a.settlement_id = #{settlementId}
+        ORDER BY a.settlement_item_id, a.id
+    </select>
+
+    <select id="selectSkuBasis" resultType="map">
+        SELECT oi.seller_sku AS "sellerSku", SUM(oi.qty) AS qty,
+               SUM(CASE WHEN t.line_sum &gt; 0
+                        THEN (oi.amount + COALESCE(oi.shipping, 0) + COALESCE(oi.tax, 0) - COALESCE(oi.discount, 0)) / t.line_sum * o.total_base
+                        ELSE o.total_base / t.cnt END) AS sales
+        FROM ecom_order_item oi
+        JOIN ecom_order o ON o.id = oi.order_id
+        JOIN (SELECT oi2.order_id, SUM(oi2.amount + COALESCE(oi2.shipping, 0) + COALESCE(oi2.tax, 0) - COALESCE(oi2.discount, 0)) AS line_sum, COUNT(*) AS cnt
+              FROM ecom_order_item oi2
+              JOIN ecom_order o2 ON o2.id = oi2.order_id
+              WHERE o2.store_id = #{storeId} AND o2.order_time &gt;= #{begin} AND o2.order_time &lt; #{end}
+              GROUP BY oi2.order_id) t ON t.order_id = o.id
+        WHERE o.store_id = #{storeId} AND o.status &lt;&gt; 'CANCELLED' AND o.order_time &gt;= #{begin} AND o.order_time &lt; #{end}
+        GROUP BY oi.seller_sku
+        ORDER BY oi.seller_sku
+    </select>
+
+</mapper>

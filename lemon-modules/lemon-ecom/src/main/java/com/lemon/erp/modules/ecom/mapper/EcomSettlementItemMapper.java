@@ -13,6 +13,9 @@ public interface EcomSettlementItemMapper extends BaseMapper<EcomSettlementItem>
 
     int insertBatch(@Param("items") List<EcomSettlementItem> items);
 
-    /** 结算单中按平台订单号汇总的费用：platformOrderNo、commission、fulfillment、refund、other */
+    /** 结算单中挂订单的明细按 平台订单号 + 类型 汇总：platformOrderNo、itemType、amount */
     List<Map<String, Object>> selectOrderFees(@Param("settlementId") Long settlementId);
+
+    /** 不挂订单（没有订单号或订单不在系统中）的明细 */
+    List<EcomSettlementItem> selectUnlinked(@Param("settlementId") Long settlementId);
 }

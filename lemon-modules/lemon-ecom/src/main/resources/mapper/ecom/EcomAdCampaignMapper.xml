@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomAdCampaignMapper">
+
+    <sql id="columns">
+        c.*, s.name AS store_name, s.currency,
+        COALESCE(g.cnt, 0) AS ad_group_count, COALESCE(t.cnt, 0) AS target_count,
+        CASE WHEN sc.id IS NULL THEN 0 ELSE 1 END AS has_schedule
+    </sql>
+    <sql id="joins">
+        JOIN ecom_store s ON s.id = c.store_id
+        LEFT JOIN (SELECT campaign_id, COUNT(*) AS cnt FROM ecom_ad_group GROUP BY campaign_id) g ON g.campaign_id = c.id
+        LEFT JOIN (SELECT campaign_id, COUNT(*) AS cnt FROM ecom_ad_target WHERE target_type &lt;&gt; 'NEGATIVE' GROUP BY campaign_id) t ON t.campaign_id = c.id
+        LEFT JOIN ecom_ad_schedule sc ON sc.campaign_id = c.id AND sc.status = 1
+    </sql>
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.entity.EcomAdCampaign">
+        SELECT <include refid="columns"/>
+        FROM ecom_ad_campaign c
+        <include refid="joins"/>
+        <where>
+            <if test="storeId != null">c.store_id = #{storeId}</if>
+            <if test="status != null">AND c.status = #{status}</if>
+            <if test="adType != null">AND c.ad_type = #{adType}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (c.name LIKE CONCAT('%', #{keyword}, '%') OR c.platform_campaign_id = #{keyword} OR c.tags LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY c.store_id, c.name
+    </select>
+
+    <select id="selectDetail" resultType="com.lemon.erp.modules.ecom.entity.EcomAdCampaign">
+        SELECT <include refid="columns"/>
+        FROM ecom_ad_campaign c
+        <include refid="joins"/>
+        WHERE c.id = #{id}
+    </select>
+
+    <select id="selectEntities" resultType="com.lemon.erp.modules.ecom.dto.AdsViews$RuleEntity">
+        SELECT 'CAMPAIGN' AS level, c.id, c.store_id, s.name AS store_name, s.currency, c.id AS campaign_id, c.name AS campaign_name,
+               c.tags AS campaign_tags, c.ad_type, c.name, c.status, c.platform_campaign_id AS platform_id, c.daily_budget AS budget
+        FROM ecom_ad_campaign c
+        JOIN ecom_store s ON s.id = c.store_id
+        WHERE 1 = 1
+        <if test="!includeArchived">AND c.status &lt;&gt; 'ARCHIVED'</if>
+        <if test="storeIds != null and storeIds.size() > 0">
+            AND c.store_id IN <foreach collection="storeIds" item="i" open="(" separator="," close=")">#{i}</foreach>
+        </if>
+        <if test="campaignId != null">AND c.id = #{campaignId}</if>
+        <if test="adType != null">AND c.ad_type = #{adType}</if>
+        <if test="keyword != null and keyword != ''">AND c.name LIKE CONCAT('%', #{keyword}, '%')</if>
+        ORDER BY c.store_id, c.name
+    </select>
+
+</mapper>

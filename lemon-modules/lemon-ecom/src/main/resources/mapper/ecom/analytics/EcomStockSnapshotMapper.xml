@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.analytics.mapper.EcomStockSnapshotMapper">
+
+    <insert id="insertBatch">
+        INSERT INTO ecom_stock_snapshot (snapshot_date, listing_id, store_id, fulfillment, platform_qty, local_qty, sellable_qty, create_time, update_time)
+        VALUES
+        <foreach collection="items" item="i" separator=",">
+            (#{i.snapshotDate}, #{i.listingId}, #{i.storeId}, #{i.fulfillment}, #{i.platformQty}, #{i.localQty}, #{i.sellableQty},
+             CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        </foreach>
+    </insert>
+
+    <delete id="deleteDay">
+        DELETE FROM ecom_stock_snapshot
+        WHERE snapshot_date = #{date}
+          AND listing_id IN <foreach collection="listingIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </delete>
+
+    <delete id="deleteBefore">
+        DELETE FROM ecom_stock_snapshot WHERE snapshot_date &lt; #{date}
+    </delete>
+
+</mapper>

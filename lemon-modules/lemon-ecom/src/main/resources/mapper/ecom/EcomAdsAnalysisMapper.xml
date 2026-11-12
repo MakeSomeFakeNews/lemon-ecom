@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomAdsAnalysisMapper">
+
+    <sql id="storeIn">
+        <if test="storeIds != null and storeIds.size() > 0">
+            AND ${alias}.store_id IN <foreach collection="storeIds" item="i" open="(" separator="," close=")">#{i}</foreach>
+        </if>
+    </sql>
+
+    <!-- 活动：活动报告（ecom_ad_stat CAMPAIGN），某天没有活动报告时取广告日报 -->
+    <select id="selectCampaignMetrics" resultType="map">
+        SELECT x.campaign_id AS "id", SUM(x.impressions) AS "impressions", SUM(x.clicks) AS "clicks", SUM(x.spend) AS "spend",
+               SUM(x.sales) AS "sales", SUM(x.orders) AS "orders"
+        FROM (
+            SELECT st.campaign_id, st.impressions, st.clicks, st.spend, st.sales, st.orders
+            FROM ecom_ad_stat st
+            WHERE st.level = 'CAMPAIGN' AND st.stat_date &gt;= #{begin} AND st.stat_date &lt;= #{end}
+            <include refid="storeIn"><property name="alias" value="st"/></include>
+            <if test="campaignId != null">AND st.campaign_id = #{campaignId}</if>
+            UNION ALL
+            SELECT d.campaign_id, d.impressions, d.clicks, d.spend, d.ad_sales AS sales, d.ad_orders AS orders
+            FROM ecom_ad_daily d
+            WHERE d.campaign_id IS NOT NULL AND d.ad_date &gt;= #{begin} AND d.ad_date &lt;= #{end}
+            <include refid="storeIn"><property name="alias" value="d"/></include>
+            <if test="campaignId != null">AND d.campaign_id = #{campaignId}</if>
+              AND NOT EXISTS (SELECT 1 FROM ecom_ad_stat s2 WHERE s2.level = 'CAMPAIGN' AND s2.entity_id = d.campaign_id AND s2.stat_date = d.ad_date)
+        ) x
+        GROUP BY x.campaign_id
+    </select>
+
+    <!-- 广告组：投放报告按广告组合计，某天没有投放报告时取广告日报（推广商品报告带广告组的行） -->
+    <select id="selectAdGroupMetrics" resultType="map">
+        SELECT x.ad_group_id AS "id", SUM(x.impressions) AS "impressions", SUM(x.clicks) AS "clicks", SUM(x.spend) AS "spend",
+               SUM(x.sales) AS "sales", SUM(x.orders) AS "orders"
+        FROM (
+            SELECT st.ad_group_id, st.impressions, st.clicks, st.spend, st.sales, st.orders
+            FROM ecom_ad_stat st
+            WHERE st.level = 'TARGET' AND st.ad_group_id IS NOT NULL AND st.stat_date &gt;= #{begin} AND st.stat_date &lt;= #{end}
+            <include refid="storeIn"><property name="alias" value="st"/></include>
+            <if test="campaignId != null">AND st.campaign_id = #{campaignId}</if>
+            UNION ALL
+            SELECT d.ad_group_id, d.impressions, d.clicks, d.spend, d.ad_sales AS sales, d.ad_orders AS orders
+            FROM ecom_ad_daily d
+            WHERE d.ad_group_id IS NOT NULL AND d.ad_date &gt;= #{begin} AND d.ad_date &lt;= #{end}
+            <include refid="storeIn"><property name="alias" value="d"/></include>
+            <if test="campaignId != null">AND d.campaign_id = #{campaignId}</if>
+              AND NOT EXISTS (SELECT 1 FROM ecom_ad_stat s2 WHERE s2.level = 'TARGET' AND s2.ad_group_id = d.ad_group_id AND s2.stat_date = d.ad_date)
+        ) x
+        GROUP BY x.ad_group_id
+    </select>
+
+    <!-- 投放：投放报告 -->
+    <select id="selectTargetMetrics" resultType="map">
+        SELECT st.entity_id AS "id", SUM(st.impressions) AS "impressions", SUM(st.clicks) AS "clicks", SUM(st.spend) AS "spend",
+               SUM(st.sales) AS "sales", SUM(st.orders) AS "orders"
+        FROM ecom_ad_stat st
+        WHERE st.level = 'TARGET' AND st.stat_date &gt;= #{begin} AND st.stat_date &lt;= #{end}
+        <include refid="storeIn"><property name="alias" value="st"/></include>
+        <if test="campaignId != null">AND st.campaign_id = #{campaignId}</if>
+        <if test="adGroupId != null">AND st.ad_group_id = #{adGroupId}</if>
+        GROUP BY st.entity_id
+    </select>
+
+    <select id="selectStoreTotals" resultType="map">
+        SELECT d.store_id AS "storeId", s.currency AS "currency", SUM(d.impressions) AS "impressions", SUM(d.clicks) AS "clicks",
+               SUM(d.spend) AS "spend", SUM(d.ad_sales) AS "sales", SUM(d.ad_orders) AS "orders"
+        FROM ecom_ad_daily d
+        JOIN ecom_store s ON s.id = d.store_id
+        WHERE d.ad_date &gt;= #{begin} AND d.ad_date &lt;= #{end}
+        <if test="storeId != null">AND d.store_id = #{storeId}</if>
+        GROUP BY d.store_id, s.currency
+    </select>
+
+    <select id="selectDaily" resultType="map">
+        SELECT d.store_id AS "storeId", s.currency AS "currency", d.ad_date AS "date", SUM(d.impressions) AS "impressions",
+               SUM(d.clicks) AS "clicks", SUM(d.spend) AS "spend", SUM(d.ad_sales) AS "sales", SUM(d.ad_orders) AS "orders"
+        FROM ecom_ad_daily d
+        JOIN ecom_store s ON s.id = d.store_id
+        WHERE d.ad_date &gt;= #{begin} AND d.ad_date &lt;= #{end}
+        <if test="storeId != null">AND d.store_id = #{storeId}</if>
+        GROUP BY d.store_id, s.currency, d.ad_date
+        ORDER BY d.ad_date
+    </select>
+
+    <select id="selectSkuTotals" resultType="map">
+        SELECT d.store_id AS "storeId", s.name AS "storeName", s.currency AS "currency", d.seller_sku AS "sellerSku",
+               SUM(d.clicks) AS "clicks", SUM(d.spend) AS "spend", SUM(d.ad_sales) AS "sales", SUM(d.ad_orders) AS "orders"
+        FROM ecom_ad_daily d
+        JOIN ecom_store s ON s.id = d.store_id
+        WHERE d.ad_date &gt;= #{begin} AND d.ad_date &lt;= #{end} AND d.seller_sku &lt;&gt; ''
+        <if test="storeId != null">AND d.store_id = #{storeId}</if>
+        <if test="keyword != null and keyword != ''">AND d.seller_sku LIKE CONCAT('%', #{keyword}, '%')</if>
+        GROUP BY d.store_id, s.name, s.currency, d.seller_sku
+    </select>
+
+    <select id="selectSearchTerms" resultType="com.lemon.erp.modules.ecom.dto.AdsViews$SearchTermRow">
+        SELECT t.store_id, s.name AS store_name, s.currency, t.campaign_id, c.name AS campaign_name, t.ad_group_id, g.name AS ad_group_name,
+               t.keyword_text, t.match_type, t.search_term,
+               SUM(t.impressions) AS impressions, SUM(t.clicks) AS clicks, SUM(t.spend) AS spend, SUM(t.sales) AS sales, SUM(t.orders) AS orders
+        FROM ecom_ad_search_term t
+        JOIN ecom_store s ON s.id = t.store_id
+        JOIN ecom_ad_campaign c ON c.id = t.campaign_id
+        LEFT JOIN ecom_ad_group g ON g.id = t.ad_group_id
+        WHERE t.stat_date &gt;= #{begin} AND t.stat_date &lt;= #{end}
+        <if test="storeId != null">AND t.store_id = #{storeId}</if>
+        <if test="campaignId != null">AND t.campaign_id = #{campaignId}</if>
+        <if test="keyword != null and keyword != ''">
+            AND (t.search_term LIKE CONCAT('%', #{keyword}, '%') OR t.keyword_text LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        GROUP BY t.store_id, s.name, s.currency, t.campaign_id, c.name, t.ad_group_id, g.name, t.keyword_text, t.match_type, t.search_term
+        ORDER BY spend DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectNegatives" resultType="map">
+        SELECT t.ad_group_id AS "adGroupId", LOWER(t.target_text) AS "text"
+        FROM ecom_ad_target t
+        WHERE t.target_type = 'NEGATIVE'
+        <if test="storeId != null">AND t.store_id = #{storeId}</if>
+    </select>
+
+    <select id="countCampaigns" resultType="long">
+        SELECT COUNT(*) FROM ecom_ad_campaign c
+        WHERE c.status &lt;&gt; 'ARCHIVED'
+        <if test="enabledOnly">AND c.status = 'ENABLED'</if>
+        <if test="storeId != null">AND c.store_id = #{storeId}</if>
+    </select>
+
+    <select id="countPendingLogs" resultType="long">
+        SELECT COUNT(*) FROM ecom_ad_rule_log l
+        WHERE l.status = 'PENDING'
+        <if test="storeId != null">AND l.store_id = #{storeId}</if>
+    </select>
+
+</mapper>

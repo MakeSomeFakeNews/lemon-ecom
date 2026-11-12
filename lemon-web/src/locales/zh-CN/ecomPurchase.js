@@ -7,6 +7,7 @@ export default {
     weightsExtra: '日均 = 各期间日均按权重加权平均',
     custom: '自定义',
     preset: {
+      forecast: '按销量预测（含趋势、季节性与促销系数）',
       default: '7 天 × 0.5 + 30 天 × 0.5（默认）',
       d7: '近 7 天',
       d14: '近 14 天',

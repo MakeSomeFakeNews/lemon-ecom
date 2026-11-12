@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomPayoutMapper">
+
+    <sql id="columns">
+        p.*, s.name AS store_name, s.platform, st.settlement_no, st.period_start, st.exchange_rate AS settlement_rate,
+        st.fin_settlement_id, a.name AS account_name, v.voucher_no
+    </sql>
+    <sql id="joins">
+        LEFT JOIN ecom_store s ON s.id = p.store_id
+        LEFT JOIN ecom_settlement st ON st.id = p.settlement_id
+        LEFT JOIN fin_account a ON a.id = p.account_id
+        LEFT JOIN fin_voucher v ON v.id = p.voucher_id
+    </sql>
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.entity.EcomPayout">
+        SELECT <include refid="columns"/>
+        FROM ecom_payout p
+        <include refid="joins"/>
+        <where>
+            <if test="status != null">p.status = #{status}</if>
+            <if test="storeId != null">AND p.store_id = #{storeId}</if>
+            <if test="begin != null">AND COALESCE(p.payout_date, p.expected_date) &gt;= #{begin}</if>
+            <if test="end != null">AND COALESCE(p.payout_date, p.expected_date) &lt;= #{end}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (st.settlement_no LIKE CONCAT('%', #{keyword}, '%') OR p.bank_ref LIKE CONCAT('%', #{keyword}, '%')
+                     OR p.remark LIKE CONCAT('%', #{keyword}, '%') OR s.name LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY COALESCE(p.payout_date, p.expected_date) DESC, p.id DESC
+    </select>
+
+    <select id="selectDetail" resultType="com.lemon.erp.modules.ecom.entity.EcomPayout">
+        SELECT <include refid="columns"/>
+        FROM ecom_payout p
+        <include refid="joins"/>
+        WHERE p.id = #{id}
+    </select>
+
+    <select id="selectPending" resultType="com.lemon.erp.modules.ecom.entity.EcomPayout">
+        SELECT p.*, s.name AS store_name, st.settlement_no
+        FROM ecom_payout p
+        JOIN ecom_settlement st ON st.id = p.settlement_id
+        LEFT JOIN ecom_store s ON s.id = p.store_id
+        WHERE p.status = 'PENDING'
+        <if test="currency != null">AND p.currency = #{currency}</if>
+        <if test="storeId != null">AND p.store_id = #{storeId}</if>
+        ORDER BY p.expected_date, p.id
+    </select>
+
+    <select id="selectStatusSummary" resultType="map">
+        SELECT p.status AS "status", COUNT(*) AS "cnt", COALESCE(SUM(p.expected_base), 0) AS "expectedBase", COALESCE(SUM(p.amount_base), 0) AS "amountBase"
+        FROM ecom_payout p
+        <where>
+            <if test="storeId != null">p.store_id = #{storeId}</if>
+        </where>
+        GROUP BY p.status
+    </select>
+
+</mapper>

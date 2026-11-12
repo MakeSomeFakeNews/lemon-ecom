@@ -36,6 +36,12 @@ public interface EcomReportMapper {
     /** 广告花费（本位币，按店铺币种当月汇率折算）：storeId、sellerSku → spend */
     List<Map<String, Object>> selectAdSpendBySku(@Param("begin") LocalDate begin, @Param("end") LocalDate end, @Param("storeId") Long storeId);
 
+    /** 按天的广告花费（店铺币种）：day、currency、spend */
+    List<Map<String, Object>> selectAdSpendByDay(@Param("begin") LocalDate begin, @Param("end") LocalDate end, @Param("storeId") Long storeId);
+
+    /** 按天的费用分摊（本位币，费用为负）：day、amount */
+    List<Map<String, Object>> selectAllocationByDay(@Param("begin") LocalDate begin, @Param("end") LocalDate end, @Param("storeId") Long storeId);
+
     /** 广告花费按店铺 */
     List<Map<String, Object>> selectAdSpendByStore(@Param("begin") LocalDate begin, @Param("end") LocalDate end, @Param("storeId") Long storeId);
 }

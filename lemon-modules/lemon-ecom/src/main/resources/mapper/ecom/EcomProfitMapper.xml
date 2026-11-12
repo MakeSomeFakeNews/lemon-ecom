@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomProfitMapper">
+
+    <!-- 订单行金额（订单币种）：商品 + 运费 + 税 − 优惠 -->
+    <sql id="lineAmount">(oi2.amount + COALESCE(oi2.shipping, 0) + COALESCE(oi2.tax, 0) - COALESCE(oi2.discount, 0))</sql>
+
+    <!-- 订单行占订单各行合计的比例（合计为 0 时平均分），head = 订单的第一行 -->
+    <sql id="shareSelect">
+        SELECT oi2.id AS item_id,
+               CASE WHEN t.line_sum &gt; 0 THEN <include refid="lineAmount"/> / t.line_sum ELSE 1.0 / t.cnt END AS share,
+               CASE WHEN oi2.id = t.first_id THEN 1 ELSE 0 END AS head
+        FROM ecom_order_item oi2
+    </sql>
+    <sql id="shareGroup">
+        SELECT oi3.order_id, SUM(oi3.amount + COALESCE(oi3.shipping, 0) + COALESCE(oi3.tax, 0) - COALESCE(oi3.discount, 0)) AS line_sum,
+               COUNT(*) AS cnt, MIN(oi3.id) AS first_id
+        FROM ecom_order_item oi3
+    </sql>
+
+    <!-- 订单口径：下单时间在期间内、未取消的订单 -->
+    <select id="selectOrderCells" resultType="com.lemon.erp.modules.ecom.dto.EcomProfitViews$Cell">
+        SELECT o.store_id, oi.seller_sku, COALESCE(o.ship_country, '') AS country,
+               YEAR(o.order_time) * 100 + MONTH(o.order_time) AS period,
+               MAX(oi.material_id) AS material_id,
+               COUNT(DISTINCT o.id) AS orders, SUM(x.head) AS order_heads, SUM(oi.qty) AS qty,
+               SUM(x.share * o.total_base) AS sales_gross,
+               SUM(x.share * COALESCE(o.withheld_tax, 0) * o.exchange_rate) AS withheld,
+               SUM(x.share * COALESCE(o.vat_amount, 0) * o.exchange_rate) AS vat,
+               SUM(x.share * COALESCE(o.platform_fee, 0) * o.exchange_rate) AS commission,
+               SUM(x.share * COALESCE(o.fulfillment_fee, 0) * o.exchange_rate) AS fba_fee,
+               SUM(x.share * COALESCE(o.return_fee, 0) * o.exchange_rate) AS return_fee,
+               SUM(x.share * COALESCE(o.other_fee, 0) * o.exchange_rate) AS other_fee,
+               SUM(x.share * COALESCE(o.refund_amount, 0) * o.exchange_rate) AS refund,
+               SUM(COALESCE(oi.cost, 0)) AS cost,
+               SUM(CASE WHEN o.fulfillment = 'PLATFORM' THEN x.share * COALESCE(o.shipping_cost, 0) ELSE 0 END) AS head_cost,
+               SUM(CASE WHEN o.fulfillment = 'PLATFORM' THEN 0 ELSE x.share * COALESCE(o.shipping_cost, 0) END) AS last_mile
+        FROM ecom_order_item oi
+        JOIN ecom_order o ON o.id = oi.order_id
+        JOIN (<include refid="shareSelect"/>
+              JOIN (<include refid="shareGroup"/>
+                    JOIN ecom_order o3 ON o3.id = oi3.order_id
+                    WHERE o3.order_time &gt;= #{begin} AND o3.order_time &lt; #{end}
+                    <if test="storeId != null">AND o3.store_id = #{storeId}</if>
+                    GROUP BY oi3.order_id) t ON t.order_id = oi2.order_id) x ON x.item_id = oi.id
+        WHERE o.status &lt;&gt; 'CANCELLED' AND o.order_time &gt;= #{begin} AND o.order_time &lt; #{end}
+        <if test="storeId != null">AND o.store_id = #{storeId}</if>
+        GROUP BY o.store_id, oi.seller_sku, COALESCE(o.ship_country, ''), YEAR(o.order_time) * 100 + MONTH(o.order_time)
+    </select>
+
+    <!-- 结算明细的入账日期：没有时为结算周期结束日 -->
+    <sql id="postedDate">COALESCE(si.posted_date, st.period_end)</sql>
+
+    <select id="selectSettlementOrderItems" resultType="com.lemon.erp.modules.ecom.dto.EcomProfitViews$TypedCell">
+        SELECT o.store_id, oi.seller_sku, COALESCE(o.ship_country, '') AS country,
+               YEAR(<include refid="postedDate"/>) * 100 + MONTH(<include refid="postedDate"/>) AS period,
+               si.item_type, SUM(x.share * si.amount * st.exchange_rate) AS amount
+        FROM ecom_settlement_item si
+        JOIN ecom_settlement st ON st.id = si.settlement_id
+        JOIN ecom_order o ON o.store_id = st.store_id AND o.platform_order_no = si.platform_order_no
+        JOIN ecom_order_item oi ON oi.order_id = o.id
+        JOIN (<include refid="shareSelect"/>
+              JOIN (<include refid="shareGroup"/> GROUP BY oi3.order_id) t ON t.order_id = oi2.order_id) x ON x.item_id = oi.id
+        WHERE <include refid="postedDate"/> &gt;= #{begin} AND <include refid="postedDate"/> &lt;= #{end}
+        <if test="storeId != null">AND st.store_id = #{storeId}</if>
+        GROUP BY o.store_id, oi.seller_sku, COALESCE(o.ship_country, ''),
+                 YEAR(<include refid="postedDate"/>) * 100 + MONTH(<include refid="postedDate"/>), si.item_type
+    </select>
+
+    <select id="selectSettlementUnlinked" resultType="com.lemon.erp.modules.ecom.dto.EcomProfitViews$TypedCell">
+        SELECT st.store_id, COALESCE(si.seller_sku, '') AS seller_sku, '' AS country,
+               YEAR(<include refid="postedDate"/>) * 100 + MONTH(<include refid="postedDate"/>) AS period,
+               si.item_type, SUM(si.amount * st.exchange_rate) AS amount
+        FROM ecom_settlement_item si
+        JOIN ecom_settlement st ON st.id = si.settlement_id
+        WHERE si.item_type IN ('ORDER', 'REFUND', 'MARKETPLACE_TAX')
+          AND <include refid="postedDate"/> &gt;= #{begin} AND <include refid="postedDate"/> &lt;= #{end}
+          AND (si.platform_order_no IS NULL OR si.platform_order_no = ''
+               OR NOT EXISTS (SELECT 1 FROM ecom_order o WHERE o.store_id = st.store_id AND o.platform_order_no = si.platform_order_no))
+        <if test="storeId != null">AND st.store_id = #{storeId}</if>
+        GROUP BY st.store_id, COALESCE(si.seller_sku, ''), YEAR(<include refid="postedDate"/>) * 100 + MONTH(<include refid="postedDate"/>), si.item_type
+    </select>
+
+    <!-- 首次结算（最早一笔订单收入的入账日期）在期间内的订单：件数、成本、头程、尾程、需申报 VAT -->
+    <select id="selectSettledOrderCells" resultType="com.lemon.erp.modules.ecom.dto.EcomProfitViews$Cell">
+        SELECT o.store_id, oi.seller_sku, COALESCE(o.ship_country, '') AS country,
+               YEAR(f.first_posted) * 100 + MONTH(f.first_posted) AS period,
+               MAX(oi.material_id) AS material_id,
+               COUNT(DISTINCT o.id) AS orders, SUM(x.head) AS order_heads, SUM(oi.qty) AS qty,
+               SUM(x.share * COALESCE(o.vat_amount, 0) * o.exchange_rate) AS vat,
+               SUM(COALESCE(oi.cost, 0)) AS cost,
+               SUM(CASE WHEN o.fulfillment = 'PLATFORM' THEN x.share * COALESCE(o.shipping_cost, 0) ELSE 0 END) AS head_cost,
+               SUM(CASE WHEN o.fulfillment = 'PLATFORM' THEN 0 ELSE x.share * COALESCE(o.shipping_cost, 0) END) AS last_mile
+        FROM (SELECT st.store_id, si.platform_order_no, MIN(<include refid="postedDate"/>) AS first_posted
+              FROM ecom_settlement_item si
+              JOIN ecom_settlement st ON st.id = si.settlement_id
+              WHERE si.item_type = 'ORDER' AND si.platform_order_no IS NOT NULL AND si.platform_order_no &lt;&gt; ''
+              <if test="storeId != null">AND st.store_id = #{storeId}</if>
+              GROUP BY st.store_id, si.platform_order_no) f
+        JOIN ecom_order o ON o.store_id = f.store_id AND o.platform_order_no = f.platform_order_no
+        JOIN ecom_order_item oi ON oi.order_id = o.id
+        JOIN (<include refid="shareSelect"/>
+              JOIN (<include refid="shareGroup"/> GROUP BY oi3.order_id) t ON t.order_id = oi2.order_id) x ON x.item_id = oi.id
+        WHERE f.first_posted &gt;= #{begin} AND f.first_posted &lt;= #{end}
+        GROUP BY o.store_id, oi.seller_sku, COALESCE(o.ship_country, ''), YEAR(f.first_posted) * 100 + MONTH(f.first_posted)
+    </select>
+
+    <select id="selectAllocations" resultType="com.lemon.erp.modules.ecom.dto.EcomProfitViews$TypedCell">
+        SELECT a.store_id, COALESCE(a.seller_sku, '') AS seller_sku, '' AS country,
+               YEAR(a.alloc_date) * 100 + MONTH(a.alloc_date) AS period, a.item_type, SUM(a.amount_base) AS amount
+        FROM ecom_fee_allocation a
+        WHERE a.alloc_date &gt;= #{begin} AND a.alloc_date &lt;= #{end}
+        <if test="storeId != null">AND a.store_id = #{storeId}</if>
+        GROUP BY a.store_id, COALESCE(a.seller_sku, ''), YEAR(a.alloc_date) * 100 + MONTH(a.alloc_date), a.item_type
+    </select>
+
+    <select id="selectAdSpend" resultType="com.lemon.erp.modules.ecom.dto.EcomProfitViews$TypedCell">
+        SELECT a.store_id, COALESCE(a.seller_sku, '') AS seller_sku, '' AS country,
+               YEAR(a.ad_date) * 100 + MONTH(a.ad_date) AS period, s.currency, SUM(a.spend) AS amount
+        FROM ecom_ad_daily a
+        JOIN ecom_store s ON s.id = a.store_id
+        WHERE a.ad_date &gt;= #{begin} AND a.ad_date &lt;= #{end}
+        <if test="storeId != null">AND a.store_id = #{storeId}</if>
+        GROUP BY a.store_id, COALESCE(a.seller_sku, ''), s.currency, YEAR(a.ad_date) * 100 + MONTH(a.ad_date)
+    </select>
+
+    <select id="selectStores" resultType="com.lemon.erp.modules.ecom.dto.EcomProfitViews$StoreAttr">
+        SELECT s.id AS store_id, s.name AS store_name, s.platform, s.marketplace, s.currency, s.owner_id, u.nickname AS owner_name
+        FROM ecom_store s
+        LEFT JOIN sys_user u ON u.id = s.owner_id
+    </select>
+
+    <select id="selectSkuAttrs" resultType="com.lemon.erp.modules.ecom.dto.EcomProfitViews$SkuAttr">
+        SELECT l.store_id, l.seller_sku, l.parent_item_id, l.title, l.material_id, m.code AS material_code, m.name AS material_name
+        FROM ecom_listing l
+        LEFT JOIN wms_material m ON m.id = l.material_id
+        <where>
+            <if test="storeId != null">l.store_id = #{storeId}</if>
+        </where>
+    </select>
+
+    <select id="selectMaterials" resultType="com.lemon.erp.modules.ecom.dto.EcomProfitViews$SkuAttr">
+        SELECT m.id AS material_id, m.code AS material_code, m.name AS material_name
+        FROM wms_material m
+        WHERE m.id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </select>
+
+    <!-- VAT 汇总：应申报销售额 = 实付 − 退款 − 税额（不含税、扣除退款） -->
+    <select id="selectVatSales" resultType="com.lemon.erp.modules.ecom.dto.EcomProfitViews$VatRow">
+        SELECT COALESCE(o.ship_country, '') AS country, YEAR(o.order_time) * 100 + MONTH(o.order_time) AS period,
+               o.tax_type, o.tax_facilitator AS facilitator, o.currency, COUNT(*) AS orders,
+               SUM(o.total_amount - o.refund_amount - o.vat_amount - o.withheld_tax) AS taxable_fc,
+               SUM((o.total_amount - o.refund_amount - o.vat_amount - o.withheld_tax) * o.exchange_rate) AS taxable_base,
+               SUM(o.vat_amount) AS vat_fc, SUM(o.vat_amount * o.exchange_rate) AS vat_base,
+               SUM(o.withheld_tax) AS withheld_fc, SUM(o.withheld_tax * o.exchange_rate) AS withheld_base
+        FROM ecom_order o
+        WHERE o.status &lt;&gt; 'CANCELLED' AND o.tax_type IS NOT NULL AND o.order_time &gt;= #{begin} AND o.order_time &lt; #{end}
+        <if test="storeId != null">AND o.store_id = #{storeId}</if>
+        GROUP BY COALESCE(o.ship_country, ''), YEAR(o.order_time) * 100 + MONTH(o.order_time), o.tax_type, o.tax_facilitator, o.currency
+        ORDER BY country, period, o.currency
+    </select>
+
+    <select id="selectVatInputs" resultType="com.lemon.erp.modules.ecom.dto.EcomProfitViews$VatRow">
+        SELECT s.marketplace AS country, YEAR(i.ship_date) * 100 + MONTH(i.ship_date) AS period,
+               SUM(i.duty) AS duty, SUM(i.import_vat) AS import_vat
+        FROM ecom_inbound i
+        JOIN ecom_store s ON s.id = i.store_id
+        WHERE i.status IN ('SHIPPED', 'RECEIVED') AND i.ship_date &gt;= #{begin} AND i.ship_date &lt;= #{end}
+        <if test="storeId != null">AND i.store_id = #{storeId}</if>
+        GROUP BY s.marketplace, YEAR(i.ship_date) * 100 + MONTH(i.ship_date)
+        HAVING SUM(i.duty) &lt;&gt; 0 OR SUM(i.import_vat) &lt;&gt; 0
+    </select>
+
+</mapper>

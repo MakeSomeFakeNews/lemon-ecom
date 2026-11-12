@@ -1,0 +1,361 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 数据分析的只读统计：平台订单（不含已取消）按下单时间区间取数（order_time 有索引，不对它套函数，按天聚合用 CAST(... AS DATE)）；
+     销售额 = 行实付（商品 + 运费 + 税 − 优惠）× 订单汇率，与利润分析一致；只读关联仓库模块的库存、批次、流水、成本 -->
+<mapper namespace="com.lemon.erp.modules.ecom.analytics.mapper.EcomAnalyticsMapper">
+
+    <sql id="lineFc">(oi.amount + COALESCE(oi.shipping, 0) + COALESCE(oi.tax, 0) - COALESCE(oi.discount, 0))</sql>
+    <sql id="feesBase">(COALESCE(o.platform_fee, 0) + COALESCE(o.fulfillment_fee, 0) + COALESCE(o.other_fee, 0)) * o.exchange_rate</sql>
+    <sql id="refundBase">COALESCE(o.refund_amount, 0) * o.exchange_rate</sql>
+    <sql id="lineShare">CASE WHEN o.total_amount &gt; 0 THEN <include refid="lineFc"/> / o.total_amount ELSE 0 END</sql>
+
+    <sql id="orderRange">
+        o.status &lt;&gt; 'CANCELLED' AND o.order_time &gt;= #{begin} AND o.order_time &lt; #{end}
+        <if test="storeId != null">AND o.store_id = #{storeId}</if>
+    </sql>
+
+    <sql id="skuKeyword">
+        <if test="keyword != null and keyword != ''">
+            AND (oi.seller_sku LIKE CONCAT('%', #{keyword}, '%') OR oi.title LIKE CONCAT('%', #{keyword}, '%')
+                 OR m.code LIKE CONCAT('%', #{keyword}, '%') OR m.name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+    </sql>
+
+    <!-- 订单行按物料展开：单品行取映射的物料与物料数量，组合行取展开的组件（金额按分摊比例） -->
+    <sql id="materialLines">
+        SELECT o.id AS order_id, o.store_id, o.order_time, o.ship_country, oi.material_id, oi.material_qty AS qty,
+               <include refid="lineFc"/> * o.exchange_rate AS amount
+        FROM ecom_order_item oi
+        JOIN ecom_order o ON o.id = oi.order_id
+        WHERE <include refid="orderRange"/> AND oi.material_id IS NOT NULL AND COALESCE(oi.bundle, 0) = 0
+        UNION ALL
+        SELECT o.id AS order_id, o.store_id, o.order_time, o.ship_country, p.material_id, p.material_qty AS qty,
+               <include refid="lineFc"/> * o.exchange_rate * p.share AS amount
+        FROM ecom_order_item_part p
+        JOIN ecom_order_item oi ON oi.id = p.order_item_id
+        JOIN ecom_order o ON o.id = p.order_id
+        WHERE <include refid="orderRange"/>
+    </sql>
+
+    <!-- 销量统计：按维度（byDay 时再按天）汇总件数与销售额 -->
+    <select id="selectSales" resultType="com.lemon.erp.modules.ecom.analytics.dto.AnalyticsRows$SalesCell">
+        <choose>
+            <when test="dimension.name() == 'MATERIAL'">
+                SELECT x.material_id, MAX(m.code) AS material_code, MAX(m.name) AS material_name, MAX(m.spec) AS material_spec,
+                       <if test="byDay">CAST(x.order_time AS DATE) AS sale_day,</if>
+                       COUNT(DISTINCT x.order_id) AS orders, SUM(x.qty) AS qty, SUM(x.amount) AS amount
+                FROM (<include refid="materialLines"/>) x
+                JOIN ecom_store s ON s.id = x.store_id
+                JOIN wms_material m ON m.id = x.material_id
+                <where>
+                    <if test="platform != null">s.platform = #{platform}</if>
+                    <if test="keyword != null and keyword != ''">
+                        AND (m.code LIKE CONCAT('%', #{keyword}, '%') OR m.name LIKE CONCAT('%', #{keyword}, '%'))
+                    </if>
+                </where>
+                GROUP BY x.material_id<if test="byDay">, CAST(x.order_time AS DATE)</if>
+            </when>
+            <otherwise>
+                SELECT
+                <choose>
+                    <when test="dimension.name() == 'SKU'">
+                        o.store_id, MAX(s.name) AS store_name, MAX(s.platform) AS platform, oi.seller_sku, MAX(l.id) AS listing_id,
+                        MAX(COALESCE(l.title, oi.title)) AS title, MAX(m.code) AS material_code, MAX(m.name) AS material_name,
+                    </when>
+                    <when test="dimension.name() == 'SPU'">
+                        o.store_id, MAX(s.name) AS store_name, MAX(s.platform) AS platform,
+                        COALESCE(l.parent_item_id, oi.seller_sku) AS spu, MAX(COALESCE(l.title, oi.title)) AS title, COUNT(DISTINCT oi.seller_sku) AS sku_count,
+                    </when>
+                    <when test="dimension.name() == 'STORE'">
+                        o.store_id, MAX(s.name) AS store_name, MAX(s.platform) AS platform,
+                    </when>
+                    <when test="dimension.name() == 'PLATFORM'">
+                        s.platform,
+                    </when>
+                    <otherwise>
+                        COALESCE(o.ship_country, '') AS country,
+                    </otherwise>
+                </choose>
+                <if test="byDay">CAST(o.order_time AS DATE) AS sale_day,</if>
+                COUNT(DISTINCT o.id) AS orders, SUM(oi.qty) AS qty, SUM(<include refid="lineFc"/> * o.exchange_rate) AS amount
+                FROM ecom_order_item oi
+                JOIN ecom_order o ON o.id = oi.order_id
+                JOIN ecom_store s ON s.id = o.store_id
+                LEFT JOIN ecom_listing l ON l.store_id = o.store_id AND l.seller_sku = oi.seller_sku
+                LEFT JOIN wms_material m ON m.id = COALESCE(l.material_id, oi.material_id)
+                WHERE <include refid="orderRange"/>
+                <if test="platform != null">AND s.platform = #{platform}</if>
+                <include refid="skuKeyword"/>
+                GROUP BY
+                <choose>
+                    <when test="dimension.name() == 'SKU'">o.store_id, oi.seller_sku</when>
+                    <when test="dimension.name() == 'SPU'">o.store_id, COALESCE(l.parent_item_id, oi.seller_sku)</when>
+                    <when test="dimension.name() == 'STORE'">o.store_id</when>
+                    <when test="dimension.name() == 'PLATFORM'">s.platform</when>
+                    <otherwise>COALESCE(o.ship_country, '')</otherwise>
+                </choose>
+                <if test="byDay">, CAST(o.order_time AS DATE)</if>
+            </otherwise>
+        </choose>
+    </select>
+
+    <!-- 单个 SKU 每天的件数与销售额 -->
+    <select id="selectSkuDaily" resultType="com.lemon.erp.modules.ecom.analytics.dto.AnalyticsRows$SalesCell">
+        SELECT CAST(o.order_time AS DATE) AS sale_day, COUNT(DISTINCT o.id) AS orders, SUM(oi.qty) AS qty,
+               SUM(<include refid="lineFc"/> * o.exchange_rate) AS amount
+        FROM ecom_order_item oi
+        JOIN ecom_order o ON o.id = oi.order_id
+        WHERE <include refid="orderRange"/> AND oi.seller_sku = #{sellerSku}
+        GROUP BY CAST(o.order_time AS DATE)
+    </select>
+
+    <!-- 多个 SKU（在线商品）每天的件数：预测的历史数据 -->
+    <select id="selectListingDaily" resultType="com.lemon.erp.modules.ecom.analytics.dto.AnalyticsRows$ListingDay">
+        SELECT l.id AS listing_id, CAST(o.order_time AS DATE) AS sale_day, SUM(oi.qty) AS qty
+        FROM ecom_listing l
+        JOIN ecom_order o ON o.store_id = l.store_id
+        JOIN ecom_order_item oi ON oi.order_id = o.id AND oi.seller_sku = l.seller_sku
+        WHERE l.id IN <foreach collection="listingIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+          AND o.status &lt;&gt; 'CANCELLED' AND o.order_time &gt;= #{begin} AND o.order_time &lt; #{end}
+        GROUP BY l.id, CAST(o.order_time AS DATE)
+    </select>
+
+    <!-- 在售 SKU（启用店铺），按 ID 分批读取 -->
+    <select id="selectActiveListings" resultType="com.lemon.erp.modules.ecom.analytics.dto.AnalyticsRows$ListingRef">
+        SELECT l.id AS listing_id, l.store_id, l.seller_sku, l.fulfillment, s.warehouse_id, s.platform_warehouse_id
+        FROM ecom_listing l
+        JOIN ecom_store s ON s.id = l.store_id
+        WHERE l.status = 'ACTIVE' AND s.status = 1 AND l.id &gt; #{afterId}
+        <if test="storeId != null">AND l.store_id = #{storeId}</if>
+        <if test="listingIds != null and listingIds.size() > 0">
+            AND l.id IN <foreach collection="listingIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+        </if>
+        ORDER BY l.id
+        LIMIT #{limit}
+    </select>
+
+    <!-- 物料在指定仓库的空闲库存（库存 − 冻结） -->
+    <select id="selectFreeStock" resultType="map">
+        SELECT st.material_id AS "materialId", st.warehouse_id AS "warehouseId", SUM(st.qty - st.frozen_qty) AS "qty"
+        FROM wms_stock st
+        WHERE st.material_id IN <foreach collection="materialIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+          AND st.warehouse_id IN <foreach collection="warehouseIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+        GROUP BY st.material_id, st.warehouse_id
+    </select>
+
+    <!-- ABC / 退货率：按 SKU 的件数、销售额与毛利（毛利口径同利润分析：订单级费用、退款、物流成本按本行金额占比分摊） -->
+    <select id="selectSkuSales" resultType="com.lemon.erp.modules.ecom.analytics.dto.AnalyticsRows$SkuSales">
+        SELECT o.store_id, MAX(s.name) AS store_name, oi.seller_sku, MAX(l.id) AS listing_id, MAX(COALESCE(l.title, oi.title)) AS title,
+               MAX(m.code) AS material_code, MAX(m.name) AS material_name,
+               COUNT(DISTINCT o.id) AS orders, SUM(oi.qty) AS qty,
+               SUM(<include refid="lineFc"/> * o.exchange_rate) AS sales,
+               SUM(<include refid="lineFc"/> * o.exchange_rate
+                   - (<include refid="lineShare"/>) * (<include refid="feesBase"/> + <include refid="refundBase"/> + COALESCE(o.shipping_cost, 0))
+                   - COALESCE(oi.cost, 0)) AS profit
+        FROM ecom_order_item oi
+        JOIN ecom_order o ON o.id = oi.order_id
+        JOIN ecom_store s ON s.id = o.store_id
+        LEFT JOIN ecom_listing l ON l.store_id = o.store_id AND l.seller_sku = oi.seller_sku
+        LEFT JOIN wms_material m ON m.id = COALESCE(l.material_id, oi.material_id)
+        WHERE <include refid="orderRange"/>
+        <include refid="skuKeyword"/>
+        GROUP BY o.store_id, oi.seller_sku
+    </select>
+
+    <!-- 退货：期间内下单的订单的退货退款（不含已关闭），按 SKU、原因汇总退回件数与退款（本位币） -->
+    <select id="selectSkuReturns" resultType="com.lemon.erp.modules.ecom.analytics.dto.AnalyticsRows$SkuReturn">
+        SELECT o.store_id, oi.seller_sku, COALESCE(r.reason, '') AS reason, SUM(ri.qty) AS qty,
+               SUM(ri.refund_amount * r.exchange_rate) AS refund
+        FROM ecom_return_item ri
+        JOIN ecom_return r ON r.id = ri.return_id
+        JOIN ecom_order_item oi ON oi.id = ri.order_item_id
+        JOIN ecom_order o ON o.id = oi.order_id
+        LEFT JOIN ecom_listing l ON l.store_id = o.store_id AND l.seller_sku = oi.seller_sku
+        LEFT JOIN wms_material m ON m.id = COALESCE(l.material_id, oi.material_id)
+        WHERE r.status &lt;&gt; 'CLOSED' AND <include refid="orderRange"/>
+        <include refid="skuKeyword"/>
+        GROUP BY o.store_id, oi.seller_sku, COALESCE(r.reason, '')
+    </select>
+
+    <!-- 在线商品映射到的物料（单品取映射物料，组合取组件）与 SKU 数 -->
+    <sql id="mappedMaterials">
+        SELECT x.material_id, COUNT(DISTINCT x.listing_id) AS sku_count
+        FROM (SELECT l.id AS listing_id, l.material_id FROM ecom_listing l
+              WHERE l.material_id IS NOT NULL AND l.compose_type &lt;&gt; 'BUNDLE'
+              <if test="storeId != null">AND l.store_id = #{storeId}</if>
+              UNION ALL
+              SELECT l.id AS listing_id, b.material_id FROM ecom_bundle_item b JOIN ecom_listing l ON l.id = b.listing_id
+              WHERE l.compose_type = 'BUNDLE'
+              <if test="storeId != null">AND l.store_id = #{storeId}</if>) x
+        GROUP BY x.material_id
+    </sql>
+
+    <!-- 在售 SKU 数与期间有销量的 SKU 数（动销率） -->
+    <select id="selectMovingCounts" resultType="map">
+        SELECT COUNT(*) AS "active",
+               COALESCE(SUM(CASE WHEN EXISTS (SELECT 1 FROM ecom_order o JOIN ecom_order_item oi ON oi.order_id = o.id
+                                              WHERE o.store_id = l.store_id AND oi.seller_sku = l.seller_sku
+                                                AND o.status &lt;&gt; 'CANCELLED' AND o.order_time &gt;= #{begin} AND o.order_time &lt; #{end})
+                                 THEN 1 ELSE 0 END), 0) AS "moving"
+        FROM ecom_listing l
+        JOIN ecom_store s ON s.id = l.store_id
+        WHERE l.status = 'ACTIVE' AND s.status = 1
+        <if test="storeId != null">AND l.store_id = #{storeId}</if>
+    </select>
+
+    <!-- 滞销：在线商品映射的物料中有库存、但 begin 之后没有销量的（库存为全部仓库合计，金额按实时移动加权成本） -->
+    <select id="selectSlowMaterials" resultType="com.lemon.erp.modules.ecom.analytics.dto.AnalyticsRows$MaterialStock">
+        SELECT m.id AS material_id, m.code AS material_code, m.name AS material_name, m.spec AS material_spec, m.unit,
+               st.qty AS stock_qty, COALESCE(c.unit_cost, m.ref_cost, 0) AS unit_cost, mp.sku_count, ls.last_sale
+        FROM (<include refid="mappedMaterials"/>) mp
+        JOIN wms_material m ON m.id = mp.material_id
+        JOIN (SELECT ws.material_id, SUM(ws.qty) AS qty FROM wms_stock ws GROUP BY ws.material_id) st ON st.material_id = mp.material_id
+        LEFT JOIN wms_material_cost c ON c.material_id = mp.material_id
+        LEFT JOIN (SELECT y.material_id, MAX(y.order_time) AS last_sale
+                   FROM (SELECT o.order_time, oi.material_id FROM ecom_order_item oi JOIN ecom_order o ON o.id = oi.order_id
+                         WHERE o.status &lt;&gt; 'CANCELLED' AND oi.material_id IS NOT NULL
+                         UNION ALL
+                         SELECT o.order_time, p.material_id FROM ecom_order_item_part p JOIN ecom_order o ON o.id = p.order_id
+                         WHERE o.status &lt;&gt; 'CANCELLED') y
+                   GROUP BY y.material_id) ls ON ls.material_id = mp.material_id
+        WHERE st.qty &gt; 0 AND (ls.last_sale IS NULL OR ls.last_sale &lt; #{begin})
+        <if test="keyword != null and keyword != ''">
+            AND (m.code LIKE CONCAT('%', #{keyword}, '%') OR m.name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY m.code
+    </select>
+
+    <!-- 库龄：在库的批次（批次首次入库时间） -->
+    <select id="selectStockBatches" resultType="com.lemon.erp.modules.ecom.analytics.dto.AnalyticsRows$AgeLot">
+        SELECT st.material_id, b.create_time AS in_time, SUM(st.qty) AS qty
+        FROM wms_stock st
+        LEFT JOIN wms_batch b ON b.material_id = st.material_id AND b.batch_no = st.batch_no AND st.batch_no &lt;&gt; ''
+        WHERE st.material_id IN <foreach collection="materialIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+          AND st.qty &gt; 0
+        GROUP BY st.material_id, b.create_time
+    </select>
+
+    <!-- 库龄：入库流水（不含调拨，调拨不改变全公司的库龄），按时间倒序，用于按先进先出推算没有批次的库存 -->
+    <select id="selectInboundFlows" resultType="com.lemon.erp.modules.ecom.analytics.dto.AnalyticsRows$AgeLot">
+        SELECT f.material_id, f.create_time AS in_time, f.qty
+        FROM wms_stock_flow f
+        WHERE f.material_id IN <foreach collection="materialIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+          AND f.qty &gt; 0 AND f.biz_type &lt;&gt; 'TRANSFER' AND f.create_time &gt;= #{since}
+        ORDER BY f.material_id, f.create_time DESC, f.id DESC
+    </select>
+
+    <!-- 售罄与周转：在线商品映射的物料，期间销量（物料数量，组合按组件） -->
+    <select id="selectMaterialPeriod" resultType="com.lemon.erp.modules.ecom.analytics.dto.AnalyticsRows$MaterialPeriod">
+        SELECT m.id AS material_id, m.code AS material_code, m.name AS material_name, m.spec AS material_spec, m.unit, mp.sku_count,
+               COALESCE(sl.qty, 0) AS sales_qty, COALESCE(st.qty, 0) AS stock_qty,
+               COALESCE(c.unit_cost, m.ref_cost, 0) AS unit_cost
+        FROM (<include refid="mappedMaterials"/>) mp
+        JOIN wms_material m ON m.id = mp.material_id
+        LEFT JOIN (SELECT ws.material_id, SUM(ws.qty) AS qty FROM wms_stock ws GROUP BY ws.material_id) st ON st.material_id = mp.material_id
+        LEFT JOIN wms_material_cost c ON c.material_id = mp.material_id
+        LEFT JOIN (SELECT x.material_id, SUM(x.qty) AS qty FROM (<include refid="materialLines"/>) x GROUP BY x.material_id) sl
+               ON sl.material_id = mp.material_id
+        <where>
+            <if test="keyword != null and keyword != ''">
+                (m.code LIKE CONCAT('%', #{keyword}, '%') OR m.name LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY m.code
+    </select>
+
+    <!-- 物料在 begin、end 之后的库存变动合计（倒推期初 / 期末库存），期间的入库（入库单的正数流水，不含销售退货、调拨、盘点） -->
+    <select id="selectFlowSums" resultType="com.lemon.erp.modules.ecom.analytics.dto.AnalyticsRows$FlowSum">
+        SELECT f.material_id,
+               SUM(f.qty) AS since_begin,
+               SUM(CASE WHEN f.create_time &gt;= #{end} THEN f.qty ELSE 0 END) AS since_end,
+               SUM(CASE WHEN f.create_time &lt; #{end} AND f.biz_type = 'IN' AND f.qty &gt; 0 AND COALESCE(d.biz_type, '') &lt;&gt; 'SALES_RETURN'
+                        THEN f.qty ELSE 0 END) AS inbound
+        FROM wms_stock_flow f
+        LEFT JOIN wms_stock_doc d ON f.biz_type = 'IN' AND d.id = f.doc_id
+        WHERE f.material_id IN <foreach collection="materialIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+          AND f.create_time &gt;= #{begin}
+        GROUP BY f.material_id
+    </select>
+
+    <!-- 断货天数：期间内每日快照的天数、可售 ≤ 0 的天数 -->
+    <select id="selectStockout" resultType="com.lemon.erp.modules.ecom.analytics.dto.AnalyticsRows$StockoutStat">
+        SELECT ss.listing_id, l.store_id, s.name AS store_name, l.seller_sku, l.title, l.fulfillment,
+               m.code AS material_code, m.name AS material_name,
+               COUNT(*) AS snapshot_days,
+               SUM(CASE WHEN ss.sellable_qty &lt;= 0 THEN 1 ELSE 0 END) AS stockout_days,
+               MAX(CASE WHEN ss.sellable_qty &lt;= 0 THEN ss.snapshot_date END) AS last_stockout_date
+        FROM ecom_stock_snapshot ss
+        JOIN ecom_listing l ON l.id = ss.listing_id
+        JOIN ecom_store s ON s.id = l.store_id
+        LEFT JOIN wms_material m ON m.id = l.material_id
+        WHERE ss.snapshot_date &gt;= #{beginDate} AND ss.snapshot_date &lt;= #{endDate}
+        <if test="storeId != null">AND ss.store_id = #{storeId}</if>
+        <if test="listingIds != null and listingIds.size() > 0">
+            AND ss.listing_id IN <foreach collection="listingIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (l.seller_sku LIKE CONCAT('%', #{keyword}, '%') OR l.title LIKE CONCAT('%', #{keyword}, '%')
+                 OR m.code LIKE CONCAT('%', #{keyword}, '%') OR m.name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        GROUP BY ss.listing_id, l.store_id, s.name, l.seller_sku, l.title, l.fulfillment, m.code, m.name
+    </select>
+
+    <!-- 断货的快照日（可售 ≤ 0）：新品首单 30 天的断货天数 -->
+    <select id="selectStockoutDays" resultType="com.lemon.erp.modules.ecom.analytics.dto.AnalyticsRows$ListingDay">
+        SELECT ss.listing_id, ss.snapshot_date AS sale_day, ss.sellable_qty AS qty
+        FROM ecom_stock_snapshot ss
+        WHERE ss.snapshot_date &gt;= #{from} AND ss.snapshot_date &lt;= #{to} AND ss.sellable_qty &lt;= 0
+          AND ss.listing_id IN <foreach collection="listingIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </select>
+
+    <!-- 新品：首单（全部历史中最早的下单时间）落在 [begin, end) 的 SKU -->
+    <select id="selectFirstSales" resultType="com.lemon.erp.modules.ecom.analytics.dto.AnalyticsRows$FirstSale">
+        SELECT o.store_id, MAX(s.name) AS store_name, oi.seller_sku, MAX(l.id) AS listing_id, MAX(COALESCE(l.title, oi.title)) AS title,
+               MAX(m.code) AS material_code, MAX(m.name) AS material_name, MIN(o.order_time) AS first_time
+        FROM ecom_order_item oi
+        JOIN ecom_order o ON o.id = oi.order_id
+        JOIN ecom_store s ON s.id = o.store_id
+        LEFT JOIN ecom_listing l ON l.store_id = o.store_id AND l.seller_sku = oi.seller_sku
+        LEFT JOIN wms_material m ON m.id = COALESCE(l.material_id, oi.material_id)
+        WHERE o.status &lt;&gt; 'CANCELLED' AND o.order_time &lt; #{end}
+        <if test="storeId != null">AND o.store_id = #{storeId}</if>
+        <include refid="skuKeyword"/>
+        GROUP BY o.store_id, oi.seller_sku
+        HAVING MIN(o.order_time) &gt;= #{begin}
+    </select>
+
+    <!-- 指定店铺、SKU 在区间内每天的件数、订单数与销售额（新品首单 30 天） -->
+    <select id="selectSkusDaily" resultType="com.lemon.erp.modules.ecom.analytics.dto.AnalyticsRows$SalesCell">
+        SELECT o.store_id, oi.seller_sku, CAST(o.order_time AS DATE) AS sale_day, COUNT(DISTINCT o.id) AS orders, SUM(oi.qty) AS qty,
+               SUM(<include refid="lineFc"/> * o.exchange_rate) AS amount
+        FROM ecom_order_item oi
+        JOIN ecom_order o ON o.id = oi.order_id
+        WHERE o.status &lt;&gt; 'CANCELLED' AND o.order_time &gt;= #{begin} AND o.order_time &lt; #{end}
+          AND o.store_id IN <foreach collection="storeIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+          AND oi.seller_sku IN <foreach collection="skus" item="s" open="(" separator="," close=")">#{s}</foreach>
+        GROUP BY o.store_id, oi.seller_sku, CAST(o.order_time AS DATE)
+    </select>
+
+    <!-- 在线商品（标题、店铺、物料）：预测详情、走势图的表头 -->
+    <select id="selectListingInfo" resultType="com.lemon.erp.modules.ecom.analytics.dto.AnalyticsRows$ListingInfo">
+        SELECT l.id AS listing_id, l.store_id, s.name AS store_name, s.platform, l.seller_sku, l.title, l.fulfillment, l.status,
+               m.code AS material_code, m.name AS material_name
+        FROM ecom_listing l
+        JOIN ecom_store s ON s.id = l.store_id
+        LEFT JOIN wms_material m ON m.id = l.material_id
+        WHERE l.id IN <foreach collection="listingIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </select>
+
+    <!-- 在线商品关键字搜索（AI 工具按 SKU 文字查找） -->
+    <select id="selectListingIdsByKeyword" resultType="long">
+        SELECT l.id
+        FROM ecom_listing l
+        LEFT JOIN wms_material m ON m.id = l.material_id
+        WHERE (l.seller_sku LIKE CONCAT('%', #{keyword}, '%') OR l.title LIKE CONCAT('%', #{keyword}, '%')
+               OR m.code LIKE CONCAT('%', #{keyword}, '%') OR m.name LIKE CONCAT('%', #{keyword}, '%'))
+        <if test="storeId != null">AND l.store_id = #{storeId}</if>
+        ORDER BY l.id
+        LIMIT #{limit}
+    </select>
+
+</mapper>

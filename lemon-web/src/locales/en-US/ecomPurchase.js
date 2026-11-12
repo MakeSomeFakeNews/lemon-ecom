@@ -7,6 +7,7 @@ export default {
     weightsExtra: 'Daily sales = weighted average of the daily sales of each period',
     custom: 'Custom',
     preset: {
+      forecast: 'Sales forecast (trend, seasonality and promotions)',
       default: '7 days × 0.5 + 30 days × 0.5 (default)',
       d7: 'Last 7 days',
       d14: 'Last 14 days',

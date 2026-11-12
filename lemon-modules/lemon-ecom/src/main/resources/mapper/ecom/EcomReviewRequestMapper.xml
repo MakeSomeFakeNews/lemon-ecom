@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomReviewRequestMapper">
+
+    <!-- 已发货、在时间窗口内的订单（平台配送订单可能没有发货时间，按下单时间） -->
+    <sql id="window">
+        o.status = 'SHIPPED'
+        AND ((o.ship_time &gt;= #{shipFrom} AND o.ship_time &lt; #{shipTo})
+             OR (o.ship_time IS NULL AND o.order_time &gt;= #{shipFrom} AND o.order_time &lt; #{shipTo}))
+    </sql>
+
+    <select id="selectCandidates" resultType="com.lemon.erp.modules.ecom.cs.dto.CsViews$RequestCandidate">
+        SELECT o.id AS orderId, o.store_id AS storeId, s.name AS storeName, s.platform AS platform, o.platform_order_no AS platformOrderNo,
+               o.buyer_name AS buyerName, o.status AS status, o.local_status AS localStatus, o.ship_time AS shipTime,
+               rr.status AS requestStatus, rr.request_time AS requestTime, rr.message AS requestMessage
+        FROM ecom_order o
+        JOIN ecom_store s ON s.id = o.store_id
+        LEFT JOIN ecom_review_request rr ON rr.order_id = o.id
+        WHERE s.platform = #{platform} AND <include refid="window"/>
+        <if test="storeId != null">AND o.store_id = #{storeId}</if>
+        <if test="keyword != null and keyword != ''">
+            AND (o.platform_order_no LIKE CONCAT('%', #{keyword}, '%') OR o.buyer_name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="pendingOnly">AND (rr.id IS NULL OR rr.status = 'FAILED')</if>
+        <if test="status != null">AND rr.status = #{status}</if>
+        ORDER BY o.ship_time, o.order_time, o.id
+    </select>
+
+    <select id="selectDueOrderIds" resultType="java.lang.Long">
+        SELECT o.id
+        FROM ecom_order o
+        LEFT JOIN ecom_review_request rr ON rr.order_id = o.id
+        WHERE o.store_id = #{storeId} AND <include refid="window"/>
+          AND (rr.id IS NULL OR rr.status = 'FAILED')
+        ORDER BY o.id
+        LIMIT #{limit}
+    </select>
+
+</mapper>

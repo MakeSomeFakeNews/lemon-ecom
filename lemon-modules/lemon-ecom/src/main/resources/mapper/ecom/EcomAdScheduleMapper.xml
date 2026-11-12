@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomAdScheduleMapper">
+
+    <select id="selectList" resultType="com.lemon.erp.modules.ecom.entity.EcomAdSchedule">
+        SELECT sc.*, c.name AS campaign_name, s.name AS store_name, s.timezone
+        FROM ecom_ad_schedule sc
+        JOIN ecom_ad_campaign c ON c.id = sc.campaign_id
+        JOIN ecom_store s ON s.id = sc.store_id
+        <where>
+            <if test="storeId != null">sc.store_id = #{storeId}</if>
+        </where>
+        ORDER BY s.id, c.name
+    </select>
+
+</mapper>

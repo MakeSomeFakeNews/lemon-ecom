@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.lemon.erp.common.base.BaseEntity;
 import com.lemon.erp.modules.ecom.model.EcomPlatform;
+import com.lemon.erp.modules.ecom.model.FeeAllocMethod;
 import com.lemon.erp.modules.ecom.model.SettlementStatus;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -51,6 +52,8 @@ public class EcomSettlement extends BaseEntity {
     private SettlementStatus status;
     /** 确认时生成的收款单 */
     private Long finSettlementId;
+    /** 不挂订单费用的分摊方式（QTY / SALES），为空按类型默认 */
+    private FeeAllocMethod allocMethod;
     private String remark;
 
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)

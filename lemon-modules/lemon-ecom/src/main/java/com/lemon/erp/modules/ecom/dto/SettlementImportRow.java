@@ -35,8 +35,12 @@ public class SettlementImportRow {
 
     private LocalDate postedDate;
 
-    @NotNull(message = "{ecom.valid.selectItemType}")
+    /** 系统类型；为空时按 rawType 在费用映射中识别 */
     private SettlementItemType itemType;
+
+    /** 平台报告中的原始类型名（如 FBAPerUnitFulfillmentFee） */
+    @Size(max = 128, message = "{ecom.valid.fee.rawTypeTooLong}")
+    private String rawType;
 
     @Size(max = 64, message = "{ecom.valid.platformOrderNoCannotExceedCharacters}")
     private String platformOrderNo;

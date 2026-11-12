@@ -46,12 +46,17 @@
           @change="(p) => applyPageChange(pagination, p)"
         >
           <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'itemType'"><DictTag type="ecom_settlement_item_type" :value="record.itemType" /></template>
+            <template v-if="column.key === 'itemType'">
+              <DictTag type="ecom_settlement_item_type" :value="record.itemType" />
+              <div v-if="record.rawType" class="raw-type">{{ record.rawType }}</div>
+            </template>
             <template v-else-if="column.key === 'amount'">
               <span :class="{ neg: nz(record.amount) < 0 }">{{ money(record.amount) }}</span>
             </template>
           </template>
         </a-table>
+
+        <SettlementAllocations :settlement="detail" />
       </template>
     </a-spin>
   </SubPage>
@@ -62,6 +67,7 @@ import { computed, reactive, ref } from 'vue'
 import { CheckCircleOutlined } from '@ant-design/icons-vue'
 import DictTag from '@/components/DictTag.vue'
 import SubPage from '@/components/SubPage.vue'
+import SettlementAllocations from './SettlementAllocations.vue'
 import { applyPageChange, localPagination } from '@/components/ecom/ecomReport'
 import { getSettlement } from '@/api/ecom/settlement'
 import { sumWidth } from '@/composables/useColumns'
@@ -91,7 +97,7 @@ const AMOUNTS = [
 
 const itemColumns = [
   { title: t('ecomReport.settlement.postedDate'), dataIndex: 'postedDate', width: 110 },
-  { title: t('ecomReport.settlement.itemType'), key: 'itemType', dataIndex: 'itemType', width: 110 },
+  { title: t('ecomReport.settlement.itemType'), key: 'itemType', dataIndex: 'itemType', width: 160 },
   { title: t('ecomReport.common.platformOrderNo'), dataIndex: 'platformOrderNo', width: 190 },
   { title: t('ecomReport.common.sellerSku'), dataIndex: 'sellerSku', width: 150 },
   { title: t('common.field.amount'), key: 'amount', dataIndex: 'amount', width: 130, align: 'right' },
@@ -166,5 +172,10 @@ defineExpose({ open: openDetail, reload })
 }
 .neg {
   color: var(--status-critical, #cf1322);
+}
+.raw-type {
+  color: var(--app-text-3);
+  font-size: 12px;
+  margin-top: 2px;
 }
 </style>

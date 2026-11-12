@@ -15,12 +15,18 @@ import java.util.List;
  *
  * @param warehouseId 收货仓库，为空取需求店铺中最多的默认发货仓
  * @param w7          日均加权（与补货建议页面所选一致），全部为空取默认
+ * @param forecast    是否按销量预测计算日均（与补货建议页面所选一致）
  */
 public record PurchasePlanFromReplenish(
         Long warehouseId,
         @Size(max = 255, message = "{ecom.valid.purchase.remarkTooLong}") String remark,
         BigDecimal w7, BigDecimal w14, BigDecimal w30, BigDecimal w60,
-        @NotEmpty(message = "{ecom.valid.purchase.itemsRequired}") @Size(max = 500, message = "{ecom.valid.purchase.tooManyItems}") List<@Valid @NotNull Item> items) {
+        @NotEmpty(message = "{ecom.valid.purchase.itemsRequired}") @Size(max = 500, message = "{ecom.valid.purchase.tooManyItems}") List<@Valid @NotNull Item> items,
+        Boolean forecast) {
+
+    public PurchasePlanFromReplenish(Long warehouseId, String remark, BigDecimal w7, BigDecimal w14, BigDecimal w30, BigDecimal w60, List<Item> items) {
+        this(warehouseId, remark, w7, w14, w30, w60, items, null);
+    }
 
     /** @param qty 计划采购量，为空取建议采购量 */
     public record Item(@NotNull(message = "{ecom.valid.purchase.materialRequired}") Long materialId,

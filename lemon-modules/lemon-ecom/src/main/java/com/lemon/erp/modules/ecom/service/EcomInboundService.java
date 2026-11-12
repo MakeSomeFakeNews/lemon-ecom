@@ -172,6 +172,7 @@ public class EcomInboundService {
         i.setVolume(req.volume());
         i.setFreight(Decimals.money(Decimals.nz(req.freight())));
         i.setDuty(Decimals.money(Decimals.nz(req.duty())));
+        i.setImportVat(Decimals.money(Decimals.nz(req.importVat())));
         i.setOtherCost(Decimals.money(Decimals.nz(req.otherCost())));
         i.setRemark(req.remark());
         i.setTotalQty(Decimals.qty(Decimals.sum(req.items(), InboundRequest.Item::qty)));
@@ -482,6 +483,7 @@ public class EcomInboundService {
         i.setVolume(req.volume());
         i.setFreight(Decimals.money(Decimals.nz(req.freight())));
         i.setDuty(Decimals.money(Decimals.nz(req.duty())));
+        i.setImportVat(Decimals.money(Decimals.nz(req.importVat())));
         i.setOtherCost(Decimals.money(Decimals.nz(req.otherCost())));
         i.setRemark(req.remark());
         inboundMapper.updateById(i);

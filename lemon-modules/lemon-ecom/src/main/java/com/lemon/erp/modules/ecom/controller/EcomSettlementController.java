@@ -7,7 +7,9 @@ import com.lemon.erp.framework.excel.ImportResult;
 import com.lemon.erp.framework.log.OperLog;
 import com.lemon.erp.framework.log.OperType;
 import com.lemon.erp.modules.ecom.dto.SettlementImportRow;
+import com.lemon.erp.modules.ecom.entity.EcomFeeAllocation;
 import com.lemon.erp.modules.ecom.entity.EcomSettlement;
+import com.lemon.erp.modules.ecom.model.FeeAllocMethod;
 import com.lemon.erp.modules.ecom.model.SettlementStatus;
 import com.lemon.erp.modules.ecom.service.EcomSettlementService;
 import jakarta.validation.Valid;
@@ -62,6 +64,21 @@ public class EcomSettlementController {
     public R<Void> confirm(@PathVariable Long id, @RequestParam(required = false) Long accountId) {
         settlementService.confirm(id, accountId);
         return R.ok();
+    }
+
+    /** 不挂订单费用的分摊结果 */
+    @GetMapping("/{id}/allocations")
+    @PreAuthorize("@ss.hasPerm('ecom:settlement:list')")
+    public R<List<EcomFeeAllocation>> allocations(@PathVariable Long id) {
+        return R.ok(settlementService.allocations(id));
+    }
+
+    /** 重新分摊不挂订单的费用：method 为 QTY 按销量 / SALES 按销售额，为空按类型默认 */
+    @PostMapping("/{id}/allocate")
+    @PreAuthorize("@ss.hasPerm('ecom:settlement:allocate')")
+    @OperLog(title = "平台结算分摊", type = OperType.UPDATE) // i18n-ignore 操作日志标题存库
+    public R<Integer> allocate(@PathVariable Long id, @RequestParam(required = false) FeeAllocMethod method) {
+        return R.ok(settlementService.reallocate(id, method));
     }
 
     @DeleteMapping("/{ids}")

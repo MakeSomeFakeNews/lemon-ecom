@@ -85,6 +85,7 @@ public class EcomOrderService {
     private final EcomOutboundSupport outboundSupport;
     private final EcomPackageService packageService;
     private final ExchangeRateProvider rateProvider;
+    private final EcomTaxService taxService;
     private final Validator validator;
     private final TransactionTemplate transactionTemplate;
     private final ApplicationEventPublisher eventPublisher;
@@ -314,6 +315,8 @@ public class EcomOrderService {
         o.setRefundAmount(BigDecimal.ZERO);
         o.setCostAmount(BigDecimal.ZERO);
         o.setShippingCost(BigDecimal.ZERO);
+        o.setReturnFee(BigDecimal.ZERO);
+        EcomOrderTax.assign(o, taxService.resolve(store.getMarketplace(), o.getShipCountry()));
         String exception = outboundSupport.match(store.getId(), items);
         o.setException(exception);
         if (o.getStatus() == EcomOrderStatus.CANCELLED) {
@@ -371,10 +374,15 @@ public class EcomOrderService {
         return Decimals.money(total.multiply(rate).divide(Decimals.HUNDRED, 6, RoundingMode.HALF_UP));
     }
 
-    /** 利润（本位币）= 本位币金额 − (佣金 + 配送费 + 其他费用 + 退款) × 汇率 − 商品成本 − 物流成本 */
+    /**
+     * 利润（本位币）= 本位币金额 − (平台代扣税 + 需申报 VAT + 佣金 + 配送费 + 退货处理费 + 其他费用 + 退款) × 汇率 − 商品成本 − 物流成本。
+     * 先按订单上的税率重算税额（{@link EcomOrderTax#apply}，写回 vatAmount / withheldTax）；没有税率时税额为 0
+     */
     static BigDecimal profitOf(EcomOrder o) {
-        BigDecimal feesFc = Decimals.nz(o.getPlatformFee()).add(Decimals.nz(o.getFulfillmentFee())).add(Decimals.nz(o.getOtherFee()))
-                .add(Decimals.nz(o.getRefundAmount()));
+        EcomOrderTax.apply(o);
+        BigDecimal feesFc = Decimals.nz(o.getWithheldTax()).add(Decimals.nz(o.getVatAmount()))
+                .add(Decimals.nz(o.getPlatformFee())).add(Decimals.nz(o.getFulfillmentFee())).add(Decimals.nz(o.getReturnFee()))
+                .add(Decimals.nz(o.getOtherFee())).add(Decimals.nz(o.getRefundAmount()));
         return Decimals.money(Decimals.nz(o.getTotalBase()).subtract(feesFc.multiply(Decimals.nz(o.getExchangeRate())))
                 .subtract(Decimals.nz(o.getCostAmount())).subtract(Decimals.nz(o.getShippingCost())));
     }
@@ -554,7 +562,13 @@ public class EcomOrderService {
         if (req.fulfillment() != null) {
             o.setFulfillment(req.fulfillment());
         }
+        // 收件国家可能变化：重新匹配税率并重算利润
+        EcomOrderTax.assign(o, taxService.resolve(storeService.get(o.getStoreId()).getMarketplace(), o.getShipCountry()));
+        o.setProfit(profitOf(o));
         orderMapper.updateById(o);
+        if (o.getTaxType() == null) {
+            orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getTaxType, null).set(EcomOrder::getVatRate, null).eq(EcomOrder::getId, id));
+        }
         orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getWeight, req.weight()).eq(EcomOrder::getId, id));
     }
 
@@ -565,14 +579,24 @@ public class EcomOrderService {
      */
     @Transactional
     public void applySettlementFees(Long storeId, String platformOrderNo, BigDecimal commission, BigDecimal fulfillment, BigDecimal refund, BigDecimal other) {
+        applySettlementFees(storeId, platformOrderNo, commission, fulfillment, refund, null, other);
+    }
+
+    /**
+     * 结算单确认后回写实际费用：结算金额为负数的费用记为正数，退佣、赔偿等正数冲减费用；退货处理费单独一栏
+     */
+    @Transactional
+    public void applySettlementFees(Long storeId, String platformOrderNo, BigDecimal commission, BigDecimal fulfillment, BigDecimal refund,
+                                    BigDecimal returnFee, BigDecimal other) {
         EcomOrder o = orderMapper.selectOne(Wrappers.<EcomOrder>lambdaQuery().eq(EcomOrder::getStoreId, storeId)
                 .eq(EcomOrder::getPlatformOrderNo, platformOrderNo));
         if (o == null) {
             return;
         }
-        if (commission != null && commission.signum() != 0) o.setPlatformFee(commission.abs());
-        if (fulfillment != null && fulfillment.signum() != 0) o.setFulfillmentFee(fulfillment.abs());
-        if (other != null && other.signum() != 0) o.setOtherFee(other.abs());
+        if (commission != null && commission.signum() != 0) o.setPlatformFee(commission.negate());
+        if (fulfillment != null && fulfillment.signum() != 0) o.setFulfillmentFee(fulfillment.negate());
+        if (returnFee != null && returnFee.signum() != 0) o.setReturnFee(returnFee.negate());
+        if (other != null && other.signum() != 0) o.setOtherFee(other.negate());
         if (refund != null && refund.signum() != 0) {
             o.setRefundAmount(refund.abs());
             if (o.getRefundAmount().compareTo(Decimals.nz(o.getTotalAmount())) >= 0) {
@@ -628,6 +652,26 @@ public class EcomOrderService {
         q.setOverdue(true);
         orderMapper.selectPageList(page, q);
         return page.getRecords().stream().sorted(Comparator.comparing(EcomOrder::getShipBy, Comparator.nullsLast(Comparator.naturalOrder()))).toList();
+    }
+
+    /**
+     * 手工创建订单（客服补发等）：按草稿写入，与导入 / 同步的订单相同（匹配在线商品、汇率、审单规则），之后走正常的审核、打单、发货；
+     * 写入备注（标记来源，如「补发：原订单 xxx」），返回订单 ID。店铺中已有同号订单时报错
+     */
+    @Transactional
+    public Long createManual(OrderDraft d, String remark) {
+        if (orderMapper.exists(Wrappers.<EcomOrder>lambdaQuery().eq(EcomOrder::getStoreId, d.getStoreId())
+                .eq(EcomOrder::getPlatformOrderNo, d.getPlatformOrderNo()))) {
+            throw new BizException("ecom.error.cs.manualOrderExists", d.getPlatformOrderNo());
+        }
+        saveDraft(d, false);
+        EcomOrder o = orderMapper.selectOne(Wrappers.<EcomOrder>lambdaQuery().eq(EcomOrder::getStoreId, d.getStoreId())
+                .eq(EcomOrder::getPlatformOrderNo, d.getPlatformOrderNo()));
+        if (StringUtils.hasText(remark)) {
+            orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getRemark, remark.length() <= 255 ? remark : remark.substring(0, 255))
+                    .eq(EcomOrder::getId, o.getId()));
+        }
+        return o.getId();
     }
 
     static boolean same(Object a, Object b) {

@@ -7,22 +7,30 @@
     </select>
 
     <insert id="insertBatch">
-        INSERT INTO ecom_settlement_item (settlement_id, posted_date, item_type, platform_order_no, seller_sku, amount, description, create_time, update_time)
+        INSERT INTO ecom_settlement_item (settlement_id, posted_date, item_type, platform_order_no, seller_sku, amount, description, raw_type, create_time, update_time)
         VALUES
         <foreach collection="items" item="i" separator=",">
-            (#{i.settlementId}, #{i.postedDate}, #{i.itemType}, #{i.platformOrderNo}, #{i.sellerSku}, #{i.amount}, #{i.description}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            (#{i.settlementId}, #{i.postedDate}, #{i.itemType}, #{i.platformOrderNo}, #{i.sellerSku}, #{i.amount}, #{i.description}, #{i.rawType}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         </foreach>
     </insert>
 
+    <!-- 挂订单的明细按平台订单号 + 类型汇总，由 SettlementItemType.orderFeeColumn 决定回写到订单的哪一栏 -->
     <select id="selectOrderFees" resultType="map">
-        SELECT platform_order_no AS "platformOrderNo",
-               SUM(CASE WHEN item_type = 'COMMISSION' THEN amount ELSE 0 END) AS commission,
-               SUM(CASE WHEN item_type = 'FULFILLMENT' THEN amount ELSE 0 END) AS fulfillment,
-               SUM(CASE WHEN item_type = 'REFUND' THEN amount ELSE 0 END) AS refund,
-               SUM(CASE WHEN item_type IN ('STORAGE', 'OTHER', 'ADJUSTMENT') THEN amount ELSE 0 END) AS other
+        SELECT platform_order_no AS "platformOrderNo", item_type AS "itemType", SUM(amount) AS amount
         FROM ecom_settlement_item
         WHERE settlement_id = #{settlementId} AND platform_order_no IS NOT NULL AND platform_order_no &lt;&gt; ''
-        GROUP BY platform_order_no
+        GROUP BY platform_order_no, item_type
+    </select>
+
+    <!-- 不挂订单（没有平台订单号，或订单不在系统中）的明细：需要分摊到 SKU 的费用 -->
+    <select id="selectUnlinked" resultType="com.lemon.erp.modules.ecom.entity.EcomSettlementItem">
+        SELECT si.*
+        FROM ecom_settlement_item si
+        JOIN ecom_settlement st ON st.id = si.settlement_id
+        WHERE si.settlement_id = #{settlementId}
+          AND (si.platform_order_no IS NULL OR si.platform_order_no = ''
+               OR NOT EXISTS (SELECT 1 FROM ecom_order o WHERE o.store_id = st.store_id AND o.platform_order_no = si.platform_order_no))
+        ORDER BY si.id
     </select>
 
 </mapper>

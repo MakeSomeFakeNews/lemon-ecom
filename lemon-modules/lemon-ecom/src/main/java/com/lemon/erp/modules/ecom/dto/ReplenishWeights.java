@@ -7,9 +7,21 @@ import java.math.RoundingMode;
 
 /**
  * 日均销量的加权：日均 = Σ(权重 × 该期间日均) ÷ Σ权重，期间为最近 7 / 14 / 30 / 60 天。
- * 全部为空时取默认 7 天 × 0.5 + 30 天 × 0.5（兼顾近期趋势与月度平稳）
+ * 全部为空时取默认 7 天 × 0.5 + 30 天 × 0.5（兼顾近期趋势与月度平稳）。
+ * <p>
+ * {@code forecast} 为 true 时改用销量预测（{@code EcomForecastService}）：日均 = 未来「补货周期 + 安全天数」天预测量的平均，
+ * 含趋势、星期季节性和促销 / 节假日系数；没有预测结果的 SKU 仍按权重计算
  */
-public record ReplenishWeights(BigDecimal w7, BigDecimal w14, BigDecimal w30, BigDecimal w60) {
+public record ReplenishWeights(BigDecimal w7, BigDecimal w14, BigDecimal w30, BigDecimal w60, boolean forecast) {
+
+    public ReplenishWeights(BigDecimal w7, BigDecimal w14, BigDecimal w30, BigDecimal w60) {
+        this(w7, w14, w30, w60, false);
+    }
+
+    /** 是否按销量预测，权重保留用于没有预测结果的 SKU */
+    public ReplenishWeights withForecast(Boolean useForecast) {
+        return Boolean.TRUE.equals(useForecast) ? new ReplenishWeights(w7, w14, w30, w60, true) : this;
+    }
 
     public static final ReplenishWeights DEFAULT = new ReplenishWeights(new BigDecimal("0.5"), null, new BigDecimal("0.5"), null);
 

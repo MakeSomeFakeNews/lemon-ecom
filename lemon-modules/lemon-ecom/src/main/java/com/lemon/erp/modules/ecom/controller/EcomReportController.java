@@ -1,7 +1,11 @@
 package com.lemon.erp.modules.ecom.controller;
 
 import com.lemon.erp.common.result.R;
+import com.lemon.erp.modules.ecom.dto.EcomProfitViews;
 import com.lemon.erp.modules.ecom.dto.EcomReports;
+import com.lemon.erp.modules.ecom.model.ProfitBasis;
+import com.lemon.erp.modules.ecom.model.ProfitDimension;
+import com.lemon.erp.modules.ecom.service.EcomProfitService;
 import com.lemon.erp.modules.ecom.service.EcomReportService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -23,6 +27,7 @@ import java.util.List;
 public class EcomReportController {
 
     private final EcomReportService reportService;
+    private final EcomProfitService profitService;
 
     @GetMapping("/overview")
     @PreAuthorize("@ss.hasPerm('ecom:dashboard:list')")
@@ -60,6 +65,19 @@ public class EcomReportController {
                                                      @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
                                                      @RequestParam(required = false) Long storeId) {
         return R.ok(reportService.byCountry(beginDate, endDate, storeId));
+    }
+
+    /**
+     * 多维利润报表：basis 订单口径 ORDER（下单时间）/ 结算口径 SETTLEMENT（结算入账日期），dimension 店铺、平台、站点、SKU、SPU、物料、负责人、国家、月份
+     */
+    @GetMapping("/profit")
+    @PreAuthorize("@ss.hasPerm('ecom:report:list')")
+    public R<List<EcomProfitViews.ProfitRow>> profit(@RequestParam(defaultValue = "ORDER") ProfitBasis basis,
+                                                     @RequestParam(defaultValue = "STORE") ProfitDimension dimension,
+                                                     @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate beginDate,
+                                                     @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+                                                     @RequestParam(required = false) Long storeId, @RequestParam(required = false) String keyword) {
+        return R.ok(profitService.profit(basis, dimension, beginDate, endDate, storeId, keyword));
     }
 
     @GetMapping("/fees")

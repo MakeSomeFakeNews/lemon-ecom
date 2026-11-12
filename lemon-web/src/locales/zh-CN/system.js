@@ -136,6 +136,8 @@ export default {
       ecom_marketplace: '电商站点',
       ecom_transport_mode: '运输方式',
       ecom_return_reason: '退货原因',
+      ecom_payout_channel: '收款平台',
+      ecom_cs_language: '模板语言',
       scm_customer_level: '客户等级',
       scm_carrier: '承运商',
       fin_asset_category: '资产类别',

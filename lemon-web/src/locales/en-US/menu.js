@@ -1,6 +1,56 @@
 // 菜单名称英文翻译：键为 sys_menu.id（与 sql/init.sql 一致），中文直接使用数据库中的名称
 export default {
   17: 'E-commerce', // 电商
+  987: 'Data Analytics', // 数据分析
+  490: 'Sales Statistics', // 销量统计
+  491: 'Sales Forecast', // 销量预测
+  492: 'Product Analysis', // 商品分析
+  4900: 'Export Sales Statistics', // 销量统计导出
+  4910: 'Generate Forecasts', // 生成预测
+  4911: 'Forecast Settings & Methods', // 预测参数与方法
+  4912: 'Maintain Promotions / Holidays', // 促销节假日维护
+  4920: 'Export Product Analysis', // 商品分析导出
+  470: 'Fee Mapping', // 费用映射
+  471: 'Tax', // 税务
+  472: 'Payout Reconciliation', // 回款对账
+  4700: 'Add Fee Mapping', // 费用映射新增
+  4701: 'Edit Fee Mapping', // 费用映射修改
+  4702: 'Delete Fee Mapping', // 费用映射删除
+  4710: 'Add Tax Rate', // 税率新增
+  4711: 'Edit Tax Rate', // 税率修改
+  4712: 'Delete Tax Rate', // 税率删除
+  4713: 'Recalculate Order Tax', // 重算订单税额
+  4720: 'Import Payout Transactions', // 导入到账流水
+  4721: 'Record / Match Payout', // 登记到账 / 匹配
+  4722: 'Undo / Delete Payout', // 撤销 / 删除到账
+  4730: 'Reallocate Fees', // 重新分摊费用
+  480: 'Ad Rules', // 广告规则
+  4800: 'Maintain Ad Structure', // 广告结构维护
+  4801: 'Ads Authorization', // 广告授权
+  4802: 'Sync Ads', // 广告同步
+  4803: 'Maintain Dayparting', // 分时策略维护
+  4810: 'Add Rule', // 规则新增
+  4811: 'Edit Rule', // 规则修改
+  4812: 'Delete Rule', // 规则删除
+  4813: 'Run Rules / Handle Suggestions', // 规则执行 / 处理建议
+  986: 'Customer Service', // 客服
+  485: 'Buyer Messages', // 买家消息
+  486: 'Reviews', // 评价管理
+  487: 'Reply Templates', // 回复模板
+  488: 'After-Sales Tickets', // 售后工单
+  4850: 'Reply to Messages', // 回复消息
+  4851: 'Handle Conversations (Owner / Tags / Close / Link Order)', // 会话处理（负责人 / 标签 / 关闭 / 关联订单）
+  4852: 'Sync Messages', // 同步消息
+  4860: 'Import Reviews', // 导入评价
+  4861: 'Reply to Reviews', // 回复评价
+  4862: 'Handle Reviews', // 处理评价
+  4863: 'Sync Reviews', // 同步评价
+  4864: 'Request Reviews', // 请求评价
+  4865: 'Delete Reviews', // 删除评价
+  4870: 'Add Template', // 模板新增
+  4871: 'Edit Template', // 模板修改
+  4872: 'Delete Template', // 模板删除
+  4880: 'Create After-Sales', // 转售后
   // 商品体系（店铺与商品 981 下的 SKU 配对，库存与物流 983 下的发货计划，头程货件 425 的装箱按钮）
   450: 'SKU Pairing', // SKU 配对
   451: 'Shipment Plans', // 发货计划

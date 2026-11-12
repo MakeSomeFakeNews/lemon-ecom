@@ -30,6 +30,13 @@ public class EcomAdDaily extends BaseEntity {
     private BigDecimal adSales;
     private Integer adOrders;
 
+    /** 广告活动（ecom_ad_campaign），导入时按店铺 + 活动名称关联，没有时自动建立 */
+    private Long campaignId;
+    /** 广告组（推广商品报告带广告组时关联；同一 SKU 在多个广告组时合并为一行，广告组为空） */
+    private Long adGroupId;
+    /** 粒度：PRODUCT 活动 × SKU（默认）、CAMPAIGN 只有活动级数据（导入推广商品数据后删除） */
+    private com.lemon.erp.modules.ecom.model.EcomAdDailyLevel adLevel;
+
     @TableField(exist = false)
     private String storeName;
 }

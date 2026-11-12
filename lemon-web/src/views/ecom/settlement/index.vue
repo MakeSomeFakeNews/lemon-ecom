@@ -26,7 +26,7 @@
         <a-button v-perm="'ecom:settlement:import'" type="primary" @click="importOpen = true">
           <template #icon><ImportOutlined /></template>{{ $t('ecomReport.settlement.import') }}
         </a-button>
-        <a-tooltip :title="$t('ecomReport.settlement.importTip')"><InfoCircleOutlined class="tip-icon" /></a-tooltip>
+        <a-tooltip :title="`${$t('ecomReport.settlement.importTip')} ${$t('ecomProfit.settlement.rawTypeTip')}`"><InfoCircleOutlined class="tip-icon" /></a-tooltip>
       </TableToolbar>
       <a-table
         row-key="id"
@@ -172,7 +172,8 @@ const importColumns = [
   { title: t('ecomReport.settlement.periodEnd'), key: 'periodEnd', required: true, type: 'date', width: 14 },
   { title: t('ecomReport.common.currency'), key: 'currency', width: 8 },
   { title: t('ecomReport.settlement.postedDate'), key: 'postedDate', type: 'date', width: 14 },
-  { title: t('ecomReport.settlement.itemType'), key: 'itemType', required: true, dict: 'ecom_settlement_item_type', width: 12 },
+  { title: t('ecomReport.settlement.itemType'), key: 'itemType', dict: 'ecom_settlement_item_type', width: 12 },
+  { title: t('ecomProfit.settlement.rawType'), key: 'rawType', width: 28 },
   { title: t('ecomReport.common.platformOrderNo'), key: 'platformOrderNo', width: 24 },
   { title: t('ecomReport.common.sellerSku'), key: 'sellerSku', width: 16 },
   { title: t('common.field.amount'), key: 'amount', required: true, type: 'number', width: 12 },
@@ -186,6 +187,7 @@ const importSample = {
   currency: 'USD',
   postedDate: '2026-10-03',
   itemType: t('ecomReport.settlement.sampleItemType'),
+  rawType: 'Principal',
   platformOrderNo: '111-2223334-5556667',
   sellerSku: 'SKU-001',
   amount: '25.99',

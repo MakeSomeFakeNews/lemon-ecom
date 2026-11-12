@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomAdRuleMapper">
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.entity.EcomAdRule">
+        SELECT r.*, u.nickname AS owner_name, COALESCE(p.cnt, 0) AS pending_count
+        FROM ecom_ad_rule r
+        LEFT JOIN sys_user u ON u.id = r.owner_id
+        LEFT JOIN (SELECT rule_id, COUNT(*) AS cnt FROM ecom_ad_rule_log WHERE status = 'PENDING' GROUP BY rule_id) p ON p.rule_id = r.id
+        <where>
+            <if test="status != null">r.status = #{status}</if>
+            <if test="keyword != null and keyword != ''">AND r.name LIKE CONCAT('%', #{keyword}, '%')</if>
+        </where>
+        ORDER BY r.id DESC
+    </select>
+
+</mapper>

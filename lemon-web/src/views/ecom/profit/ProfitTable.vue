@@ -24,6 +24,7 @@
         <span v-else class="sub-text">-</span>
       </template>
       <template v-else-if="column.key === 'country'">{{ record.country || '-' }}</template>
+      <template v-else-if="['ownerName', 'marketplace', 'spu', 'sellerSku'].includes(column.key)">{{ record[column.key] || '-' }}</template>
     </template>
     <template v-if="rows.length" #summary>
       <a-table-summary fixed>

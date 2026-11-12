@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomAdGroupMapper">
+
+    <select id="selectByCampaign" resultType="com.lemon.erp.modules.ecom.entity.EcomAdGroup">
+        SELECT g.*, c.name AS campaign_name, COALESCE(t.cnt, 0) AS target_count
+        FROM ecom_ad_group g
+        JOIN ecom_ad_campaign c ON c.id = g.campaign_id
+        LEFT JOIN (SELECT ad_group_id, COUNT(*) AS cnt FROM ecom_ad_target WHERE target_type &lt;&gt; 'NEGATIVE' GROUP BY ad_group_id) t ON t.ad_group_id = g.id
+        WHERE g.campaign_id = #{campaignId}
+        ORDER BY g.name
+    </select>
+
+    <select id="selectEntities" resultType="com.lemon.erp.modules.ecom.dto.AdsViews$RuleEntity">
+        SELECT 'AD_GROUP' AS level, g.id, g.store_id, s.name AS store_name, s.currency, g.campaign_id, c.name AS campaign_name,
+               c.tags AS campaign_tags, c.ad_type, g.id AS ad_group_id, g.name, g.status, g.platform_ad_group_id AS platform_id,
+               g.default_bid AS bid, g.default_bid AS base_bid
+        FROM ecom_ad_group g
+        JOIN ecom_ad_campaign c ON c.id = g.campaign_id
+        JOIN ecom_store s ON s.id = g.store_id
+        WHERE 1 = 1
+        <if test="!includeArchived">AND g.status &lt;&gt; 'ARCHIVED' AND c.status &lt;&gt; 'ARCHIVED'</if>
+        <if test="storeIds != null and storeIds.size() > 0">
+            AND g.store_id IN <foreach collection="storeIds" item="i" open="(" separator="," close=")">#{i}</foreach>
+        </if>
+        <if test="campaignId != null">AND g.campaign_id = #{campaignId}</if>
+        <if test="adType != null">AND c.ad_type = #{adType}</if>
+        <if test="keyword != null and keyword != ''">AND c.name LIKE CONCAT('%', #{keyword}, '%')</if>
+        ORDER BY g.store_id, c.name, g.name
+    </select>
+
+</mapper>

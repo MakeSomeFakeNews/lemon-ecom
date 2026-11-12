@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomReviewMapper">
+
+    <sql id="filters">
+        <if test="q.storeId != null">AND r.store_id = #{q.storeId}</if>
+        <if test="q.platform != null">AND r.platform = #{q.platform}</if>
+        <if test="q.sellerSku != null and q.sellerSku != ''">AND r.seller_sku = #{q.sellerSku}</if>
+        <if test="q.maxRating != null">AND r.rating &lt;= #{q.maxRating}</if>
+        <if test="q.minRating != null">AND r.rating &gt;= #{q.minRating}</if>
+        <if test="q.handleStatus != null">AND r.handle_status = #{q.handleStatus}</if>
+        <if test="q.replied != null">AND r.replied = #{q.replied}</if>
+        <if test="q.beginDate != null">AND r.review_date &gt;= #{q.beginDate}</if>
+        <if test="q.endDate != null">AND r.review_date &lt;= #{q.endDate}</if>
+        <if test="q.keyword != null and q.keyword != ''">
+            AND (r.content LIKE CONCAT('%', #{q.keyword}, '%') OR r.title LIKE CONCAT('%', #{q.keyword}, '%')
+                 OR r.reviewer LIKE CONCAT('%', #{q.keyword}, '%') OR r.platform_order_no LIKE CONCAT('%', #{q.keyword}, '%')
+                 OR r.seller_sku LIKE CONCAT('%', #{q.keyword}, '%') OR r.platform_item_id LIKE CONCAT('%', #{q.keyword}, '%'))
+        </if>
+    </sql>
+
+    <sql id="columns">
+        r.id, r.store_id, r.platform, r.review_id, r.platform_item_id, r.seller_sku, r.listing_id, r.rating, r.title, r.content, r.reviewer,
+        r.review_date, r.order_id, r.platform_order_no, r.replied, r.reply_content, r.reply_time, r.handle_status, r.handler_id, r.handle_note,
+        r.source, r.create_time, r.update_time, s.name AS store_name, u.nickname AS handler_name, l.title AS listing_title
+    </sql>
+
+    <sql id="joins">
+        FROM ecom_review r
+        JOIN ecom_store s ON s.id = r.store_id
+        LEFT JOIN sys_user u ON u.id = r.handler_id
+        LEFT JOIN ecom_listing l ON l.id = r.listing_id
+    </sql>
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.cs.entity.EcomReview">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        <where>
+            <include refid="filters"/>
+        </where>
+        ORDER BY CASE WHEN r.handle_status = 'PENDING' THEN 0 WHEN r.handle_status = 'PROCESSING' THEN 1 ELSE 2 END, r.review_date DESC, r.id DESC
+    </select>
+
+    <select id="selectDetail" resultType="com.lemon.erp.modules.ecom.cs.entity.EcomReview">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        WHERE r.id = #{id}
+    </select>
+
+    <select id="selectSummary" resultType="java.util.Map">
+        SELECT COUNT(*) AS total, COALESCE(SUM(r.rating), 0) AS ratingSum,
+               COALESCE(SUM(CASE WHEN r.rating &lt;= #{low} THEN 1 ELSE 0 END), 0) AS lowCount,
+               COALESCE(SUM(CASE WHEN r.handle_status = 'PENDING' THEN 1 ELSE 0 END), 0) AS pendingCount,
+               COALESCE(SUM(CASE WHEN r.replied = 1 THEN 1 ELSE 0 END), 0) AS repliedCount
+        FROM ecom_review r
+        <where>
+            <include refid="filters"/>
+        </where>
+    </select>
+
+    <select id="selectSkuStats" resultType="java.util.Map">
+        SELECT r.store_id AS storeId, s.name AS storeName, r.seller_sku AS sellerSku, MAX(l.title) AS title, COUNT(*) AS cnt,
+               SUM(r.rating) AS ratingSum, SUM(CASE WHEN r.rating &lt;= #{low} THEN 1 ELSE 0 END) AS lowCount, MAX(r.review_date) AS lastDate
+        FROM ecom_review r
+        JOIN ecom_store s ON s.id = r.store_id
+        LEFT JOIN ecom_listing l ON l.id = r.listing_id
+        <where>
+            <include refid="filters"/>
+        </where>
+        GROUP BY r.store_id, s.name, r.seller_sku
+        ORDER BY SUM(CASE WHEN r.rating &lt;= #{low} THEN 1 ELSE 0 END) DESC, COUNT(*) DESC
+    </select>
+
+    <select id="selectTrend" resultType="java.util.Map">
+        SELECT r.review_date AS reviewDate, COUNT(*) AS cnt, SUM(r.rating) AS ratingSum,
+               SUM(CASE WHEN r.rating &lt;= #{low} THEN 1 ELSE 0 END) AS lowCount
+        FROM ecom_review r
+        <where>
+            <include refid="filters"/>
+        </where>
+        GROUP BY r.review_date
+        ORDER BY r.review_date
+    </select>
+
+</mapper>

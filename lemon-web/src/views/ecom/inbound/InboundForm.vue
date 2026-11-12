@@ -78,6 +78,11 @@
             <a-input-number v-model:value="form.otherCost" :min="0" :precision="2" prefix="¥" class="full" />
           </a-form-item>
         </a-col>
+        <a-col :xs="12" :sm="8" :lg="4">
+          <a-form-item :label="`${$t('ecomProfit.inbound.importVat')} ${$t('ecomOrder.inbound.costBase')}`" name="importVat" :extra="$t('ecomProfit.inbound.importVatExtra')">
+            <a-input-number v-model:value="form.importVat" :min="0" :precision="2" prefix="¥" class="full" />
+          </a-form-item>
+        </a-col>
         <a-col :xs="24">
           <a-form-item :label="$t('common.field.remark')" name="remark">
             <a-input v-model:value="form.remark" :maxlength="255" />
@@ -176,6 +181,7 @@ const emptyForm = () => ({
   volume: undefined,
   freight: undefined,
   duty: undefined,
+  importVat: undefined,
   otherCost: undefined,
   remark: '',
   items: []
@@ -221,6 +227,7 @@ const drawer = useFormDrawer({
     volume: f.volume ?? null,
     freight: f.freight ?? null,
     duty: f.duty ?? null,
+    importVat: f.importVat ?? null,
     otherCost: f.otherCost ?? null,
     remark: f.remark || null,
     // 由发货计划生成的明细带着在线商品与计划明细，原样提交（改了平台 SKU 的行清空在线商品，后端按新 SKU 识别）

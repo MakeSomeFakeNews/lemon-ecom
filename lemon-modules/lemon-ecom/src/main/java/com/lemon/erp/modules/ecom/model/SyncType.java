@@ -15,5 +15,11 @@ public enum SyncType {
     /** 平台仓库存 */
     PLATFORM_STOCK,
     /** 授权 */
-    AUTH
+    AUTH,
+    /** 买家消息（客服） */
+    MESSAGES,
+    /** 评价（客服） */
+    REVIEWS,
+    /** 请求评价（客服，亚马逊 Solicitations） */
+    REVIEW_REQUEST
 }

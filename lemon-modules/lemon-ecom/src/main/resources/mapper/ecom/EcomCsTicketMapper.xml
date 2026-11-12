@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomCsTicketMapper">
+
+    <sql id="columns">
+        k.*, s.name AS store_name, u.nickname AS create_by_name, r.status AS return_status, o.local_status AS resend_status
+    </sql>
+
+    <sql id="joins">
+        FROM ecom_cs_ticket k
+        JOIN ecom_store s ON s.id = k.store_id
+        LEFT JOIN sys_user u ON u.id = k.create_by
+        LEFT JOIN ecom_return r ON r.id = k.return_id
+        LEFT JOIN ecom_order o ON o.id = k.resend_order_id
+    </sql>
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.cs.entity.EcomCsTicket">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        <where>
+            <if test="storeId != null">AND k.store_id = #{storeId}</if>
+            <if test="ticketType != null">AND k.ticket_type = #{ticketType}</if>
+            <if test="sourceType != null">AND k.source_type = #{sourceType}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (k.platform_order_no LIKE CONCAT('%', #{keyword}, '%') OR k.return_no LIKE CONCAT('%', #{keyword}, '%')
+                     OR k.resend_order_no LIKE CONCAT('%', #{keyword}, '%') OR k.remark LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY k.id DESC
+    </select>
+
+    <select id="selectBySource" resultType="com.lemon.erp.modules.ecom.cs.entity.EcomCsTicket">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        WHERE k.source_type = #{sourceType} AND k.source_id = #{sourceId}
+        ORDER BY k.id
+    </select>
+
+</mapper>

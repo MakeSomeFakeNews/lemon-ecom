@@ -10,3 +10,8 @@ export const reportStore = (params) => request.get('/ecom/report/store', { param
 export const reportSku = (params) => request.get('/ecom/report/sku', { params })
 export const reportCountry = (params) => request.get('/ecom/report/country', { params })
 export const reportFees = (params) => request.get('/ecom/report/fees', { params })
+/**
+ * 多维利润报表：params { basis: ORDER | SETTLEMENT, dimension: STORE | PLATFORM | MARKETPLACE | SKU | SPU | MATERIAL | OWNER | COUNTRY | MONTH,
+ * beginDate, endDate, storeId, keyword }，返回数组
+ */
+export const reportProfit = (params) => request.get('/ecom/report/profit', { params })

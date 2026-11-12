@@ -20,7 +20,8 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * 广告日报：导入广告报告（店铺 × 日期 × 活动 × SKU，重复导入覆盖），汇总 ACOS、点击率、单次点击成本
+ * 广告日报：导入广告报告（店铺 × 日期 × 活动 × SKU，重复导入覆盖），汇总 ACOS、点击率、单次点击成本。
+ * 导入时按活动名称关联广告活动（ecom_ad_campaign，没有时自动建立）；亚马逊广告后台格式的报告见 {@link EcomAdIngestService}
  */
 @Service
 @RequiredArgsConstructor
@@ -28,6 +29,7 @@ public class EcomAdService {
 
     private final EcomAdDailyMapper adMapper;
     private final EcomStoreService storeService;
+    private final EcomAdIngestService ingestService;
 
     public PageResult<EcomAdDaily> page(long current, long size, Long storeId, LocalDate beginDate, LocalDate endDate, String keyword) {
         Page<EcomAdDaily> page = Page.of(current, size);
@@ -58,6 +60,8 @@ public class EcomAdService {
         a.setCurrency(r.getCurrency() == null || r.getCurrency().isBlank() ? store.getCurrency() : r.getCurrency().trim().toUpperCase());
         a.setAdSales(Decimals.money(Decimals.nz(r.getAdSales())));
         a.setAdOrders(r.getAdOrders() == null ? 0 : r.getAdOrders());
+        // 关联（或建立）广告活动，并删除同一活动、日期由活动报告写入的活动级日报，避免重复计算花费
+        ingestService.linkLegacy(store, a);
         if (existing == null) {
             adMapper.insert(a);
         } else {

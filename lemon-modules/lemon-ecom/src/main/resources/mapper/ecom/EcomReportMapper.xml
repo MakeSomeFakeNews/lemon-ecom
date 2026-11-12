@@ -2,8 +2,10 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomReportMapper">
 
-    <!-- 订单费用（本位币）：佣金 + 配送费 + 其他 -->
-    <sql id="feesBase">(COALESCE(o.platform_fee, 0) + COALESCE(o.fulfillment_fee, 0) + COALESCE(o.other_fee, 0)) * o.exchange_rate</sql>
+    <!-- 订单费用（本位币）：佣金 + 配送费 + 退货处理费 + 其他 -->
+    <sql id="feesBase">(COALESCE(o.platform_fee, 0) + COALESCE(o.fulfillment_fee, 0) + COALESCE(o.return_fee, 0) + COALESCE(o.other_fee, 0)) * o.exchange_rate</sql>
+    <!-- 订单税额（本位币）：平台代扣 + 需申报 VAT，不计收入 -->
+    <sql id="taxBase">(COALESCE(o.withheld_tax, 0) + COALESCE(o.vat_amount, 0)) * o.exchange_rate</sql>
     <sql id="refundBase">COALESCE(o.refund_amount, 0) * o.exchange_rate</sql>
 
     <sql id="orderRange">
@@ -77,7 +79,7 @@
                SUM(x.share * <include refid="refundBase"/>) AS refund,
                SUM(COALESCE(oi.cost, 0)) AS cost,
                SUM(x.share * COALESCE(o.shipping_cost, 0)) AS shipping,
-               SUM(x.line_fc * o.exchange_rate - x.share * (<include refid="feesBase"/> + <include refid="refundBase"/> + COALESCE(o.shipping_cost, 0)) - COALESCE(oi.cost, 0)) AS profit
+               SUM(x.line_fc * o.exchange_rate - x.share * (<include refid="taxBase"/> + <include refid="feesBase"/> + <include refid="refundBase"/> + COALESCE(o.shipping_cost, 0)) - COALESCE(oi.cost, 0)) AS profit
         FROM ecom_order_item oi
         JOIN ecom_order o ON o.id = oi.order_id
         JOIN ecom_store s ON s.id = o.store_id
@@ -132,6 +134,25 @@
             <if test="storeId != null">AND a.store_id = #{storeId}</if>
         </where>
         GROUP BY a.store_id, s.currency, a.seller_sku
+    </select>
+
+    <!-- 看板趋势：按天的广告花费（店铺币种）与费用分摊（本位币） -->
+    <select id="selectAdSpendByDay" resultType="map">
+        SELECT a.ad_date AS "day", s.currency, SUM(a.spend) AS spend
+        FROM ecom_ad_daily a
+        JOIN ecom_store s ON s.id = a.store_id
+        WHERE a.ad_date &gt;= #{begin} AND a.ad_date &lt;= #{end}
+        <if test="storeId != null">AND a.store_id = #{storeId}</if>
+        GROUP BY a.ad_date, s.currency
+    </select>
+
+    <select id="selectAllocationByDay" resultType="map">
+        SELECT a.alloc_date AS "day", SUM(a.amount_base) AS amount
+        FROM ecom_fee_allocation a
+        WHERE a.alloc_date &gt;= #{begin} AND a.alloc_date &lt;= #{end}
+          AND a.item_type NOT IN ('ORDER', 'REFUND', 'AD', 'RESERVE', 'MARKETPLACE_TAX')
+        <if test="storeId != null">AND a.store_id = #{storeId}</if>
+        GROUP BY a.alloc_date
     </select>
 
     <select id="selectAdSpendByStore" resultType="map">

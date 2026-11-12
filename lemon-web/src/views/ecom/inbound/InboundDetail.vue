@@ -27,6 +27,7 @@
           <a-descriptions-item :label="$t('ecomOrder.inbound.freight')">{{ baseMoney(detail.freight) }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOrder.inbound.duty')">{{ baseMoney(detail.duty) }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOrder.inbound.otherCost')">{{ baseMoney(detail.otherCost) }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomProfit.inbound.importVat')">{{ baseMoney(detail.importVat) }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOrder.inbound.totalCost')"><b>{{ baseMoney(totalCost(detail)) }}</b></a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOrder.inbound.unitLanded')">
             <a-tooltip :title="$t('ecomOrder.inbound.unitLandedHint')">

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomAdRuleLogMapper">
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.entity.EcomAdRuleLog">
+        SELECT l.*, r.name AS rule_name, s.name AS store_name, c.name AS campaign_name, u.nickname AS applied_by_name
+        FROM ecom_ad_rule_log l
+        JOIN ecom_store s ON s.id = l.store_id
+        LEFT JOIN ecom_ad_rule r ON r.id = l.rule_id
+        LEFT JOIN ecom_ad_campaign c ON c.id = l.campaign_id
+        LEFT JOIN sys_user u ON u.id = l.applied_by
+        <where>
+            <if test="ruleId != null">l.rule_id = #{ruleId}</if>
+            <if test="storeId != null">AND l.store_id = #{storeId}</if>
+            <if test="status != null">AND l.status = #{status}</if>
+            <if test="source != null">AND l.source = #{source}</if>
+            <if test="begin != null">AND l.run_time &gt;= #{begin}</if>
+            <if test="end != null">AND l.run_time &lt; #{end}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (l.entity_name LIKE CONCAT('%', #{keyword}, '%') OR c.name LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY l.run_time DESC, l.id DESC
+    </select>
+
+    <insert id="insertBatch">
+        INSERT INTO ecom_ad_rule_log (rule_id, source, run_time, store_id, level, entity_id, campaign_id, entity_name, action, old_value, new_value,
+                                      old_status, new_status, metrics, status, message, applied_time, applied_by, create_time, update_time)
+        VALUES
+        <foreach collection="items" item="i" separator=",">
+            (#{i.ruleId}, #{i.source}, #{i.runTime}, #{i.storeId}, #{i.level}, #{i.entityId}, #{i.campaignId}, #{i.entityName}, #{i.action},
+             #{i.oldValue}, #{i.newValue}, #{i.oldStatus}, #{i.newStatus}, #{i.metrics}, #{i.status}, #{i.message}, #{i.appliedTime},
+             #{i.appliedBy}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        </foreach>
+    </insert>
+
+</mapper>

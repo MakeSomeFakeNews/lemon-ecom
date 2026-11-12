@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.analytics.mapper.EcomForecastMapper">
+
+    <insert id="insertBatch">
+        INSERT INTO ecom_forecast (listing_id, store_id, forecast_date, qty, method, generated_time)
+        VALUES
+        <foreach collection="items" item="i" separator=",">
+            (#{i.listingId}, #{i.storeId}, #{i.forecastDate}, #{i.qty}, #{i.method}, #{i.generatedTime})
+        </foreach>
+    </insert>
+
+    <delete id="deleteFrom">
+        DELETE FROM ecom_forecast
+        WHERE forecast_date &gt;= #{date}
+          AND listing_id IN <foreach collection="listingIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </delete>
+
+    <delete id="deleteBefore">
+        DELETE FROM ecom_forecast WHERE forecast_date &lt; #{date}
+    </delete>
+
+    <delete id="deleteGeneratedBefore">
+        DELETE FROM ecom_forecast WHERE generated_time &lt; #{time}
+    </delete>
+
+    <select id="selectRange" resultType="com.lemon.erp.modules.ecom.analytics.entity.EcomForecast">
+        SELECT f.listing_id, f.store_id, f.forecast_date, f.qty, f.method, f.generated_time
+        FROM ecom_forecast f
+        WHERE f.forecast_date &gt;= #{from} AND f.forecast_date &lt; #{to}
+          AND f.listing_id IN <foreach collection="listingIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+        ORDER BY f.listing_id, f.forecast_date
+    </select>
+
+</mapper>

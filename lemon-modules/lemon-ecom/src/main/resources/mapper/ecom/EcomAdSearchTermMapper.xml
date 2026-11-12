@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomAdSearchTermMapper">
+
+    <insert id="insertBatch">
+        INSERT INTO ecom_ad_search_term (store_id, stat_date, campaign_id, ad_group_id, target_id, keyword_text, match_type, search_term,
+                                         impressions, clicks, spend, sales, orders, currency, create_time, update_time)
+        VALUES
+        <foreach collection="items" item="i" separator=",">
+            (#{i.storeId}, #{i.statDate}, #{i.campaignId}, #{i.adGroupId}, #{i.targetId}, #{i.keywordText}, #{i.matchType}, #{i.searchTerm},
+             #{i.impressions}, #{i.clicks}, #{i.spend}, #{i.sales}, #{i.orders}, #{i.currency}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        </foreach>
+    </insert>
+
+</mapper>

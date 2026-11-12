@@ -102,7 +102,7 @@ public class EcomPurchasePlanService {
      */
     @Transactional
     public Long createFromReplenish(PurchasePlanFromReplenish req) {
-        ReplenishWeights weights = ReplenishWeights.of(req.w7(), req.w14(), req.w30(), req.w60());
+        ReplenishWeights weights = ReplenishWeights.of(req.w7(), req.w14(), req.w30(), req.w60()).withForecast(req.forecast());
         Map<Long, BigDecimal> wanted = new LinkedHashMap<>();
         req.items().forEach(i -> wanted.merge(i.materialId(), i.qty() == null ? BigDecimal.ZERO : i.qty(), BigDecimal::add));
         Map<Long, PurchaseSuggestRow> suggestions = replenishService.purchaseRowsOf(wanted.keySet(), weights);

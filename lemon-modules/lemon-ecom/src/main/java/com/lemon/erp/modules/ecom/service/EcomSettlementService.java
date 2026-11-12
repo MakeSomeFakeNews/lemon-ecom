@@ -12,11 +12,13 @@ import com.lemon.erp.framework.excel.ImportResult;
 import com.lemon.erp.framework.excel.ImportRow;
 import com.lemon.erp.framework.finance.ExchangeRateProvider;
 import com.lemon.erp.modules.ecom.dto.SettlementImportRow;
+import com.lemon.erp.modules.ecom.entity.EcomFeeAllocation;
 import com.lemon.erp.modules.ecom.entity.EcomSettlement;
 import com.lemon.erp.modules.ecom.entity.EcomSettlementItem;
 import com.lemon.erp.modules.ecom.entity.EcomStore;
 import com.lemon.erp.modules.ecom.mapper.EcomSettlementItemMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomSettlementMapper;
+import com.lemon.erp.modules.ecom.model.FeeAllocMethod;
 import com.lemon.erp.modules.ecom.model.SettlementItemType;
 import com.lemon.erp.modules.ecom.model.SettlementStatus;
 import com.lemon.erp.modules.fin.dto.SettlementItemRequest;
@@ -32,6 +34,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -43,8 +46,9 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * 平台结算单：导入结算报告（一行一笔收入 / 费用）按 店铺 + 结算编号 合并，确认时把佣金、配送费、退款回写到订单，
- * 并可按结算净额生成收款单核销店铺客户的应收（平台费用作为折让）
+ * 平台结算单：导入结算报告（一行一笔收入 / 费用，类型可直接填写或按「费用映射」识别原始类型名）按 店铺 + 结算编号 合并，
+ * 导入时分摊不挂订单的费用（{@link EcomFeeAllocationService}）并生成应到账记录（{@link EcomPayoutService}）；
+ * 确认时把佣金、配送费、退款、退货处理费、其他费用回写到订单，并可按结算净额生成收款单核销店铺客户的应收（平台费用作为折让）
  */
 @Service
 @RequiredArgsConstructor
@@ -57,6 +61,9 @@ public class EcomSettlementService {
     private final ExchangeRateProvider rateProvider;
     private final FinBillService billService;
     private final FinSettlementService finSettlementService;
+    private final EcomFeeMappingService feeMappingService;
+    private final EcomFeeAllocationService allocationService;
+    private final EcomPayoutService payoutService;
     private final Validator validator;
     private final TransactionTemplate transactionTemplate;
 
@@ -91,6 +98,7 @@ public class EcomSettlementService {
         Map<String, List<SettlementImportRow>> groups = new LinkedHashMap<>();
         Map<String, Integer> firstRow = new LinkedHashMap<>();
         Map<String, EcomStore> stores = new LinkedHashMap<>();
+        EcomFeeMappingService.Resolver resolver = feeMappingService.resolver();
         for (ImportRow<SettlementImportRow> row : req.rows()) {
             if (row == null || row.data() == null) {
                 continue;
@@ -106,6 +114,15 @@ public class EcomSettlementService {
             if (store == null) {
                 errors.add(new ImportResult.RowError(row.rowNum(), Messages.get("ecom.error.storeCodeNotFound", r.getStoreCode())));
                 continue;
+            }
+            if (r.getItemType() == null) {
+                // 没有填写类型：按店铺平台的费用映射识别原始类型名
+                r.setItemType(resolver.resolve(store.getPlatform(), r.getRawType()));
+                if (r.getItemType() == null) {
+                    errors.add(new ImportResult.RowError(row.rowNum(), StringUtils.hasText(r.getRawType())
+                            ? Messages.get("ecom.error.fee.rawTypeUnknown", r.getRawType().trim()) : Messages.get("ecom.valid.selectItemType")));
+                    continue;
+                }
             }
             String key = store.getId() + "|" + r.getSettlementNo().trim();
             groups.computeIfAbsent(key, k -> new ArrayList<>()).add(r);
@@ -153,23 +170,25 @@ public class EcomSettlementService {
         List<EcomSettlementItem> items = new ArrayList<>();
         for (SettlementImportRow r : rows) {
             BigDecimal amount = Decimals.money(r.getAmount());
+            // 汇总栏：长期仓储费并入仓储费，预留 / 代收代缴税并入调整，其余细分类型并入其他费用
             switch (r.getItemType()) {
                 case ORDER -> sales = sales.add(amount);
                 case REFUND -> refund = refund.add(amount);
                 case COMMISSION -> commission = commission.add(amount);
                 case FULFILLMENT -> fulfillment = fulfillment.add(amount);
-                case STORAGE -> storage = storage.add(amount);
+                case STORAGE, LONG_STORAGE -> storage = storage.add(amount);
                 case AD -> ad = ad.add(amount);
-                case OTHER -> other = other.add(amount);
-                case ADJUSTMENT -> adjustment = adjustment.add(amount);
+                case ADJUSTMENT, RESERVE, MARKETPLACE_TAX -> adjustment = adjustment.add(amount);
+                default -> other = other.add(amount);
             }
             EcomSettlementItem it = new EcomSettlementItem();
             it.setPostedDate(r.getPostedDate());
             it.setItemType(r.getItemType());
-            it.setPlatformOrderNo(r.getPlatformOrderNo() == null ? null : r.getPlatformOrderNo().trim());
-            it.setSellerSku(r.getSellerSku());
+            it.setPlatformOrderNo(StringUtils.hasText(r.getPlatformOrderNo()) ? r.getPlatformOrderNo().trim() : null);
+            it.setSellerSku(StringUtils.hasText(r.getSellerSku()) ? r.getSellerSku().trim() : null);
             it.setAmount(amount);
             it.setDescription(r.getDescription());
+            it.setRawType(StringUtils.hasText(r.getRawType()) ? r.getRawType().trim() : null);
             items.add(it);
         }
         s.setSalesAmount(sales);
@@ -190,7 +209,11 @@ public class EcomSettlementService {
         s.setStatus(SettlementStatus.IMPORTED);
         settlementMapper.insert(s);
         items.forEach(i -> i.setSettlementId(s.getId()));
-        itemMapper.insertBatch(items);
+        for (int i = 0; i < items.size(); i += 500) {
+            itemMapper.insertBatch(items.subList(i, Math.min(items.size(), i + 500)));
+        }
+        allocationService.allocate(s);
+        payoutService.createPending(s);
     }
 
     /**
@@ -205,13 +228,49 @@ public class EcomSettlementService {
         if (s.getStatus() != SettlementStatus.IMPORTED) {
             throw new BizException("ecom.error.settlementConfirmed", s.getSettlementNo());
         }
+        // 订单可能在导入结算单之后才写入：按当前的订单重新分摊不挂订单的费用，避免与回写到订单的费用重复
+        allocationService.allocate(s);
+        Map<String, Map<SettlementItemType.OrderFee, BigDecimal>> fees = new LinkedHashMap<>();
         for (Map<String, Object> fee : itemMapper.selectOrderFees(id)) {
-            orderService.applySettlementFees(s.getStoreId(), (String) fee.get("platformOrderNo"), dec(fee.get("commission")), dec(fee.get("fulfillment")),
-                    dec(fee.get("refund")), dec(fee.get("other")));
+            SettlementItemType type = SettlementItemType.valueOf((String) fee.get("itemType"));
+            SettlementItemType.OrderFee col = type.orderFeeColumn();
+            if (col != null) {
+                fees.computeIfAbsent((String) fee.get("platformOrderNo"), k -> new java.util.EnumMap<>(SettlementItemType.OrderFee.class))
+                        .merge(col, dec(fee.get("amount")), BigDecimal::add);
+            }
         }
+        fees.forEach((no, f) -> orderService.applySettlementFees(s.getStoreId(), no, f.get(SettlementItemType.OrderFee.COMMISSION),
+                f.get(SettlementItemType.OrderFee.FULFILLMENT), f.get(SettlementItemType.OrderFee.REFUND), f.get(SettlementItemType.OrderFee.RETURN_FEE),
+                f.get(SettlementItemType.OrderFee.OTHER)));
         Long finId = accountId == null ? null : receipt(s, accountId);
         StatusTransitions.change(settlementMapper, EcomSettlement::getId, id, EcomSettlement::getStatus, SettlementStatus.IMPORTED, SettlementStatus.CONFIRMED,
                 w -> w.set(EcomSettlement::getFinSettlementId, finId), "ecom.error.settlementConfirmed", s.getSettlementNo());
+        if (finId != null) {
+            payoutService.afterSettlementConfirmed(id);
+        }
+    }
+
+    /**
+     * 修改不挂订单费用的分摊方式并重新分摊（已确认的也可以）
+     *
+     * @param method QTY 按销量 / SALES 按销售额，为空按类型默认
+     * @return 分摊结果行数
+     */
+    @Transactional
+    public int reallocate(Long id, FeeAllocMethod method) {
+        EcomSettlement s = get(id);
+        if (method != null && method != FeeAllocMethod.QTY && method != FeeAllocMethod.SALES) {
+            throw new BizException("ecom.error.fee.allocMethodInvalid");
+        }
+        s.setAllocMethod(method);
+        settlementMapper.update(Wrappers.<EcomSettlement>lambdaUpdate().set(EcomSettlement::getAllocMethod, method).eq(EcomSettlement::getId, id));
+        return allocationService.allocate(s);
+    }
+
+    /** 结算单的费用分摊结果 */
+    public List<EcomFeeAllocation> allocations(Long id) {
+        get(id);
+        return allocationService.list(id);
     }
 
     private Long receipt(EcomSettlement s, Long accountId) {
@@ -273,6 +332,8 @@ public class EcomSettlementService {
             if (s.getStatus() != SettlementStatus.IMPORTED) {
                 throw new BizException("ecom.error.settlementConfirmed", s.getSettlementNo());
             }
+            payoutService.deleteBySettlement(id, s.getSettlementNo());
+            allocationService.deleteBySettlement(id);
             itemMapper.delete(Wrappers.<EcomSettlementItem>lambdaQuery().eq(EcomSettlementItem::getSettlementId, id));
         }
         settlementMapper.deleteByIds(ids);

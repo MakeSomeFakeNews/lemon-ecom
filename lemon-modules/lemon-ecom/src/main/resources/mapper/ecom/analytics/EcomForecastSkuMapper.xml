@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.analytics.mapper.EcomForecastSkuMapper">
+
+    <insert id="insertBatch">
+        INSERT INTO ecom_forecast_sku (listing_id, store_id, method, fixed_method, mape_ma, mape_wma, mape_holt, mape_seasonal, history_daily,
+                                       forecast30, forecast60, forecast90, sigma, generated_time, create_time, update_time)
+        VALUES
+        <foreach collection="items" item="i" separator=",">
+            (#{i.listingId}, #{i.storeId}, #{i.method}, #{i.fixedMethod}, #{i.mapeMa}, #{i.mapeWma}, #{i.mapeHolt}, #{i.mapeSeasonal},
+             #{i.historyDaily}, #{i.forecast30}, #{i.forecast60}, #{i.forecast90}, #{i.sigma}, #{i.generatedTime}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        </foreach>
+    </insert>
+
+    <delete id="deleteByListings">
+        DELETE FROM ecom_forecast_sku
+        WHERE listing_id IN <foreach collection="listingIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </delete>
+
+    <delete id="deleteGeneratedBefore">
+        DELETE FROM ecom_forecast_sku WHERE generated_time &lt; #{time}
+    </delete>
+
+    <select id="selectRows" resultType="com.lemon.erp.modules.ecom.analytics.entity.EcomForecastSku">
+        SELECT f.id, f.listing_id, f.store_id, f.method, f.fixed_method, f.mape_ma, f.mape_wma, f.mape_holt, f.mape_seasonal, f.history_daily,
+               f.forecast30, f.forecast60, f.forecast90, f.sigma, f.generated_time,
+               s.name AS store_name, s.platform, l.seller_sku, l.title, m.code AS material_code, m.name AS material_name
+        FROM ecom_forecast_sku f
+        JOIN ecom_listing l ON l.id = f.listing_id
+        JOIN ecom_store s ON s.id = f.store_id
+        LEFT JOIN wms_material m ON m.id = l.material_id
+        <where>
+            <if test="storeId != null">f.store_id = #{storeId}</if>
+            <if test="method != null">AND f.method = #{method}</if>
+            <if test="listingIds != null and listingIds.size() > 0">
+                AND f.listing_id IN <foreach collection="listingIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+            </if>
+            <if test="keyword != null and keyword != ''">
+                AND (l.seller_sku LIKE CONCAT('%', #{keyword}, '%') OR l.title LIKE CONCAT('%', #{keyword}, '%')
+                     OR m.code LIKE CONCAT('%', #{keyword}, '%') OR m.name LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY f.forecast30 DESC, f.listing_id
+    </select>
+
+</mapper>

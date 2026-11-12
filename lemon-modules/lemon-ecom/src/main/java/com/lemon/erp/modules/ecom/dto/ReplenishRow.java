@@ -40,6 +40,12 @@ public class ReplenishRow {
     private BigDecimal sales60;
     /** 按销量加权计算的日均（乘系数前） */
     private BigDecimal weightedDaily;
+    /** 日均来源：WEIGHTED 按权重 / FORECAST 按销量预测（及预测方法）/ MANUAL 手工日均 */
+    private String dailySource;
+    private String forecastMethod;
+    /** 按预测时从今天起每天的预测量（不返回前端） */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private java.util.List<BigDecimal> forecastDaily;
     /** 季节 / 活动系数（设置），没有设置为 1 */
     private BigDecimal factor;
     /** 是否使用了手工日均 */

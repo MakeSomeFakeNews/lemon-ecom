@@ -9,6 +9,7 @@ import com.lemon.erp.modules.ecom.model.EcomLocalStatus;
 import com.lemon.erp.modules.ecom.model.EcomOrderStatus;
 import com.lemon.erp.modules.ecom.model.EcomPlatform;
 import com.lemon.erp.modules.ecom.model.FulfillmentType;
+import com.lemon.erp.modules.ecom.model.TaxType;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -18,7 +19,7 @@ import java.util.List;
 
 /**
  * 平台订单：从各平台导入 / 同步的销售订单。金额为订单币种，totalBase 等本位币金额按下单日汇率折算；
- * 出库时生成销售出库（直接开单，客户为店铺对应的客户），成本取出库成本，利润 = 本位币金额 − 平台费用 − 退款 − 成本 − 运费
+ * 出库时生成销售出库（直接开单，客户为店铺对应的客户），成本取出库成本，利润 = 本位币金额 − 税额 − 平台费用 − 退款 − 成本 − 运费
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -79,8 +80,21 @@ public class EcomOrder extends BaseEntity {
     private BigDecimal costAmount;
     /** 本公司承担的物流成本（本位币）：自发货为尾程运费，平台配送为头程分摊 */
     private BigDecimal shippingCost;
-    /** 利润（本位币） */
+    /** 退货处理费（订单币种，结算回写） */
+    private BigDecimal returnFee;
+    /** 利润（本位币）：收入不含平台代扣的税和需卖家申报的 VAT */
     private BigDecimal profit;
+
+    /** 适用的税种，为空表示没有匹配到启用的税率（不拆税） */
+    private TaxType taxType;
+    /** 适用税率（%） */
+    private BigDecimal vatRate;
+    /** 平台代扣代缴 1 是 0 否 */
+    private Integer taxFacilitator;
+    /** 需卖家申报的税额（订单币种）：按含税价 ÷ (1 + 税率) 拆出（价外税取订单税费），按退款比例冲减 */
+    private BigDecimal vatAmount;
+    /** 平台代扣代缴的税额（订单币种），不计收入 */
+    private BigDecimal withheldTax;
 
     /** 生成的销售出库单 */
     private Long tradeDocId;
