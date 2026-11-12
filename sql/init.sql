@@ -9258,3 +9258,9 @@ CREATE TABLE ecom_order_log (
     PRIMARY KEY (id),
     KEY idx_ecom_order_log_order (order_id, create_time)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '订单操作日志';
+
+-- 报表查询的索引：进销存报表按出入库单 + 物料取库存流水的实际成本、按出入库单取应收应付单的折让和坏账；
+-- 广告活动报告缺失某天时按活动 + 日期判断是否有活动报告
+CREATE INDEX idx_flow_doc_material ON wms_stock_flow (doc_id, material_id);
+CREATE INDEX idx_bill_source_id ON fin_bill (source_id);
+CREATE INDEX idx_ecom_ad_stat_entity ON ecom_ad_stat (entity_id, stat_date);

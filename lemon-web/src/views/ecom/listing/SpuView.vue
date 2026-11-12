@@ -7,25 +7,11 @@
     :loading="loading"
     :pagination="pagination"
     :scroll="{ x: sumWidth(columns) + 48, y: '100%' }"
-    :expandable="{ expandedRowKeys: expanded, onExpand, rowExpandable: (r) => !!r.parentItemId }"
+    :expanded-row-keys="expanded" @expand="onExpand" :row-expandable="(r) => !!r.parentItemId"
     @change="onTableChange"
   >
     <template #expandedRowRender="{ record }">
-      <a-table row-key="id" size="small" :columns="variantColumns" :data-source="variants[record.key] || []" :loading="!variants[record.key]"
-               :pagination="false" :scroll="{ x: 900 }">
-        <template #bodyCell="{ column, record: v }">
-          <template v-if="column.key === 'material'">
-            <span v-if="v.composeType === ListingComposeType.BUNDLE"><a-tag color="purple" :bordered="false">{{ $t('ecomCatalog.listing.bundle') }}</a-tag>{{ bundleText(v) }}</span>
-            <span v-else-if="v.materialId">{{ v.materialCode }} {{ v.materialName }}<span v-if="Number(v.packQty) !== 1" class="sub-text"> × {{ qty(v.packQty) }}</span></span>
-            <a-tag v-else color="warning" :bordered="false">{{ $t('ecom.common.unmapped') }}</a-tag>
-          </template>
-          <template v-else-if="column.key === 'price'">{{ v.price != null ? `${v.currency || ''} ${price(v.price)}` : '-' }}</template>
-          <template v-else-if="column.key === 'status'"><DictTag type="ecom_listing_status" :value="v.status" /></template>
-          <template v-else-if="column.key === 'action'">
-            <TableActions :actions="[{ type: 'edit', perm: 'ecom:listing:edit', onClick: () => emit('edit', v) }]" />
-          </template>
-        </template>
-      </a-table>
+      <SpuVariants :store-id="record.storeId" :parent-item-id="record.parentItemId" @edit="(v) => emit('edit', v)" />
     </template>
     <template #bodyCell="{ column, record }">
       <template v-if="column.key === 'store'">
@@ -69,11 +55,10 @@ import DictTag from '@/components/DictTag.vue'
 import TableActions from '@/components/common/TableActions.vue'
 import { actionColumn } from '@/components/common/tableActions'
 import { sumWidth } from '@/composables/useColumns'
-import { pageListing, spuListing } from '@/api/ecom/listing'
+import { spuListing } from '@/api/ecom/listing'
 import { useTable } from '@/composables/useTable'
-import { ListingComposeType } from '@/constants/enums'
-import { price, qty } from '@/utils/number'
-import { bundleText } from './listing'
+import { price } from '@/utils/number'
+import SpuVariants from './SpuVariants.vue'
 
 /**
  * 在线商品的 SPU 视图：按 店铺 + 父商品 ID 分组（没有父商品 ID 的自成一组），展开显示变体；
@@ -90,15 +75,6 @@ const columns = [
   { title: t('ecom.listing.price'), key: 'price', width: 160, align: 'right' },
   actionColumn(1, [t('ecomCatalog.style.title'), t('common.action.edit')])
 ]
-const variantColumns = [
-  { title: t('ecom.common.sellerSku'), dataIndex: 'sellerSku', width: 160 },
-  { title: t('ecom.listing.variant'), dataIndex: 'variant', width: 140 },
-  { title: t('ecom.common.platformItemId'), dataIndex: 'platformItemId', width: 130 },
-  { title: t('ecom.common.material'), key: 'material', width: 260 },
-  { title: t('ecom.listing.price'), key: 'price', width: 110, align: 'right' },
-  { title: t('common.field.status'), key: 'status', width: 90 },
-  actionColumn(1, [], { fixed: undefined })
-]
 
 const groupActions = (g) =>
   g.parentItemId
@@ -109,7 +85,6 @@ const query = reactive({ storeId: undefined, keyword: undefined, mapped: undefin
 const keyOf = (g) => `${g.storeId}|${g.parentItemId ?? `#${g.listingId}`}`
 const { list, loading, pagination, load: loadPage, onTableChange } = useTable(spuListing, query)
 const rows = ref([])
-const variants = reactive({})
 const expanded = ref([])
 
 async function load(q) {
@@ -119,12 +94,9 @@ async function load(q) {
   rows.value = list.value.map((g) => ({ ...g, key: keyOf(g) }))
 }
 
-/** 展开：按父商品 ID 查变体（没有父商品的单个商品不展开） */
-async function onExpand(open, record) {
+/** 展开：变体由 SpuVariants 按父商品 ID 自行加载（没有父商品的单个商品不展开） */
+function onExpand(open, record) {
   expanded.value = open ? [...expanded.value, record.key] : expanded.value.filter((k) => k !== record.key)
-  if (!open || variants[record.key]) return
-  const res = await pageListing({ storeId: record.storeId, parentItemId: record.parentItemId, current: 1, size: 200 })
-  variants[record.key] = res.records
 }
 
 defineExpose({ load })

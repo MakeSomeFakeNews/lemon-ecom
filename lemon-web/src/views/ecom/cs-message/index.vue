@@ -192,9 +192,9 @@ onMounted(loadCounts)
 }
 .status-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 2px;
   margin-top: 10px;
-  overflow-x: auto;
 }
 .status-tab {
   flex: none;

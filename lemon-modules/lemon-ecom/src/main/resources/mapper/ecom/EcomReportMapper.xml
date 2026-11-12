@@ -100,11 +100,8 @@
 
     <select id="selectByCountry" resultType="com.lemon.erp.modules.ecom.dto.EcomReports$CountryRow">
         SELECT COALESCE(o.ship_country, '') AS country, COUNT(*) AS orders,
-               COALESCE((SELECT SUM(oi.qty) FROM ecom_order_item oi WHERE oi.order_id IN
-                         (SELECT o2.id FROM ecom_order o2 WHERE COALESCE(o2.ship_country, '') = COALESCE(o.ship_country, '') AND o2.status &lt;&gt; 'CANCELLED'
-                          <if test="begin != null">AND o2.order_time &gt;= #{begin}</if>
-                          <if test="end != null">AND o2.order_time &lt; #{end}</if>
-                          <if test="storeId != null">AND o2.store_id = #{storeId}</if>)), 0) AS qty,
+               <!-- 件数：按订单取（走 order_id 索引）再按国家合计，不按国家重复查询同一范围的订单 -->
+               COALESCE(SUM((SELECT SUM(oi.qty) FROM ecom_order_item oi WHERE oi.order_id = o.id)), 0) AS qty,
                COALESCE(SUM(o.total_base), 0) AS sales, COALESCE(SUM(o.profit), 0) AS profit
         FROM ecom_order o
         WHERE <include refid="orderRange"/>

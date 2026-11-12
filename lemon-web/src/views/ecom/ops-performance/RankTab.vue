@@ -145,7 +145,8 @@ onMounted(load)
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 .toolbar {
   display: flex;

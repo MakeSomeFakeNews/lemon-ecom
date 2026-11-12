@@ -56,7 +56,7 @@ public class EcomJxcService {
         if (dim == null || !dim.supports(sales)) {
             throw new BizException("ecom.error.jxcInvalidDimension", String.valueOf(dim));
         }
-        return doSummary(sales, dim, q);
+        return doSummary(sales, dim, q, total(sales, q));
     }
 
     /**
@@ -117,7 +117,9 @@ public class EcomJxcService {
         prepare(true, q, MAX_DAYS_LONG);
         List<YearMonth> months = months(q.getBegin(), q.getEnd());
 
-        JxcViews.Summary byMonth = doSummary(true, JxcDimension.MONTH, q);
+        // 三种分组的合计相同，只查一次
+        JxcViews.SummaryRow total = total(true, q);
+        JxcViews.Summary byMonth = doSummary(true, JxcDimension.MONTH, q, total);
         Map<String, JxcViews.SummaryRow> monthRows = new HashMap<>();
         byMonth.rows().forEach(r -> monthRows.put(r.getGroupKey(), r));
         List<JxcViews.SummaryRow> trend = new ArrayList<>();
@@ -160,8 +162,8 @@ public class EcomJxcService {
             }
         }
 
-        JxcViews.Summary salesmen = doSummary(true, JxcDimension.SALESMAN, q);
-        JxcViews.Summary customers = doSummary(true, JxcDimension.CUSTOMER, q);
+        JxcViews.Summary salesmen = doSummary(true, JxcDimension.SALESMAN, q, total);
+        JxcViews.Summary customers = doSummary(true, JxcDimension.CUSTOMER, q, total);
         List<JxcViews.SummaryRow> top = new ArrayList<>(customers.rows().subList(0, Math.min(TOP_CUSTOMERS, customers.rows().size())));
         if (customers.rows().size() > TOP_CUSTOMERS) {
             JxcViews.SummaryRow others = new JxcViews.SummaryRow();
@@ -179,7 +181,8 @@ public class EcomJxcService {
 
     // ---------------------------------------------------------------- 内部
 
-    private JxcViews.Summary doSummary(boolean sales, JxcDimension dim, JxcQuery q) {
+    /** 按维度汇总；total 为同一条件的合计（{@link #total}） */
+    private JxcViews.Summary doSummary(boolean sales, JxcDimension dim, JxcQuery q, JxcViews.SummaryRow total) {
         List<JxcViews.SummaryRow> list = jxcMapper.selectSummary(sales, dim.name(), q, SUMMARY_LIMIT + 1);
         List<JxcViews.SummaryRow> rows = new ArrayList<>(list.subList(0, Math.min(list.size(), SUMMARY_LIMIT)));
         rows.forEach(r -> {
@@ -188,7 +191,7 @@ public class EcomJxcService {
             }
             fillSummary(sales, r);
         });
-        return new JxcViews.Summary(rows, total(sales, q), list.size() > SUMMARY_LIMIT);
+        return new JxcViews.Summary(rows, total, list.size() > SUMMARY_LIMIT);
     }
 
     /** 符合条件的全部明细的合计（汇总的合计行、明细和单据列表的合计都取它，口径一致） */

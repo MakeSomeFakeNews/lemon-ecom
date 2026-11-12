@@ -232,8 +232,10 @@ body {
 .table-card > .ant-card-body > .ant-tabs:not(:has(.ant-tabs-tabpane > *)) {
   flex: none;
 }
-/* 一个页签中有多块内容（如两张表）放不下时，在页签内滚动 */
+/* 一个页签中有多块内容（如两张表）放不下时，在页签内纵向滚动；横向不滚动（表格自带横向滚动，
+   栅格行 a-row 的 gutter 负边距会比页签宽出几像素，overflow-y: auto 会让 overflow-x 也变成 auto 而出现横向滚动条） */
 .table-card > .ant-card-body > .ant-tabs > .ant-tabs-content-holder > .ant-tabs-content > .ant-tabs-tabpane-active {
+  overflow-x: hidden;
   overflow-y: auto;
 }
 /* 有多张表时各表按内容高度显示（不再平分剩余高度被压扁、分页器压住最后一行），整个页签滚动 */

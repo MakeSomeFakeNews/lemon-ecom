@@ -20,29 +20,11 @@
       :loading="loading"
       :pagination="pagination"
       :scroll="{ x: 900, y: '100%' }"
-      :expandable="{ expandedRowKeys: expanded, onExpand }"
+      :expanded-row-keys="expanded" @expand="onExpand"
       @change="onTableChange"
     >
       <template #expandedRowRender="{ record }">
-        <a-table row-key="key" size="small" :columns="listingColumns" :data-source="listings[record.materialId] || []" :loading="!listings[record.materialId]"
-                 :pagination="false" :scroll="{ x: 860 }">
-          <template #bodyCell="{ column, record: l }">
-            <template v-if="column.key === 'store'">
-              {{ l.storeName }} <DictTag v-if="l.platform" type="ecom_platform" :value="l.platform" />
-            </template>
-            <template v-else-if="column.key === 'kind'">
-              <DictTag type="ecom_compose_type" :value="l.composeType || ListingComposeType.SINGLE" />
-            </template>
-            <template v-else-if="column.key === 'qty'">{{ qty(l.packQty) }}</template>
-            <template v-else-if="column.key === 'status'"><DictTag type="ecom_listing_status" :value="l.status" /></template>
-            <template v-else-if="column.key === 'action'">
-              <a-popconfirm v-if="userStore.hasPerm('ecom:pairing:edit')" :title="$t('ecomCatalog.pairing.unpairConfirm', { sku: l.sellerSku })"
-                            @confirm="unpair(record.materialId, l.id)">
-                <a class="danger">{{ $t('ecomCatalog.pairing.unpair') }}</a>
-              </a-popconfirm>
-            </template>
-          </template>
-        </a-table>
+        <MaterialListings :material-id="record.materialId" @changed="emit('changed')" />
       </template>
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'material'">
@@ -60,19 +42,14 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { message } from 'ant-design-vue'
-import DictTag from '@/components/DictTag.vue'
-import { listingsOfMaterial, pagePairingMaterials, unpairListings } from '@/api/ecom/pairing'
+import { pagePairingMaterials } from '@/api/ecom/pairing'
 import { useDict } from '@/composables/useDict'
 import { useTable } from '@/composables/useTable'
-import { useUserStore } from '@/store/user'
-import { ListingComposeType } from '@/constants/enums'
-import { qty } from '@/utils/number'
+import MaterialListings from './MaterialListings.vue'
 
 /** 以物料为中心：物料对应的在线商品数（单品）、组合数、店铺数，展开看各店铺 / 平台的平台 SKU，可解除配对。ref 调用 reload() */
 const emit = defineEmits(['changed'])
 const { t } = useI18n()
-const userStore = useUserStore()
 useDict('ecom_platform', 'ecom_compose_type', 'ecom_listing_status')
 
 const columns = [
@@ -81,38 +58,15 @@ const columns = [
   { title: t('ecomCatalog.pairing.bundleCount'), key: 'bundleCount', width: 130, align: 'right' },
   { title: t('ecomCatalog.pairing.storeCount'), key: 'storeCount', width: 130, align: 'right' }
 ]
-const listingColumns = [
-  { title: t('ecom.common.store'), key: 'store', width: 200 },
-  { title: t('ecom.common.sellerSku'), dataIndex: 'sellerSku', width: 170 },
-  { title: t('ecomCatalog.common.title'), dataIndex: 'title', ellipsis: true },
-  { title: t('ecomCatalog.listing.composeType'), key: 'kind', width: 90 },
-  { title: t('ecomCatalog.pairing.qty'), key: 'qty', width: 90, align: 'right' },
-  { title: t('common.field.status'), key: 'status', width: 90 },
-  { title: t('common.action.operation'), key: 'action', width: 90 }
-]
 
 const query = reactive({ keyword: undefined, pairedOnly: true })
 const { list, loading, pagination, load, search, onTableChange } = useTable(pagePairingMaterials, query)
 onMounted(load)
 const expanded = ref([])
-const listings = reactive({})
-
-async function loadListings(materialId) {
-  const rows = (await listingsOfMaterial(materialId)) || []
-  listings[materialId] = rows.map((l, i) => ({ ...l, key: `${l.id}-${i}` }))
-}
-async function onExpand(open, record) {
+function onExpand(open, record) {
   expanded.value = open ? [...expanded.value, record.materialId] : expanded.value.filter((k) => k !== record.materialId)
-  if (open && !listings[record.materialId]) await loadListings(record.materialId)
-}
-async function unpair(materialId, listingId) {
-  await unpairListings(listingId)
-  message.success(t('ecomCatalog.pairing.unpaired'))
-  await loadListings(materialId)
-  emit('changed')
 }
 function reload() {
-  Object.keys(listings).forEach((k) => delete listings[k])
   expanded.value = []
   return load()
 }

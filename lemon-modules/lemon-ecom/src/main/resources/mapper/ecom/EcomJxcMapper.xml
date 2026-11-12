@@ -13,15 +13,13 @@
 
     <sql id="sign">CASE WHEN d.kind = <include refid="fwdKind"/> THEN 1 ELSE -1 END</sql>
 
-    <!-- 期间内销售出库 / 退货对应的仓库出入库单上，各物料的实际成本金额与数量（库存流水，实时移动加权平均） -->
-    <sql id="flowCost">
-        LEFT JOIN (SELECT f.doc_id, f.material_id, SUM(f.cost_amount) AS amount, SUM(f.qty) AS qty
-                   FROM wms_stock_flow f
-                   WHERE f.biz_type IN ('IN', 'OUT') AND f.cost_amount IS NOT NULL
-                     AND f.doc_id IN (SELECT fd.wms_doc_id FROM scm_trade_doc fd
-                                      WHERE fd.kind IN ('SALES_OUT', 'SALES_RETURN') AND fd.biz_date &gt;= #{q.begin} AND fd.biz_date &lt;= #{q.end})
-                   GROUP BY f.doc_id, f.material_id) fc ON fc.doc_id = d.wms_doc_id AND fc.material_id = i.material_id
-    </sql>
+    <!-- 本行出库 / 退货对应的仓库出入库单上，该物料的实际成本金额与数量（库存流水，实时移动加权平均），没有符合条件的流水时为 NULL。
+         用按行的标量子查询（走 wms_stock_flow 的 doc_id + material_id 索引），不 JOIN 按单据 / 物料 GROUP BY 的派生表：
+         H2 会按外层每行带条件重新执行派生表（及其中的子查询），数据量大时很慢；下面的坏账、发运运费、收付款折让同理 -->
+    <sql id="flowCostWhere">FROM wms_stock_flow f
+        WHERE f.doc_id = d.wms_doc_id AND f.material_id = ${material} AND f.biz_type IN ('IN', 'OUT') AND f.cost_amount IS NOT NULL</sql>
+    <sql id="fcAmount">(SELECT SUM(f.cost_amount) <include refid="flowCostWhere"/>)</sql>
+    <sql id="fcQty">(SELECT SUM(f.qty) <include refid="flowCostWhere"/>)</sql>
 
     <!-- 销售出库单的坏账核销（应收单上的核销金额按该单不含税比例折算：核销金额 × (价税合计 − 税额) ÷ 价税合计，
          跟随出库单的业务日期归属）与本公司承担的发运运费（已发货），按行金额比例分摊到明细，
@@ -29,34 +27,34 @@
     <sql id="docShare">CASE WHEN d.total_amount &lt;&gt; 0 THEN i.amount / d.total_amount WHEN d.total_qty &lt;&gt; 0 THEN i.qty / d.total_qty ELSE 0 END</sql>
     <!-- 本公司承担的运费：发运单的运费（出库单没有登记运费时，已发货）+ 出库单上本公司承担的运费 + 销售退货客户代垫的运费（issue #72），
          出库单已登记运费时发运单从出库单带出，不重复计算 -->
-    <sql id="freightAmount">(COALESCE(sf.amount, 0) + CASE WHEN (d.kind = 'SALES_OUT' AND d.freight_bearer = 'COMPANY') OR d.kind = 'SALES_RETURN' THEN d.freight ELSE 0 END)</sql>
-    <sql id="badDebtFreight">
-        LEFT JOIN (SELECT source_id, SUM(bad_debt_amount * (amount - tax_amount) / amount) AS amount FROM fin_bill
-                   WHERE kind = 'AR' AND source_type = 'SALES_OUT' AND bad_debt_amount &lt;&gt; 0 AND amount &lt;&gt; 0 GROUP BY source_id) bd ON d.kind = 'SALES_OUT' AND bd.source_id = d.id
-        LEFT JOIN (SELECT trade_doc_id, SUM(freight) AS amount FROM scm_shipment
-                   WHERE freight_bearer = 'COMPANY' AND status &lt;&gt; 'PENDING' AND freight &gt; 0 GROUP BY trade_doc_id) sf ON d.kind = 'SALES_OUT' AND sf.trade_doc_id = d.id AND d.freight = 0
-    </sql>
+    <sql id="freightAmount">(COALESCE(<include refid="shipFreight"/>, 0) + CASE WHEN (d.kind = 'SALES_OUT' AND d.freight_bearer = 'COMPANY') OR d.kind = 'SALES_RETURN' THEN d.freight ELSE 0 END)</sql>
+    <sql id="badDebtAmount">CASE WHEN d.kind = 'SALES_OUT' THEN (SELECT SUM(bd.bad_debt_amount * (bd.amount - bd.tax_amount) / bd.amount) FROM fin_bill bd
+        WHERE bd.source_id = d.id AND bd.kind = 'AR' AND bd.source_type = 'SALES_OUT' AND bd.bad_debt_amount &lt;&gt; 0 AND bd.amount &lt;&gt; 0) END</sql>
+    <sql id="shipFreight">CASE WHEN d.kind = 'SALES_OUT' AND d.freight = 0 THEN (SELECT SUM(sf.freight) FROM scm_shipment sf
+        WHERE sf.trade_doc_id = d.id AND sf.freight_bearer = 'COMPANY' AND sf.status &lt;&gt; 'PENDING' AND sf.freight &gt; 0) END</sql>
 
     <!-- 收付款折让 / 抹零（issue #89）：该出入库单生成的应收单（销售：货款，以及客户代垫运费、退货运费的应收单）/ 应付单
          （进货：货款，以及采购运费、退货运费的应付单）在收付款时的折让累计（fin_bill.discount_amount，同一单据多次收付款累计，
          作废收付款时扣回；本位币），按单据自身的不含税比例折算（与坏账相同），跟随出入库单的业务日期归属，按行金额比例分摊到明细；
          退货的红字单据折让为负数。销售报表从净额中扣除得到销售金额，进货报表得到「扣折让后净进货额」，不改变净额。
          凭证中收款折让、付款折让按含税金额计入财务费用等，利润表的毛利不扣，所以销售报表中扣除不会重复 -->
-    <sql id="settleDiscount">
-        LEFT JOIN (SELECT source_id, SUM(discount_amount * (amount - tax_amount) / amount) AS amount FROM fin_bill
-                   <choose>
-                       <when test="sales">WHERE kind = 'AR' AND source_type IN ('SALES_OUT', 'SALES_RETURN', 'SALES_FREIGHT', 'SALES_RETURN_FREIGHT')</when>
-                       <otherwise>WHERE kind = 'AP' AND source_type IN ('PURCHASE_IN', 'PURCHASE_RETURN', 'PURCHASE_FREIGHT', 'PURCHASE_RETURN_FREIGHT')</otherwise>
-                   </choose>
-                     AND discount_amount &lt;&gt; 0 AND amount &lt;&gt; 0 GROUP BY source_id) sd ON sd.source_id = d.id
-    </sql>
+    <!-- 单据类型的条件写在 SUM 内：写在 WHERE 中时 H2 会选 idx_bill_source（source_type 的 IN 列表）逐行扫描，而不是 source_id 索引 -->
+    <sql id="settleDiscountAmount">(SELECT SUM(CASE WHEN sd.source_type IN
+        <choose>
+            <when test="sales">('SALES_OUT', 'SALES_RETURN', 'SALES_FREIGHT', 'SALES_RETURN_FREIGHT')</when>
+            <otherwise>('PURCHASE_IN', 'PURCHASE_RETURN', 'PURCHASE_FREIGHT', 'PURCHASE_RETURN_FREIGHT')</otherwise>
+        </choose> THEN sd.discount_amount * (sd.amount - sd.tax_amount) / sd.amount END) FROM fin_bill sd
+        WHERE sd.source_id = d.id AND sd.kind = <choose><when test="sales">'AR'</when><otherwise>'AP'</otherwise></choose>
+          AND sd.discount_amount &lt;&gt; 0 AND sd.amount &lt;&gt; 0)</sql>
 
     <!-- 本行分摊的整单优惠（不含税）：含税的分摊额按行税率折算、每行舍入到分（issue #93），各层合计都由行累加、彼此一致；货款（优惠前，不含税）= 不含税金额 + 本项 -->
     <sql id="lineDiscount">ROUND(i.discount_share * 100 / (100 + i.tax_rate), 2)</sql>
     <sql id="lineGoods">(i.amount - i.tax_amount + <include refid="lineDiscount"/>)</sql>
 
     <!-- 销售成本单价：实时出库成本 → 期间核算单价 → 参考成本价 -->
-    <sql id="saleUnitCost">COALESCE(fc.amount / NULLIF(fc.qty, 0), mc.unit_cost, m.ref_cost, 0)</sql>
+    <sql id="saleUnitCost">COALESCE(<include refid="fcAmount"><property name="material" value="i.material_id"/></include>
+        / NULLIF(<include refid="fcQty"><property name="material" value="i.material_id"/></include>, 0), mc.unit_cost, m.ref_cost, 0)</sql>
+    <sql id="costMissing"><include refid="fcAmount"><property name="material" value="i.material_id"/></include> IS NULL AND mc.unit_cost IS NULL</sql>
 
     <sql id="tradeFrom">
         FROM scm_trade_doc_item i
@@ -67,12 +65,9 @@
             <when test="sales">
                 LEFT JOIN scm_customer p ON p.id = d.partner_id
                 LEFT JOIN fin_material_cost mc ON mc.material_id = i.material_id AND mc.period = YEAR(d.biz_date) * 100 + MONTH(d.biz_date)
-                <include refid="flowCost"/>
-                <include refid="badDebtFreight"/>
             </when>
             <otherwise>LEFT JOIN scm_supplier p ON p.id = d.partner_id</otherwise>
         </choose>
-        <include refid="settleDiscount"/>
     </sql>
 
     <sql id="tradeWhere">
@@ -113,13 +108,13 @@
         <choose>
             <when test="sales">
                 SUM(<include refid="sign"/> * i.qty * <include refid="saleUnitCost"/>) AS "cost",
-                SUM(CASE WHEN fc.amount IS NULL AND mc.unit_cost IS NULL THEN 1 ELSE 0 END) AS "missingCost",
-                SUM(COALESCE(bd.amount, 0) * <include refid="docShare"/>) AS "badDebt",
+                SUM(CASE WHEN <include refid="costMissing"/> THEN 1 ELSE 0 END) AS "missingCost",
+                SUM(COALESCE(<include refid="badDebtAmount"/>, 0) * <include refid="docShare"/>) AS "badDebt",
                 SUM(<include refid="freightAmount"/> * <include refid="docShare"/>) AS "freight",
             </when>
             <otherwise>0 AS "cost", 0 AS "missingCost",</otherwise>
         </choose>
-        SUM(COALESCE(sd.amount, 0) * <include refid="docShare"/>) AS "settleDiscount",
+        SUM(COALESCE(<include refid="settleDiscountAmount"/>, 0) * <include refid="docShare"/>) AS "settleDiscount",
         COUNT(DISTINCT d.id) AS "docCount"
     </sql>
 
@@ -181,11 +176,11 @@
                <include refid="sign"/> * i.discount_share AS "discountTaxed",
                <if test="sales">
                    <include refid="sign"/> * i.qty * <include refid="saleUnitCost"/> AS "cost",
-                   CASE WHEN fc.amount IS NULL AND mc.unit_cost IS NULL THEN 0 ELSE 1 END AS "costed",
-                   COALESCE(bd.amount, 0) * <include refid="docShare"/> AS "badDebt",
+                   CASE WHEN <include refid="costMissing"/> THEN 0 ELSE 1 END AS "costed",
+                   COALESCE(<include refid="badDebtAmount"/>, 0) * <include refid="docShare"/> AS "badDebt",
                    <include refid="freightAmount"/> * <include refid="docShare"/> AS "freight",
                </if>
-               COALESCE(sd.amount, 0) * <include refid="docShare"/> AS "settleDiscount",
+               COALESCE(<include refid="settleDiscountAmount"/>, 0) * <include refid="docShare"/> AS "settleDiscount",
                i.remark AS "remark"
         <include refid="tradeFrom"/>
         <if test="sales">LEFT JOIN sys_user u ON u.id = o.salesman_id</if>
@@ -213,11 +208,11 @@
                SUM(<include refid="sign"/> * (i.amount - i.tax_amount)) AS "amount",
                SUM(<include refid="sign"/> * i.amount) AS "taxedAmount",
                SUM(<include refid="sign"/> * <include refid="lineDiscount"/>) AS "discount",
-               SUM(COALESCE(sd.amount, 0) * <include refid="docShare"/>) AS "settleDiscount"
+               SUM(COALESCE(<include refid="settleDiscountAmount"/>, 0) * <include refid="docShare"/>) AS "settleDiscount"
                <if test="sales">,
                    SUM(<include refid="sign"/> * i.qty * <include refid="saleUnitCost"/>) AS "cost",
-                   SUM(CASE WHEN fc.amount IS NULL AND mc.unit_cost IS NULL THEN 1 ELSE 0 END) AS "missingCost",
-                   SUM(COALESCE(bd.amount, 0) * <include refid="docShare"/>) AS "badDebt",
+                   SUM(CASE WHEN <include refid="costMissing"/> THEN 1 ELSE 0 END) AS "missingCost",
+                   SUM(COALESCE(<include refid="badDebtAmount"/>, 0) * <include refid="docShare"/>) AS "badDebt",
                    SUM(<include refid="freightAmount"/> * <include refid="docShare"/>) AS "freight"
                </if>
         <include refid="tradeFrom"/>
@@ -398,12 +393,12 @@
         SELECT i.material_id,
                SUM(CASE WHEN d.kind = 'SALES_OUT' THEN i.qty ELSE -i.qty END) AS qty,
                SUM(CASE WHEN d.kind = 'SALES_OUT' THEN 1 ELSE -1 END * (i.amount - i.tax_amount)) AS amount,
-               SUM(CASE WHEN d.kind = 'SALES_OUT' THEN 1 ELSE -1 END * i.qty * COALESCE(fc.amount / NULLIF(fc.qty, 0), mc.unit_cost, sm.ref_cost, 0)) AS cost
+               SUM(CASE WHEN d.kind = 'SALES_OUT' THEN 1 ELSE -1 END * i.qty * COALESCE(<include refid="fcAmount"><property name="material" value="i.material_id"/></include>
+                   / NULLIF(<include refid="fcQty"><property name="material" value="i.material_id"/></include>, 0), mc.unit_cost, sm.ref_cost, 0)) AS cost
         FROM scm_trade_doc_item i
         JOIN scm_trade_doc d ON d.id = i.doc_id
         JOIN wms_material sm ON sm.id = i.material_id
         LEFT JOIN fin_material_cost mc ON mc.material_id = i.material_id AND mc.period = YEAR(d.biz_date) * 100 + MONTH(d.biz_date)
-        <include refid="flowCost"/>
         WHERE d.kind IN ('SALES_OUT', 'SALES_RETURN') AND d.biz_date &gt;= #{q.begin} AND d.biz_date &lt;= #{q.end}
         <if test="q.warehouseId != null">AND COALESCE(i.warehouse_id, d.warehouse_id) = #{q.warehouseId}</if>
         GROUP BY i.material_id
