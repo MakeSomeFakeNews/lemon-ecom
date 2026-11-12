@@ -46,7 +46,7 @@
           <template v-else-if="column.key === 'exchangeRate'">{{ qty(record.exchangeRate, 6) }}</template>
           <template v-else-if="column.key === 'status'"><DictTag type="ecom_settlement_status" :value="record.status" /></template>
           <template v-else-if="column.key === 'netBase'">
-            <span :class="{ neg: nz(record.netBase) < 0 }" class="strong">¥{{ money(record.netBase) }}</span>
+            <span :class="{ neg: nz(record.netBase) < 0 }" class="strong">{{ symMoney(record.netBase) }}</span>
           </template>
           <template v-else-if="column.money">
             <span :class="{ neg: nz(record[column.key]) < 0, strong: column.strong }">{{ money(record[column.key]) }}</span>
@@ -66,14 +66,14 @@
       :importer="importSettlements"
       @success="load"
     />
-    <SettlementDetail ref="detailRef" @confirm="(s) => confirmRef.open(s)" />
+    <SettlementDetail ref="detailRef" @confirm="(s) => confirmRef.open(s)" @receipt="(s) => confirmRef.open(s, 'receipt')" />
     <SettlementConfirmModal ref="confirmRef" @success="onConfirmed" />
   </div>
 </template>
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
-import { ImportOutlined, InfoCircleOutlined } from '@ant-design/icons-vue'
+import { AccountBookOutlined, ImportOutlined, InfoCircleOutlined } from '@ant-design/icons-vue'
 import DictTag from '@/components/DictTag.vue'
 import ImportModal from '@/components/ImportModal.vue'
 import SearchForm from '@/components/SearchForm.vue'
@@ -89,7 +89,7 @@ import { useColumns } from '@/composables/useColumns'
 import { useDict } from '@/composables/useDict'
 import { useTable } from '@/composables/useTable'
 import { toOptions } from '@/utils/dict'
-import { money, nz, qty } from '@/utils/number'
+import { money, nz, qty, symMoney } from '@/utils/number'
 import { SettlementStatus } from '@/constants/enums'
 import { t } from '@/locales'
 
@@ -151,6 +151,14 @@ const rowActions = (record) => {
   return [
     { type: 'view', onClick: () => detailRef.value.open(record.id) },
     { type: 'confirm', show: imported, perm: 'ecom:settlement:confirm', onClick: () => confirmRef.value.open(record) },
+    {
+      key: 'receipt',
+      label: t('ecomFixa.settlement.createReceipt'),
+      icon: AccountBookOutlined,
+      show: record.status === SettlementStatus.CONFIRMED && !record.finSettlementId,
+      perm: 'ecom:settlement:confirm',
+      onClick: () => confirmRef.value.open(record, 'receipt')
+    },
     {
       type: 'delete',
       show: imported,

@@ -72,6 +72,7 @@ public class EcomSyncService {
     private final EcomChannelMapper channelMapper;
     private final TransactionTemplate transactionTemplate;
     private final EcomOrderLogService orderLogService;
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     // ---------------------------------------------------------------- 连接器信息与授权
 
@@ -462,6 +463,13 @@ public class EcomSyncService {
         l.setStartTime(start);
         l.setEndTime(LocalDateTime.now());
         logMapper.insert(l);
+        if (!success) {
+            eventPublisher.publishEvent(new SyncFailedEvent(l.getId(), storeId, type));
+        }
+    }
+
+    /** 渠道同步 / 授权失败（自动化规则「店铺授权失效」「渠道同步失败」处理） */
+    public record SyncFailedEvent(Long logId, Long storeId, SyncType type) {
     }
 
     /** 有授权的上下文，没有授权时提示 */

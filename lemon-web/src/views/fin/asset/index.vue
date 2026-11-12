@@ -34,7 +34,7 @@
               </template>
               <template v-else-if="column.key === 'category'"><DictTag type="fin_asset_category" :value="record.category" /></template>
               <template v-else-if="column.key === 'value'">
-                <div>¥{{ formatMoney(record.originalValue) }}</div>
+                <div>{{ symMoney(record.originalValue) }}</div>
                 <div class="sub-text">{{ $t('fin.asset.residualRateText', { rate: Number(record.residualRate) }) }}</div>
               </template>
               <template v-else-if="column.key === 'depreciation'">
@@ -42,7 +42,7 @@
                 <div class="sub-text">{{ $t('fin.asset.progressText', { done: record.depreciatedMonths, total: record.usefulMonths, monthly: formatMoney(record.monthlyDepreciation) }) }}</div>
               </template>
               <template v-else-if="column.key === 'net'">
-                <div>¥{{ formatMoney(record.netValue) }}</div>
+                <div>{{ symMoney(record.netValue) }}</div>
                 <div class="sub-text">{{ $t('fin.asset.accumulatedText', { amount: formatMoney(record.accumulated) }) }}</div>
               </template>
               <template v-else-if="column.key === 'status'">
@@ -81,7 +81,7 @@
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'asset'">{{ record.assetCode }} {{ record.assetName }}</template>
-              <template v-else-if="column.key === 'amount'">¥{{ formatMoney(record.amount) }}</template>
+              <template v-else-if="column.key === 'amount'">{{ symMoney(record.amount) }}</template>
               <template v-else-if="column.key === 'voucher'">{{ record.voucherNo || '-' }}</template>
             </template>
           </a-table>
@@ -292,6 +292,7 @@ import { useColumns } from '@/composables/useColumns'
 import TableActions from '@/components/common/TableActions.vue'
 import { actionColumn, subTextWidth } from '@/components/common/tableActions'
 import TableToolbar from '@/components/TableToolbar.vue'
+import { symMoney } from '@/utils/number'
 const { t } = useI18n()
 const dict = useDict('fin_asset_category', 'fin_asset_status', 'fin_asset_move_type')
 const tab = ref('cards')

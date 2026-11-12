@@ -11,9 +11,9 @@
             <span v-else>{{ order.scmOrderNo || '-' }}</span>
           </a-descriptions-item>
           <a-descriptions-item :label="$t('ecomDev.order.seller')">{{ order.sellerName || order.sellerLoginId || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomDev.order.productAmount')">¥ {{ money(order.productAmount) }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomDev.order.shippingFee')">¥ {{ money(order.shippingFee) }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomDev.order.totalAmount')"><b>¥ {{ money(order.totalAmount) }}</b></a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomDev.order.productAmount')">{{ symMoney(order.productAmount) }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomDev.order.shippingFee')">{{ symMoney(order.shippingFee) }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomDev.order.totalAmount')"><b>{{ symMoney(order.totalAmount) }}</b></a-descriptions-item>
           <a-descriptions-item :label="$t('ecomDev.order.account')">{{ order.accountName }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomDev.order.createTime')">{{ order.aliCreateTime || order.createTime }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomDev.order.payTime')">{{ order.payTime || '-' }}</a-descriptions-item>
@@ -80,7 +80,7 @@ import DictTag from '@/components/DictTag.vue'
 import { ali1688PayUrl, cancelAli1688Order, getAli1688Order, syncAli1688Order } from '@/api/ecom/dev'
 import { Ali1688OrderStatus } from '@/constants/enums'
 import { useUserStore } from '@/store/user'
-import { money, price, qty } from '@/utils/number'
+import { money, price, qty, symMoney } from '@/utils/number'
 
 /** 1688 采购单详情：金额（货款、运费、实付）、明细、物流轨迹；同步、付款（打开 1688 收银台）、取消。ref 调用 open(id) */
 const emit = defineEmits(['changed'])

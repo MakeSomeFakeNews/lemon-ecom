@@ -28,7 +28,7 @@
           :tree-data="treeData"
           :field-names="{ title: 'name', key: 'id', children: 'children' }"
           :selected-keys="selectedId ? [selectedId] : []"
-          :draggable="canEdit && !keyword ? { icon: false } : false"
+          :draggable="!!(canEdit && !keyword)"
           block-node
           @select="(keys, e) => select(e.node.dataRef.code)"
           @drop="onDrop"

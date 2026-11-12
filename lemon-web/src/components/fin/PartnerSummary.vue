@@ -14,13 +14,13 @@
       </a-tooltip>
     </div>
     <div class="stats">
-      <span>{{ tx.opening }} <b>¥{{ formatMoney(total.opening) }}</b></span>
-      <span>{{ tx.bills }} <b>¥{{ formatMoney(total.billBalance) }}</b></span>
-      <span>{{ tx.advance }} <b :class="{ neg: Number(total.advanceBalance) < 0 }">¥{{ formatMoney(total.advanceBalance) }}</b></span>
-      <span v-if="query.withAp">{{ $t('fin.linkedAp.column') }} <b :class="{ neg: Number(total.linkedAp) < 0 }">¥{{ formatMoney(total.linkedAp) }}</b></span>
-      <span>{{ tx.net }} <b class="warn">¥{{ formatMoney(total.net) }}</b></span>
-      <span class="sub-text">{{ tx.badDebt }} ¥{{ formatMoney(total.badDebt) }}</span>
-      <span class="sub-text">{{ tx.discount }} ¥{{ formatMoney(total.discount) }}</span>
+      <span>{{ tx.opening }} <b>{{ symMoney(total.opening) }}</b></span>
+      <span>{{ tx.bills }} <b>{{ symMoney(total.billBalance) }}</b></span>
+      <span>{{ tx.advance }} <b :class="{ neg: Number(total.advanceBalance) < 0 }">{{ symMoney(total.advanceBalance) }}</b></span>
+      <span v-if="query.withAp">{{ $t('fin.linkedAp.column') }} <b :class="{ neg: Number(total.linkedAp) < 0 }">{{ symMoney(total.linkedAp) }}</b></span>
+      <span>{{ tx.net }} <b class="warn">{{ symMoney(total.net) }}</b></span>
+      <span class="sub-text">{{ tx.badDebt }} {{ symMoney(total.badDebt) }}</span>
+      <span class="sub-text">{{ tx.discount }} {{ symMoney(total.discount) }}</span>
     </div>
     <a-table
       row-key="partnerId"
@@ -80,6 +80,7 @@ import { useTable } from '@/composables/useTable'
 import { formatMoney, moneyOrBlank } from './fin'
 import { settlementConf } from './settlementConf'
 import { t } from '@/locales'
+import { symMoney } from '@/utils/number'
 
 /**
  * 往来汇总：一个往来单位一行（当前余额，本位币）。净欠款 = 期初余额 + 单据余额 + 预收 / 预付（负数）；

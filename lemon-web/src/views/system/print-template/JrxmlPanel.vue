@@ -21,7 +21,7 @@
       </span>
     </a-space>
     <!-- 名称为中文匹配键，示例中保持中文 -->
-    <i18n-t keypath="print.template.jrxmlParams" tag="div" class="jrxml-hint">
+    <i18n-t keypath="print.template.jrxmlParams" tag="div" scope="global" class="jrxml-hint">
       <template #fields><code>{{ jrxmlFieldExample }}</code></template>
       <template #column><code>{{ jrxmlColumnExample }}</code></template>
     </i18n-t>

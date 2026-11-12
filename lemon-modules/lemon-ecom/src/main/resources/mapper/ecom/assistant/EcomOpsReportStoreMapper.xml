@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.assistant.mapper.EcomOpsReportStoreMapper">
+
+    <insert id="insertBatch">
+        INSERT INTO ecom_ops_report_store (report_id, store_id, create_time, update_time)
+        VALUES
+        <foreach collection="items" item="i" separator=",">
+            (#{i.reportId}, #{i.storeId}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        </foreach>
+    </insert>
+</mapper>

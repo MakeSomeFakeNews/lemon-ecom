@@ -27,7 +27,7 @@
           <a-descriptions-item v-if="conf.returns" :label="$t('scm.trade.returnMode')">
             {{ detail.replenish === 1 ? (conf.orderKind === 'sales' ? $t('scm.trade.returnReship') : $t('scm.trade.returnRereceive')) : $t('scm.trade.returnRefund') }}
           </a-descriptions-item>
-          <a-descriptions-item v-if="discount || discountAdjust" :label="$t('print.name.grossTotal')">¥{{ formatMoney(grossTotal) }}</a-descriptions-item>
+          <a-descriptions-item v-if="discount || discountAdjust" :label="$t('print.name.grossTotal')">{{ symMoney(grossTotal) }}</a-descriptions-item>
           <a-descriptions-item v-if="discount || discountAdjust" :label="discountLabel">
             <a-tooltip :title="conf.returns ? $t('scm.wholeDiscount.returnShareHint') : kind === 'purchaseIn' ? $t('scm.wholeDiscount.orderSharePurchaseHint') : $t('scm.wholeDiscount.hint')">
               <span class="dashed">−¥{{ formatMoney(discount) }}</span>
@@ -37,13 +37,13 @@
             </div>
           </a-descriptions-item>
           <a-descriptions-item :label="discount ? (conf.returns ? $t('scm.wholeDiscount.refundAfter') : $t('scm.wholeDiscount.after')) : $t('scm.trade.totalAmount')">
-            <b>¥{{ formatMoney(detail.totalAmount) }}</b>
+            <b>{{ symMoney(detail.totalAmount) }}</b>
             <span class="sub-text">{{ $t('scm.trade.taxPart', { amount: formatMoney(detail.taxAmount) }) }}</span>
             <div v-if="isForeign(detail.currency)" class="sub-text">{{ $t('scm.trade.originalCurrency') }} {{ fcText(detail.currency, detail.amountFc, detail.exchangeRate) }}</div>
           </a-descriptions-item>
           <a-descriptions-item v-if="Number(detail.freight)" :label="$t('scm.freight.label')">
             <div>
-              <span class="nowrap">¥{{ formatMoney(detail.freight) }}</span>
+              <span class="nowrap">{{ symMoney(detail.freight) }}</span>
               <a-tag :bordered="false" class="freight-tag">{{ bearerLabel }}</a-tag>
               <DictTag v-if="detail.freightSettle" type="scm_freight_settle" :value="detail.freightSettle" />
               <div class="sub-text">
@@ -56,7 +56,7 @@
             </div>
           </a-descriptions-item>
           <a-descriptions-item v-if="advanceTotal != null" :label="$t(`scm.freight.advanceTotal.${kind}`)">
-            <b>¥{{ formatMoney(advanceTotal) }}</b>
+            <b>{{ symMoney(advanceTotal) }}</b>
           </a-descriptions-item>
           <a-descriptions-item :label="$t('scm.trade.prepared')">{{ detail.createByName || '-' }} {{ detail.createTime }}</a-descriptions-item>
           <a-descriptions-item v-if="detail.postTime" :label="$t('scm.trade.postedBy')">{{ detail.postByName || '-' }} {{ detail.postTime }}</a-descriptions-item>
@@ -75,9 +75,9 @@
               <div v-if="batchDates(record)" class="sub-text">{{ batchDates(record) }}</div>
             </template>
             <template v-else-if="column.key === 'qty'">{{ formatQty(record.qty) }} {{ record.unit }}</template>
-            <template v-else-if="column.key === 'price'">¥{{ formatMoney(grossPrice(record)) }}</template>
+            <template v-else-if="column.key === 'price'">{{ symMoney(grossPrice(record)) }}</template>
             <template v-else-if="column.key === 'amount'">
-              <div>¥{{ formatMoney(grossAmount(record)) }}</div>
+              <div>{{ symMoney(grossAmount(record)) }}</div>
               <div class="sub-text">{{ $t('scm.trade.taxRateN', { rate: Number(record.taxRate) }) }}</div>
             </template>
             <template v-else-if="column.key === 'serialNos'">
@@ -105,7 +105,7 @@ import { cached } from '@/utils/cache'
 import { useDict } from '@/composables/useDict'
 import { findDict } from '@/utils/dict'
 import { useUserStore } from '@/store/user'
-import { round2 } from '@/utils/number'
+import { round2, symMoney } from '@/utils/number'
 import { fcText, isForeign } from '@/components/fin/currency'
 import { materialColumns, printDocs } from '@/utils/print'
 import { useI18n } from 'vue-i18n'
@@ -189,11 +189,11 @@ function print() {
       [t('scm.trade.bizDate'), d.bizDate],
       [t('scm.trade.wmsDocNo'), d.wmsDocNo],
       ...(d.invoiceKind ? [[t('print.name.invoiceKind'), findDict(dict.scm_invoice_kind, d.invoiceKind)?.label || d.invoiceKind]] : []),
-      ...(discount.value ? [[t('print.name.grossTotal'), `¥${formatMoney(grossTotal.value)}`],
-        [c.returns ? t('print.name.discountShare') : t('scm.wholeDiscount.label'), `¥${formatMoney(discount.value)}`]] : []),
-      [discount.value ? t('print.name.discountedTotal') : t('scm.trade.totalAmount'), `¥${formatMoney(d.totalAmount)}`],
-      ...(Number(d.freight) ? [[t('print.name.freight'), `¥${formatMoney(d.freight)}`], [t('print.name.freightBearer'), bearerLabel.value]] : []),
-      ...(advanceTotal.value != null ? [[t('print.name.advanceTotal'), `¥${formatMoney(advanceTotal.value)}`]] : []),
+      ...(discount.value ? [[t('print.name.grossTotal'), `${symMoney(grossTotal.value)}`],
+        [c.returns ? t('print.name.discountShare') : t('scm.wholeDiscount.label'), `${symMoney(discount.value)}`]] : []),
+      [discount.value ? t('print.name.discountedTotal') : t('scm.trade.totalAmount'), `${symMoney(d.totalAmount)}`],
+      ...(Number(d.freight) ? [[t('print.name.freight'), `${symMoney(d.freight)}`], [t('print.name.freightBearer'), bearerLabel.value]] : []),
+      ...(advanceTotal.value != null ? [[t('print.name.advanceTotal'), `${symMoney(advanceTotal.value)}`]] : []),
       ...(isForeign(d.currency) ? [[t('scm.trade.originalCurrency'), fcText(d.currency, d.amountFc, d.exchangeRate)]] : [])
     ],
     columns: [

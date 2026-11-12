@@ -259,7 +259,6 @@ export default {
     over90: '90 天以上'
   },
   settlementPage: {
-    noteMethodHint: '{label}（由票据业务自动生成）',
     receipt: {
       partner: '客户',
       allPartners: '全部客户',
@@ -715,7 +714,7 @@ export default {
     mine: '只看我的',
     add: '新增报销',
     edit: '编辑报销',
-    hint: '提交时检查费用预算；发布了 fin_expense 流程时走审批，否则直接待付款。付款时有关联借款的先冲抵借款，差额再付款。',
+    hint: '提交时检查费用预算；在流程中心发布了「费用报销审批」流程时走审批，否则直接待付款。付款时有关联借款的先冲抵借款，差额再付款。',
     offsetText: '冲抵 {amount}',
     offsetParen: '（冲抵 {amount}）',
     confirmDelete: '删除报销单 {no}？',
@@ -1002,7 +1001,7 @@ export default {
     undone: '已撤销'
   },
   fundPlan: {
-    hint: '从现金和银行存款的当前余额出发，按到期日汇总未核销的应收应付、未到期票据、待付款报销和计划项',
+    hint: '从现金和银行存款的当前余额出发，按到期日汇总未核销的应收应付、待付款报销和计划项',
     currentBalance: '当前余额（现金 + 银行）',
     periodIn: '期内预计流入',
     periodOut: '期内预计流出',
@@ -1029,8 +1028,6 @@ export default {
       title: '来源',
       AR: '应收账款',
       AP: '应付账款',
-      NOTE_IN: '应收票据到期',
-      NOTE_OUT: '应付票据到期',
       CLAIM: '待付报销',
       PLAN: '计划项'
     },
@@ -1112,7 +1109,7 @@ export default {
     method: '方式',
     voucher: '凭证',
     keywordPlaceholder: '单号、借款人或事由',
-    tip: '提交后发布了 fin_loan 流程时走审批，否则直接待付款；付款生成凭证（借 其他应收款 / 贷 银行存款），报销时可以冲抵借款，也可以现金还款。',
+    tip: '提交后在流程中心发布了「员工借款审批」流程时走审批，否则直接待付款；付款生成凭证（借 其他应收款 / 贷 银行存款），报销时可以冲抵借款，也可以现金还款。',
     borrowerExtra: '不选为本人',
     deptExtra: '不选取借款人的部门',
     purposePlaceholder: '如：出差备用金',
@@ -1411,21 +1408,21 @@ export default {
     keywordPh: '对账单号、供应商',
     generate: '生成对账单',
     billCount: '{n} 张应付单',
-    generateTip: '汇总供应商在期间内还没有对过账的应付单（采购入库、退货、质量索赔等），生成后发送给供应商在门户确认',
+    generateTip: '汇总供应商在期间内还没有对过账的应付单（采购入库、退货、质量索赔等），生成后导出发送给供应商，收到回复后登记确认结果',
     period: '对账期间',
     detailTitle: '对账单 {no}',
     confirmDelete: '删除对账单？其中的应付单可以重新对账',
-    confirmSend: '发送给供应商在门户确认？',
+    confirmSend: '标记为已发送给供应商？发送后等待供应商回复，再登记确认结果',
     send: '发送供应商',
     amount: '对账金额',
-    confirmTime: '供应商确认',
+    confirmTime: '供应商回复',
     invoice: '发票',
     supplierRemark: '供应商意见',
     attachments: '发票及附件',
     statementNo: '对账单号',
     selectRequired: '请选择供应商和对账期间',
     generated: '已生成对账单',
-    sent: '已发送，供应商可在门户确认'
+    sent: '已标记为已发送，收到供应商回复后登记确认结果'
   },
   transfer: {
     keywordPh: '单号、票据号码、备注',

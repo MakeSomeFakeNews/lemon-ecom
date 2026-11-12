@@ -5,7 +5,7 @@
       <a-space>
         <a-button size="small" :disabled="!bills.length || !(target > 0)" @click="allocate">{{ $t('fin.billSettleTable.allocate') }}</a-button>
         <span>
-          {{ $t('fin.billSettleTable.total') }} <b :class="['total', { bad: target > 0 && total !== target }]">¥{{ formatMoney(total) }}</b>
+          {{ $t('fin.billSettleTable.total') }} <b :class="['total', { bad: target > 0 && total !== target }]">{{ symMoney(total) }}</b>
           <template v-if="target > 0"> / {{ $t('fin.billSettleTable.shouldBe', { amount: formatMoney(target) }) }}</template>
         </span>
       </a-space>
@@ -50,9 +50,10 @@ import { useDict } from '@/composables/useDict'
 import { allocateSettle, formatMoney } from './fin'
 import { isForeign } from './currency'
 import { t } from '@/locales'
+import { symMoney } from '@/utils/number'
 
 /**
- * 选择要核销的应收 / 应付单（票据收票、背书、开票使用）：只列人民币单据，可按目标金额按单据日期先后自动分配。
+ * 选择要核销的应收 / 应付单：只列人民币单据，可按目标金额按单据日期先后自动分配。
  * v-model 为 [{ billId, amount }]
  */
 const props = defineProps({

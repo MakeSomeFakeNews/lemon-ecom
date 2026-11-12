@@ -113,10 +113,10 @@
         <a-result status="success" :title="$t('fin.period.vatDone')" :sub-title="vatResult.voucherId ? $t('fin.period.vatVoucherGenerated') : $t('fin.period.vatNothing')">
           <template #extra>
             <a-descriptions :column="1" size="small" bordered class="vat-result">
-              <a-descriptions-item :label="$t('fin.period.outputTax')">¥{{ formatMoney(vatResult.output) }}</a-descriptions-item>
-              <a-descriptions-item :label="$t('fin.period.inputTax')">¥{{ formatMoney(vatResult.input) }}</a-descriptions-item>
-              <a-descriptions-item :label="$t('fin.period.vatPayable')"><b>¥{{ formatMoney(vatResult.payable) }}</b></a-descriptions-item>
-              <a-descriptions-item :label="$t('fin.period.surcharge')">¥{{ formatMoney(vatResult.surcharge) }}</a-descriptions-item>
+              <a-descriptions-item :label="$t('fin.period.outputTax')">{{ symMoney(vatResult.output) }}</a-descriptions-item>
+              <a-descriptions-item :label="$t('fin.period.inputTax')">{{ symMoney(vatResult.input) }}</a-descriptions-item>
+              <a-descriptions-item :label="$t('fin.period.vatPayable')"><b>{{ symMoney(vatResult.payable) }}</b></a-descriptions-item>
+              <a-descriptions-item :label="$t('fin.period.surcharge')">{{ symMoney(vatResult.surcharge) }}</a-descriptions-item>
             </a-descriptions>
             <a-space class="mt">
               <a-button v-if="vatResult.voucherId" @click="openVoucher(vatResult.voucherId)">{{ $t('fin.period.viewVoucher') }}</a-button>
@@ -147,6 +147,7 @@ import { useI18n } from 'vue-i18n'
 import { useAction } from '@/composables/useAction'
 
 import { PeriodStatus } from '@/constants/enums'
+import { symMoney } from '@/utils/number'
 const { t } = useI18n()
 
 const columns = [

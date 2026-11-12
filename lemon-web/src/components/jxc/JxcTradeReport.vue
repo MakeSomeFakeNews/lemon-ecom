@@ -35,12 +35,12 @@
             <a-tooltip :title="$t('jxc.common.salesAmountTip')">
               <div class="kpi">
                 <div class="sub-text">{{ $t('jxc.field.salesAmount') }}</div>
-                <b>¥{{ money(total.salesAmount) }}</b>
+                <b>{{ symMoney(total.salesAmount) }}</b>
               </div>
             </a-tooltip>
             <div class="kpi">
               <div class="sub-text">{{ $t('jxc.field.profit') }}</div>
-              <b :class="{ neg: Number(total.profit) < 0 }">¥{{ money(total.profit) }}</b>
+              <b :class="{ neg: Number(total.profit) < 0 }">{{ symMoney(total.profit) }}</b>
             </div>
             <div class="kpi">
               <div class="sub-text">{{ $t('jxc.field.margin') }}</div>
@@ -49,16 +49,16 @@
           </template>
           <div class="kpi">
             <div class="sub-text">{{ $t('jxc.field.netAmount') }}</div>
-            <b>¥{{ money(total.netAmount) }}</b>
+            <b>{{ symMoney(total.netAmount) }}</b>
           </div>
           <div class="kpi">
             <div class="sub-text">{{ $t('jxc.field.taxedAmount') }}</div>
-            <b>¥{{ money(total.taxedAmount) }}</b>
+            <b>{{ symMoney(total.taxedAmount) }}</b>
           </div>
           <a-tooltip v-if="!sales && Number(total.settleDiscount)" :title="$t('jxc.common.purchaseDiscountTip')">
             <div class="kpi">
               <div class="sub-text">{{ $t('jxc.field.netAfterDiscount') }}</div>
-              <b>¥{{ money(total.netAfterDiscount) }}</b>
+              <b>{{ symMoney(total.netAfterDiscount) }}</b>
             </div>
           </a-tooltip>
           <div class="kpi">
@@ -147,7 +147,7 @@ import TableActions from '@/components/common/TableActions.vue'
 import { jxcSummary } from '@/api/ecom/jxc'
 import { useDict } from '@/composables/useDict'
 import { toOptions } from '@/utils/dict'
-import { money, price, qty } from '@/utils/number'
+import { money, price, qty, symMoney } from '@/utils/number'
 import { writeExcel } from '@/utils/excel'
 import { JxcDimension } from '@/constants/enums'
 import { DICT_TYPES, PURCHASE_DIMS, SALES_DIMS, drillActions, drillColumn, drillsToLines, groupLabel, marginText, rangePresets, thisMonth } from './jxc'

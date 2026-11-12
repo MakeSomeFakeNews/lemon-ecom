@@ -27,8 +27,7 @@ import java.util.function.Function;
 import static com.lemon.erp.modules.fin.service.cost.Valuation.money;
 
 /**
- * 成本结转凭证（未审核）：销售成本 借 主营业务成本 / 贷 存货；项目领料 借 合同履约成本；委外发料 借 委托加工物资；
- * 售后备件 借 销售费用；低值易耗品领用 借 领用单的费用科目 / 贷 周转材料；组装拆卸在存货科目之间结转；
+ * 成本结转凭证（未审核）：销售成本 借 主营业务成本 / 贷 存货；低值易耗品领用 借 领用单的费用科目 / 贷 周转材料；组装拆卸在存货科目之间结转；
  * 其他出入库 待处理财产损溢（填写了收发类别的按类别取凭证科目设置中的对方科目）
  */
 @Component
@@ -67,32 +66,16 @@ public class CostVoucherWriter {
         // 主营业务成本按物料分类取科目
         Map<String, BigDecimal> salesByCategory = new HashMap<>();
         Map<Long, BigDecimal> otherByAccount = new HashMap<>();
-        Map<Long, BigDecimal> projectByAccount = new HashMap<>();
-        Map<Long, BigDecimal> outsourceByAccount = new HashMap<>();
-        Map<Long, BigDecimal> serviceByAccount = new HashMap<>();
         Map<Long, BigDecimal> assemblyOutByAccount = new HashMap<>();
         materials.values().forEach(c -> {
             Long code = inventory.apply(category.apply(c.getMaterialId()));
             salesByAccount.merge(code, c.getSalesAmount(), BigDecimal::add);
             salesByCategory.merge(category.apply(c.getMaterialId()), c.getSalesAmount(), BigDecimal::add);
-            // 其他出库中的项目领料、委外发料、售后备件按单价拆出，其余（盘盈盘亏等）计入待处理财产损溢
-            BigDecimal project = money(src.getProjectOut().getOrDefault(c.getMaterialId(), BigDecimal.ZERO).multiply(c.getUnitCost()));
-            BigDecimal outsource = money(src.getOutsourceOut().getOrDefault(c.getMaterialId(), BigDecimal.ZERO).multiply(c.getUnitCost()));
-            BigDecimal service = money(src.getServiceOut().getOrDefault(c.getMaterialId(), BigDecimal.ZERO).multiply(c.getUnitCost()));
+            // 组装拆卸的出库按单价拆出，其余（盘盈盘亏等）计入待处理财产损溢
             BigDecimal assemblyOutAmount = money(src.getAssemblyOut().getOrDefault(c.getMaterialId(), BigDecimal.ZERO).multiply(c.getUnitCost()));
             assemblyOutByAccount.merge(code, assemblyOutAmount, BigDecimal::add);
-            projectByAccount.merge(code, project, BigDecimal::add);
-            outsourceByAccount.merge(code, outsource, BigDecimal::add);
-            serviceByAccount.merge(code, service, BigDecimal::add);
-            otherByAccount.merge(code, c.getOtherInAmount().subtract(c.getOtherOutAmount()).add(project).add(outsource).add(service)
-                    .add(assemblyOutAmount), BigDecimal::add);
+            otherByAccount.merge(code, c.getOtherInAmount().subtract(c.getOtherOutAmount()).add(assemblyOutAmount), BigDecimal::add);
         });
-        BigDecimal project = Decimals.sum(projectByAccount.values());
-        lines.add(VoucherLine.debit(summary + "-项目领料", accountRules.accountId(AccountRole.CONTRACT_COST), null, project)); // i18n-ignore
-        projectByAccount.forEach((code, amount) -> lines.add(VoucherLine.credit(summary + "-项目领料", code, null, amount))); // i18n-ignore
-        BigDecimal outsource = Decimals.sum(outsourceByAccount.values());
-        lines.add(VoucherLine.debit(summary + "-委外发料", accountRules.accountId(AccountRole.OUTSOURCE_MATERIAL), null, outsource)); // i18n-ignore
-        outsourceByAccount.forEach((code, amount) -> lines.add(VoucherLine.credit(summary + "-委外发料", code, null, amount))); // i18n-ignore
         // 低值易耗品部门领用：按实际单价一次摊销，借 领用单的费用科目（领用部门），贷 周转材料；不再计入待处理财产损溢
         Map<Long, BigDecimal> consumeByAccount = new HashMap<>();
         for (ConsumeRow row : src.getConsumes()) {
@@ -119,9 +102,6 @@ public class CostVoucherWriter {
         BigDecimal assemblyDiff = Decimals.sum(assemblyOutByAccount.values())
                 .subtract(Decimals.sum(assemblyInByAccount.values()));
         lines.add(VoucherLine.debit(summary + "-组装拆卸尾差", accountRules.accountId(AccountRole.PENDING_LOSS), null, assemblyDiff)); // i18n-ignore
-        BigDecimal service = Decimals.sum(serviceByAccount.values());
-        lines.add(VoucherLine.debit(summary + "-售后备件", accountRules.accountId(AccountRole.SELLING_EXPENSE), null, service)); // i18n-ignore
-        serviceByAccount.forEach((code, amount) -> lines.add(VoucherLine.credit(summary + "-售后备件", code, null, amount))); // i18n-ignore
         salesByCategory.forEach((cat, amount) -> lines.add(
                 VoucherLine.debit(summary + "-销售成本", accountRules.accountId(AccountRole.COST_OF_SALES, cat), null, amount))); // i18n-ignore
         salesByAccount.forEach((code, amount) -> lines.add(VoucherLine.credit(summary + "-销售成本", code, null, amount))); // i18n-ignore

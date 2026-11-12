@@ -61,8 +61,7 @@
           <template v-if="column.key === 'orderNo'">
             <a @click="openDetail(record)">{{ record.orderNo }}</a>
             <a-tag v-if="record.version > 1" color="blue" :bordered="false" class="source-tag">V{{ record.version }}</a-tag>
-            <a-tag v-if="record.source === OrderSource.MRP" color="purple" :bordered="false" class="source-tag">MRP</a-tag>
-            <a-tag v-else-if="record.source === OrderSource.IMPORT" color="lime" :bordered="false" class="source-tag">{{ $t('scm.order.sourceImport') }}</a-tag>
+            <a-tag v-if="record.source === OrderSource.IMPORT" color="lime" :bordered="false" class="source-tag">{{ $t('scm.order.sourceImport') }}</a-tag>
             <a-tag v-else-if="record.source === OrderSource.DIRECT" color="blue" :bordered="false" class="source-tag">{{ $t('scm.order.sourceDirect') }}</a-tag>
             <div v-if="record.externalNo" class="sub-text">{{ $t('scm.order.externalNoValue', { no: record.externalNo }) }}</div>
           </template>
@@ -75,9 +74,9 @@
             <div class="sub-text">{{ $t('scm.order.deliveryValue', { date: record.deliveryDate || '-' }) }}</div>
           </template>
           <template v-else-if="column.key === 'totalAmount'">
-            {{ currencySymbol(record.currency) }}{{ formatMoney(record.totalAmount) }}
+            {{ symMoney(record.totalAmount, currencySymbol(record.currency)) }}
             <div v-if="isForeign(record.currency)" class="sub-text">{{ record.currency }} @{{ Number(record.exchangeRate) }}</div>
-            <div v-if="Number(record.wholeDiscount)" class="sub-text">{{ $t('scm.wholeDiscount.value', { amount: currencySymbol(record.currency) + formatMoney(record.wholeDiscount) }) }}</div>
+            <div v-if="Number(record.wholeDiscount)" class="sub-text">{{ $t('scm.wholeDiscount.value', { amount: symMoney(record.wholeDiscount, currencySymbol(record.currency)) }) }}</div>
           </template>
           <template v-else-if="column.key === 'progress'">
             <a-progress :percent="progress(record)" size="small" :show-info="false" :status="progress(record) >= 100 ? 'success' : 'normal'" />
@@ -134,6 +133,7 @@ import { ORDER_KINDS, formatMoney } from './scm'
 import { currencySymbol, isForeign, useCurrencies } from '@/components/fin/currency'
 
 import { OrderSource, OrderStatus } from '@/constants/enums'
+import { symMoney } from '@/utils/number'
 /**
  * 采购订单 / 销售订单列表页，两个页面共用
  */

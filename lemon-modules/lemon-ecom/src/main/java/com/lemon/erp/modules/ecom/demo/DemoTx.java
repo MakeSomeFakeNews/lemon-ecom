@@ -21,6 +21,11 @@ public class DemoTx {
         this.requiresNew.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
+    /** 在新事务中查询（不受调用方事务中 MyBatis 一级缓存的影响，能读到其他新事务刚提交的数据） */
+    public <T> T read(java.util.function.Supplier<T> query) {
+        return requiresNew.execute(s -> query.get());
+    }
+
     /** @return 是否成功；失败只记日志 */
     public boolean run(String step, Runnable action) {
         try {

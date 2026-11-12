@@ -37,7 +37,7 @@
           <div class="kpi">
             <div class="kpi-label">{{ $t('ecomFba.removal.removalFee') }}</div>
             <div class="kpi-value">{{ money(detail.removalFee) }} <span class="kpi-unit">{{ detail.currency }}</span></div>
-            <div class="kpi-sub">{{ $t('ecomFba.removal.feeBase') }} ¥{{ money(detail.feeBase) }}</div>
+            <div class="kpi-sub">{{ $t('ecomFba.removal.feeBase') }} {{ symMoney(detail.feeBase) }}</div>
           </div>
         </div>
         <div class="section-title">{{ $t('ecomFba.removal.basicInfo') }}</div>
@@ -81,7 +81,7 @@ import { DeleteOutlined, EditOutlined, InboxOutlined, SendOutlined, StopOutlined
 import SubPage from '@/components/SubPage.vue'
 import DictTag from '@/components/DictTag.vue'
 import { getRemoval } from '@/api/ecom/fba'
-import { money, qty } from '@/utils/number'
+import { money, qty, symMoney } from '@/utils/number'
 import { t } from '@/locales'
 import { useCan } from '../fba-health/fba'
 import { canCancel, canDispose, canReceive, isEditable } from './removal'

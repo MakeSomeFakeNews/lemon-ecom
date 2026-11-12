@@ -138,6 +138,7 @@ export default {
       ecom_return_reason: '退货原因',
       ecom_payout_channel: '收款平台',
       ecom_cs_language: '模板语言',
+      ecom_banned_word_type: '违禁词类型',
       ecom_dev_source: '产品来源',
       ecom_store_member_role: '店铺岗位',
       ecom_promo_type: '促销类型',
@@ -273,6 +274,11 @@ export default {
     selectType: '请选择类型'
   },
   tenant: {
+    sectionBasic: '基本信息',
+    sectionFeatures: '开通功能',
+    sectionLimits: '使用限制',
+    sectionAdmin: '管理员账号',
+    sectionOther: '其他',
     name: '租户名称',
     add: '新增租户',
     edit: '编辑租户',
@@ -333,7 +339,7 @@ export default {
     selectType: '请选择公告类型',
     scope: '发布范围',
     audience: '接收人',
-    allTip: '全部启用的内部用户（不含供应商门户账号）',
+    allTip: '全部启用的用户',
     depts: '部门',
     deptsTip: '包含所选部门的全部下级部门',
     selectDepts: '请选择部门',

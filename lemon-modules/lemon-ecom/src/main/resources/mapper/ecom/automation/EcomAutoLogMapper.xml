@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.automation.mapper.EcomAutoLogMapper">
+
+    <!-- 列表不返回事件与动作结果的 JSON 大字段之外的内容；动作结果用于列表上的动作摘要 -->
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.automation.entity.EcomAutoLog">
+        SELECT l.id, l.rule_id, l.rule_name, l.trigger_code, l.object_key, l.object_label, l.store_id, l.result, l.match_detail, l.cost_ms,
+               l.error_msg, l.retry_count, l.actions_json, l.create_time, l.update_time, s.name AS store_name
+        FROM ecom_auto_log l
+        LEFT JOIN ecom_store s ON s.id = l.store_id
+        <where>
+            <if test="q.ruleId != null">AND l.rule_id = #{q.ruleId}</if>
+            <if test="q.trigger != null">AND l.trigger_code = #{q.trigger}</if>
+            <if test="q.result != null">AND l.result = #{q.result}</if>
+            <if test="q.executed != null and q.executed">AND l.result IN ('SUCCESS', 'PARTIAL', 'FAILED')</if>
+            <if test="q.storeId != null">AND l.store_id = #{q.storeId}</if>
+            <if test="q.beginDate != null">AND l.create_time &gt;= #{q.beginDate}</if>
+            <if test="q.endDate != null">AND l.create_time &lt; #{q.endExclusive}</if>
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (l.object_label LIKE CONCAT('%', #{q.keyword}, '%') OR l.object_key LIKE CONCAT('%', #{q.keyword}, '%')
+                     OR l.rule_name LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY l.create_time DESC, l.id DESC
+    </select>
+
+    <select id="countExecuted" resultType="long">
+        SELECT COUNT(*) FROM ecom_auto_log
+        WHERE rule_id = #{ruleId} AND object_key = #{objectKey} AND result IN ('SUCCESS', 'PARTIAL', 'FAILED') AND create_time &gt;= #{since}
+    </select>
+
+    <select id="countRuleExecuted" resultType="long">
+        SELECT COUNT(*) FROM ecom_auto_log
+        WHERE rule_id = #{ruleId} AND result IN ('SUCCESS', 'PARTIAL', 'FAILED') AND create_time &gt;= #{since}
+    </select>
+
+    <select id="countRuleResult" resultType="long">
+        SELECT COUNT(*) FROM ecom_auto_log WHERE rule_id = #{ruleId} AND result = #{result} AND create_time &gt;= #{since}
+    </select>
+
+    <select id="countByResult" resultType="java.util.Map">
+        SELECT result AS "result", COUNT(*) AS "cnt" FROM ecom_auto_log
+        WHERE create_time &gt;= #{since}
+        <if test="ruleId != null">AND rule_id = #{ruleId}</if>
+        GROUP BY result
+    </select>
+
+    <select id="countByDay" resultType="java.util.Map">
+        SELECT CAST(create_time AS DATE) AS "day",
+               SUM(CASE WHEN result IN ('SUCCESS', 'PARTIAL', 'FAILED') THEN 1 ELSE 0 END) AS "executed",
+               SUM(CASE WHEN result IN ('PARTIAL', 'FAILED') THEN 1 ELSE 0 END) AS "failed"
+        FROM ecom_auto_log
+        WHERE create_time &gt;= #{since}
+        <if test="ruleId != null">AND rule_id = #{ruleId}</if>
+        GROUP BY CAST(create_time AS DATE)
+        ORDER BY CAST(create_time AS DATE)
+    </select>
+
+    <select id="selectRecentEvents" resultType="com.lemon.erp.modules.ecom.automation.entity.EcomAutoLog">
+        SELECT id, rule_id, trigger_code, object_key, object_label, store_id, event_json, create_time
+        FROM ecom_auto_log
+        WHERE trigger_code = #{trigger} AND event_json IS NOT NULL
+        ORDER BY id DESC
+        LIMIT #{limit}
+    </select>
+
+    <delete id="deleteBefore">
+        DELETE FROM ecom_auto_log WHERE create_time &lt; #{before}
+    </delete>
+</mapper>

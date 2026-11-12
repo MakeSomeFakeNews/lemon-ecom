@@ -29,7 +29,7 @@
               <div class="sub-text dim-tip">
                 {{ $t('fin.accountRule.byDimension', { dim: $t(DIMENSION_LABELS[role.dimension]) }) }}
               </div>
-              <div v-for="d in dict[role.dictType]" :key="d.value" class="dim-row">
+              <div v-for="d in dimValues(role)" :key="d.value" class="dim-row">
                 <span class="dim-label">{{ d.label }}</span>
                 <AccountSelect
                   v-model:value="edits[role.role].items[d.value]"
@@ -60,6 +60,7 @@ import { useDict } from '@/composables/useDict'
 import { useUserStore } from '@/store/user'
 import AccountSelect from '@/components/fin/AccountSelect.vue'
 import { cached } from '@/components/fin/fin'
+import { SettlementItemType } from '@/constants/enums'
 
 /**
  * 凭证科目设置：业务单据自动生成凭证时各用途使用的科目。存货、收入、成本可按物料分类，其他出入库的对方科目可按收发类别分别设置；
@@ -68,12 +69,17 @@ import { cached } from '@/components/fin/fin'
 const { t } = useI18n()
 const userStore = useUserStore()
 const canEdit = computed(() => userStore.hasPerm('fin:accountRule:edit'))
-const dict = useDict('wms_material_category', 'wms_in_category', 'wms_out_category')
+const dict = useDict('wms_material_category', 'wms_in_category', 'wms_out_category', 'ecom_settlement_item_type')
+/** 维度的取值：电商平台费用不列订单收入、退款（不是费用） */
+const NOT_FEE = [SettlementItemType.ORDER, SettlementItemType.REFUND]
+const dimValues = (role) =>
+  (dict[role.dictType] || []).filter((d) => role.dimension !== 'PLATFORM_FEE_TYPE' || !NOT_FEE.includes(d.value))
 /** 维度 → 名称（与后端 AccountRole.Dimension 一致） */
 const DIMENSION_LABELS = {
   MATERIAL_CATEGORY: 'fin.accountRule.materialCategory',
   IN_CATEGORY: 'fin.accountRule.inCategory',
-  OUT_CATEGORY: 'fin.accountRule.outCategory'
+  OUT_CATEGORY: 'fin.accountRule.outCategory',
+  PLATFORM_FEE_TYPE: 'ecomFin.accountRule.platformFeeType'
 }
 
 const roles = ref([])

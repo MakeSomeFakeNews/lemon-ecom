@@ -31,7 +31,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 演示数据 · 平台结算与回款（order 65）：亚马逊三个店铺双周结算、TikTok 双周结算、虾皮马来月结，经结算报告导入
+ * 演示数据 · 平台结算与回款（order 65）：亚马逊、TikTok、Temu、Shopify、eBay 双周结算，虾皮、速卖通月结，经结算报告导入
  * （订单收入、佣金、FBA 配送费、退款与退货处理费，以及仓储费、订阅费、入库配置费、优惠券、赔偿等不挂订单的费用，按费用分摊规则分摊）。
  * 除最近一期外都已确认（费用回写订单、生成收款单核销店铺应收）；已确认的较早几期登记了回款到账（少量手续费差异、到账汇率差额生成凭证），
  * 最近确认的一期待到账
@@ -42,7 +42,8 @@ public class DemoSettlementContributor implements DemoContributor {
 
     /** 结算计划：店铺编码、周期天数、第一期开始于几天前 */
     private static final Object[][] SCHEDULES = {{"DEMO-AMZ-US", 14, 114}, {"DEMO-AMZ-DE", 14, 114}, {"DEMO-AMZ-JP", 14, 114},
-            {"DEMO-TT-US", 14, 72}, {"DEMO-SHP-MY", 30, 96}};
+            {"DEMO-TT-US", 14, 114}, {"DEMO-SHP-MY", 30, 116}, {"DEMO-SHP-SG", 30, 116}, {"DEMO-TEMU-US", 14, 114}, {"DEMO-AE", 30, 116},
+            {"DEMO-SHOPIFY", 14, 114}, {"DEMO-EBAY-US", 14, 114}};
     private static final String BANK_ACCOUNT = "100201";
     private static final String[] PAYOUT_CHANNELS = {"PAYONEER", "LIANLIAN", "PINGPONG", "WORLDFIRST"};
 

@@ -1,50 +1,67 @@
 <template>
-  <FormDrawer :drawer="drawer" :create-title="$t('ecomAds.campaign.add')" :edit-title="$t('ecomAds.campaign.edit')">
+  <FormDrawer page :drawer="drawer" :create-title="$t('ecomAds.campaign.add')" :edit-title="$t('ecomAds.campaign.edit')">
     <a-form ref="formRef" :model="form" :rules="rules" layout="vertical">
-      <a-form-item :label="$t('ecomAds.common.store')" name="storeId">
-        <StoreSelect v-model:value="form.storeId" :disabled="!!form.id" />
-      </a-form-item>
-      <a-form-item :label="$t('ecomAds.campaign.name')" name="name">
-        <a-input v-model:value="form.name" :maxlength="128" />
-      </a-form-item>
+      <div class="section-title">{{ $t('ecomAds.campaign.sectionBasic') }}</div>
       <a-row :gutter="16">
-        <a-col :span="12">
+        <a-col :xs="24" :sm="12" :lg="6">
+          <a-form-item :label="$t('ecomAds.common.store')" name="storeId">
+            <StoreSelect v-model:value="form.storeId" :disabled="!!form.id" />
+          </a-form-item>
+        </a-col>
+        <a-col :xs="24" :lg="12">
+          <a-form-item :label="$t('ecomAds.campaign.name')" name="name">
+            <a-input v-model:value="form.name" :maxlength="128" />
+          </a-form-item>
+        </a-col>
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('ecomAds.campaign.adType')" name="adType">
             <a-select v-model:value="form.adType" :options="toOptions(dict.ecom_ad_type)" allow-clear />
           </a-form-item>
         </a-col>
-        <a-col :span="12">
+      </a-row>
+
+      <div class="section-title">{{ $t('ecomAds.campaign.sectionSetting') }}</div>
+      <a-row :gutter="16">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('ecomAds.common.platformId')" name="platformCampaignId">
             <a-input v-model:value="form.platformCampaignId" :maxlength="64" />
           </a-form-item>
         </a-col>
-        <a-col v-if="!form.id" :span="12">
+        <a-col v-if="!form.id" :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('ecomAds.campaign.dailyBudget')" name="dailyBudget">
             <a-input-number v-model:value="form.dailyBudget" :min="0" :precision="2" class="full" />
           </a-form-item>
         </a-col>
-        <a-col :span="12">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('ecomAds.campaign.biddingStrategy')" name="biddingStrategy">
             <a-input v-model:value="form.biddingStrategy" :maxlength="32" />
           </a-form-item>
         </a-col>
-        <a-col :span="12">
+        <a-col :xs="12" :lg="6">
           <a-form-item :label="$t('ecomAds.campaign.startDate')" name="startDate">
             <a-date-picker v-model:value="form.startDate" value-format="YYYY-MM-DD" class="full" />
           </a-form-item>
         </a-col>
-        <a-col :span="12">
+        <a-col :xs="12" :lg="6">
           <a-form-item :label="$t('ecomAds.campaign.endDate')" name="endDate">
             <a-date-picker v-model:value="form.endDate" value-format="YYYY-MM-DD" class="full" />
           </a-form-item>
         </a-col>
       </a-row>
-      <a-form-item :label="$t('ecomAds.campaign.tags')" name="tags">
-        <a-select v-model:value="form.tags" mode="tags" :open="false" :token-separators="[',']" :placeholder="$t('ecomAds.campaign.tagsPh')" />
-      </a-form-item>
-      <a-form-item :label="$t('ecomAds.campaign.remark')" name="remark">
-        <a-input v-model:value="form.remark" :maxlength="255" />
-      </a-form-item>
+
+      <div class="section-title">{{ $t('ecomAds.campaign.sectionOther') }}</div>
+      <a-row :gutter="16">
+        <a-col :xs="24" :lg="12">
+          <a-form-item :label="$t('ecomAds.campaign.tags')" name="tags">
+            <a-select v-model:value="form.tags" mode="tags" :open="false" :token-separators="[',']" :placeholder="$t('ecomAds.campaign.tagsPh')" />
+          </a-form-item>
+        </a-col>
+        <a-col :xs="24" :lg="12">
+          <a-form-item :label="$t('ecomAds.campaign.remark')" name="remark">
+            <a-input v-model:value="form.remark" :maxlength="255" />
+          </a-form-item>
+        </a-col>
+      </a-row>
     </a-form>
   </FormDrawer>
 </template>
@@ -58,7 +75,7 @@ import { useFormDrawer } from '@/composables/useFormDrawer'
 import { toOptions } from '@/utils/dict'
 import { t } from '@/locales'
 
-/** 广告活动新增 / 编辑（抽屉）：日预算只在新建时填写，之后用「修改预算」同步到平台 */
+/** 广告活动新增 / 编辑（子页）：日预算只在新建时填写，之后用「修改预算」同步到平台 */
 const emit = defineEmits(['success'])
 const dict = useDict('ecom_ad_type')
 const rules = {
@@ -97,5 +114,9 @@ defineExpose({ openCreate: drawer.openCreate, openEdit: drawer.openEdit })
 <style scoped>
 .full {
   width: 100%;
+}
+.section-title {
+  margin: 4px 0 12px;
+  font-weight: 600;
 }
 </style>

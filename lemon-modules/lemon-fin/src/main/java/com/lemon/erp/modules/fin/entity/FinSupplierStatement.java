@@ -42,6 +42,9 @@ public class FinSupplierStatement extends BaseEntity {
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime confirmTime;
 
+    /** 登记供应商对账结果的内部人员 */
+    private Long confirmBy;
+
     private String invoiceNo;
 
     private BigDecimal invoiceAmount;
@@ -59,6 +62,8 @@ public class FinSupplierStatement extends BaseEntity {
     private String supplierName;
     @TableField(exist = false)
     private String createByName;
+    @TableField(exist = false)
+    private String confirmByName;
     @TableField(exist = false)
     private List<FinSupplierStatementLine> lines;
 }

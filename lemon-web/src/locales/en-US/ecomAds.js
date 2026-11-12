@@ -78,6 +78,9 @@ export default {
     baseCurrency: 'Amounts in base currency'
   },
   campaign: {
+    sectionBasic: 'Basic info',
+    sectionSetting: 'Campaign settings',
+    sectionOther: 'Tags & remark',
     add: 'New Campaign',
     edit: 'Edit Campaign',
     name: 'Campaign Name',
@@ -201,6 +204,12 @@ export default {
     selectCampaign: 'Select a campaign'
   },
   rule: {
+    sectionBasic: 'Basic info',
+    summaryTitle: 'Rule summary',
+    conditionsShort: 'Conditions',
+    suggestOnly: 'Suggestions only',
+    previewSavedTip: 'Calculated with the saved rule and current data; save your changes before previewing',
+    previewAfterSave: 'After saving, you can preview the objects matched by current data',
     title: 'Ad Rules',
     add: 'New Rule',
     edit: 'Edit Rule',

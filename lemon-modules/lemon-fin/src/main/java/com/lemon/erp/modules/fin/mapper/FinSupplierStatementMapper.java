@@ -12,10 +12,8 @@ import java.util.List;
 
 public interface FinSupplierStatementMapper extends BaseMapper<FinSupplierStatement> {
 
-    /** @param supplierId 供应商门户只看本供应商；门户不显示草稿 */
     IPage<FinSupplierStatement> selectPageList(IPage<FinSupplierStatement> page, @Param("supplierId") Long supplierId,
-                                               @Param("status") StatementStatus status, @Param("keyword") String keyword,
-                                               @Param("portal") boolean portal);
+                                               @Param("status") StatementStatus status, @Param("keyword") String keyword);
 
     FinSupplierStatement selectDetail(@Param("id") Long id);
 

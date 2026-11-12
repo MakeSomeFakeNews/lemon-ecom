@@ -31,7 +31,7 @@
           <div>{{ record.supplierName }}</div>
           <div class="sub-text">{{ record.supplierCode }}</div>
         </template>
-        <template v-else-if="column.key === 'amount'">¥{{ formatMoney(record.amount) }}</template>
+        <template v-else-if="column.key === 'amount'">{{ symMoney(record.amount) }}</template>
         <template v-else-if="column.key === 'voucher'">
           <a v-if="record.voucherId" @click="openVoucher(record.voucherId)">{{ record.voucherNo }}</a>
         </template>
@@ -51,7 +51,7 @@
               <DictTag type="fin_bill_source" :value="item.sourceType" /> <span class="sub-text">{{ item.sourceNo }}</span>
             </template>
             <template v-else-if="column.key === 'amount'">
-              <span :class="{ neg: Number(item.amount) < 0 }">¥{{ formatMoney(item.amount) }}</span>
+              <span :class="{ neg: Number(item.amount) < 0 }">{{ symMoney(item.amount) }}</span>
             </template>
           </template>
         </a-table>
@@ -79,6 +79,7 @@ import { useTable } from '@/composables/useTable'
 import { formatMoney } from './fin'
 import { t } from '@/locales'
 import { BillKind } from '@/constants/enums'
+import { symMoney } from '@/utils/number'
 
 useDict('fin_bill_source')
 const columns = [

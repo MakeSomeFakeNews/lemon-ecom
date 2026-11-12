@@ -60,7 +60,7 @@ public class EcomAdScheduleService {
     }
 
     public List<EcomAdSchedule> list(Long storeId) {
-        List<EcomAdSchedule> list = scheduleMapper.selectList(storeId);
+        List<EcomAdSchedule> list = scheduleMapper.selectByStore(storeId);
         list.forEach(EcomAdScheduleService::readFactors);
         return list;
     }

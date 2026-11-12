@@ -110,12 +110,12 @@ const columns = [
     ]
   },
   { title: t('ecom.common.packQty'), key: 'packQty', dataIndex: 'packQty', width: 80, align: 'right' },
-  { title: t('ecom.platformStock.fulfillable'), key: 'fulfillableQty', dataIndex: 'fulfillableQty', width: 90, align: 'right' },
+  { title: t('ecom.platformStock.fulfillable'), key: 'fulfillableQty', dataIndex: 'fulfillableQty', width: 90, align: 'right', customRender: ({ text }) => qty(text) },
   { title: t('ecom.platformStock.systemQty'), key: 'systemQty', dataIndex: 'systemQty', width: 100, align: 'right' },
   { title: t('ecom.platformStock.diffQty'), key: 'diffQty', dataIndex: 'diffQty', width: 90, align: 'right' },
-  { title: t('ecom.platformStock.inbound'), key: 'inboundQty', dataIndex: 'inboundQty', width: 90, align: 'right' },
-  { title: t('ecom.platformStock.reserved'), key: 'reservedQty', dataIndex: 'reservedQty', width: 80, align: 'right' },
-  { title: t('ecom.platformStock.unfulfillable'), key: 'unfulfillableQty', dataIndex: 'unfulfillableQty', width: 90, align: 'right' },
+  { title: t('ecom.platformStock.inbound'), key: 'inboundQty', dataIndex: 'inboundQty', width: 90, align: 'right', customRender: ({ text }) => qty(text) },
+  { title: t('ecom.platformStock.reserved'), key: 'reservedQty', dataIndex: 'reservedQty', width: 80, align: 'right', customRender: ({ text }) => qty(text) },
+  { title: t('ecom.platformStock.unfulfillable'), key: 'unfulfillableQty', dataIndex: 'unfulfillableQty', width: 90, align: 'right', customRender: ({ text }) => qty(text) },
   { title: t('ecom.platformStock.snapshotDate'), dataIndex: 'snapshotDate', width: 110 },
   actionColumn(1, [t('common.action.delete')])
 ]

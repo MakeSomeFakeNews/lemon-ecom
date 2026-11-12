@@ -61,11 +61,9 @@ export default {
     tip: '按单据业务日期统计（基本单位）；不选仓库时不含调拨，选择仓库时调入、调出计入其他入库、其他出库',
     openQty: '期初',
     purchaseIn: '采购入库',
-    productionIn: '完工入库',
     salesReturn: '销售退货',
     otherIn: '其他入库',
     salesOut: '销售出库',
-    productionOut: '生产领料',
     purchaseReturn: '采购退货',
     otherOut: '其他出库',
     closeQty: '期末'
@@ -132,7 +130,7 @@ export default {
     type: '仓库类型',
     consignTip: '寄售仓不计入可用库存；供应商寄售仓的库存属于供应商，不计入存货成本',
     consignHint: '寄售仓不计入可用库存',
-    defectTip: '不良品仓的库存不计入 MRP、齐套',
+    defectTip: '不良品仓的库存不计入可用库存和补货建议',
     defectHint: '不良品仓的库存不参与计划',
     contact: '联系人',
     phone: '联系电话',
@@ -218,6 +216,9 @@ export default {
     dragTip: '拖动分类可调整顺序，拖到其他分类上成为其下级'
   },
   material: {
+    sectionBasic: '基本信息',
+    sectionStock: '库存与成本',
+    sectionOther: '其他',
     hideCategory: '隐藏分类',
     showCategory: '显示分类',
     createTitle: '新增物料',

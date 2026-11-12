@@ -119,7 +119,12 @@ const { t } = useI18n()
 const router = useRouter()
 const userStore = useUserStore()
 const canConfig = computed(() => userStore.hasPerm('ai:config:list'))
-const examples = [t('ai.chat.example1'), t('ai.chat.example2'), t('ai.chat.example3'), t('ai.chat.example4')]
+/** 推荐问题：有跨境电商利润分析权限时给电商场景的问题（AI 运营助手的问数工具），否则为通用问题 */
+const examples = computed(() =>
+  userStore.hasPerm('ecom:report:list')
+    ? [1, 2, 3, 4, 5, 6].map((i) => t(`ecomAsst.chat.example${i}`))
+    : [t('ai.chat.example1'), t('ai.chat.example2'), t('ai.chat.example3'), t('ai.chat.example4')]
+)
 
 const status = ref(null)
 const conversations = ref([])

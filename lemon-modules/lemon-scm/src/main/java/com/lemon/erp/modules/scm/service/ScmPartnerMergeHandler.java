@@ -1,7 +1,6 @@
 package com.lemon.erp.modules.scm.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.lemon.erp.common.exception.BizException;
 import com.lemon.erp.framework.ref.MergeImpact;
 import com.lemon.erp.framework.ref.PartnerMergeHandler;
 import com.lemon.erp.framework.ref.PartnerType;
@@ -28,27 +27,23 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
- * 往来单位合并：本模块的订单、出入库单、草稿、报价、发货通知、发运、返利、渠道库存、价目表、请购、询价、评估、采购合同、招标、ASN 改为保留的资料。
+ * 往来单位合并：本模块的订单、出入库单、草稿、发运、价目表、评估、采购合同改为保留的资料。
  * 有唯一约束的价格按以下规则合并（同一物料只保留一行）：
  * <ul>
  *     <li>客户执行价、供货价格：保留资料已有该物料的价格时以保留资料为准，被合并资料的删除；没有时取被合并资料中最近修改的一条。
  *     被删除的供货价格是该物料的默认供应商时，保留的那条设为默认（同一单位）；阶梯价随价格一起删除</li>
  *     <li>价格记忆：同一物料合为一行，最新价取日期最近的，最低价、最高价取各行的最低 / 最高</li>
  * </ul>
- * 不能自动处理的冲突拒绝合并：两份资料参与了同一张询价单、同一次招标（邀请或投标），两个经销商上报了同一期间的渠道库存
  */
 @Component
 @RequiredArgsConstructor
 public class ScmPartnerMergeHandler implements PartnerMergeHandler {
 
-    private static final List<String> CUSTOMER_REFS = List.of("salesOrder", "salesTradeDoc", "salesDraft", "quotation", "delivery",
-            "shipment", "salesRebate", "channelReport", "priceList");
+    private static final List<String> CUSTOMER_REFS = List.of("salesOrder", "salesTradeDoc", "salesDraft", "shipment", "priceList");
     private static final List<String> SUPPLIER_REFS = List.of("purchaseOrder", "purchaseTradeDoc", "purchaseDraft", "carrierTradeDoc",
-            "carrierDraft", "carrierShipment", "requisition", "inquiryQuote", "inquirySupplier", "supplierEval", "purchaseRebate",
-            "purchaseContract", "tenderAward", "tenderSupplier", "bid", "asn");
+            "carrierDraft", "carrierShipment", "supplierEval", "purchaseContract");
     private static final int YES = 1;
 
     private final ScmMergeMapper mergeMapper;
@@ -78,26 +73,6 @@ public class ScmPartnerMergeHandler implements PartnerMergeHandler {
                 .map(ScmPriceMemory::getMaterialId).collect(Collectors.toSet());
         list.add(new MergeImpact("scm.merge.priceMemory", source.size(), duplicates(source, target)));
         return list;
-    }
-
-    @Override
-    public void check(PartnerType type, List<Long> sourceIds, Long targetId) {
-        List<Long> all = Stream.concat(sourceIds.stream(), Stream.of(targetId)).toList();
-        if (type == PartnerType.CUSTOMER) {
-            List<Integer> periods = mergeMapper.sharedChannelPeriods(all);
-            if (!periods.isEmpty()) {
-                throw new BizException("scm.error.mergeSharedChannelReport", periods.get(0));
-            }
-            return;
-        }
-        List<String> inquiries = mergeMapper.sharedInquiries(all);
-        if (!inquiries.isEmpty()) {
-            throw new BizException("scm.error.mergeSharedInquiry", inquiries.get(0));
-        }
-        List<String> tenders = mergeMapper.sharedTenders(all);
-        if (!tenders.isEmpty()) {
-            throw new BizException("scm.error.mergeSharedTender", tenders.get(0));
-        }
     }
 
     @Override

@@ -33,7 +33,7 @@
                 <a @click="openDetail(record)">{{ record.settleNo }}</a>
               </template>
               <template v-else-if="column.key === 'amount'">
-                ¥{{ formatMoney(record.amount) }}
+                {{ symMoney(record.amount) }}
                 <div v-if="isForeign(record.currency)" class="sub-text">{{ fcText(record.currency, record.amountFc, record.exchangeRate) }}</div>
                 <div v-if="Number(record.discountAmount)" class="sub-text">{{ $t('fin.settlementPage.discountN', { amount: formatMoney(record.discountAmount) }) }}</div>
                 <div v-if="Number(record.advanceAmount)" class="sub-text">{{ conf.advanceN((isForeign(record.currency) ? `${record.currency} ` : '') + formatMoney(record.advanceAmount)) }}</div>
@@ -68,9 +68,9 @@
             <DictTag type="sys_approve_status" :value="detail.status" />
           </a-descriptions-item>
           <a-descriptions-item :label="$t('common.field.date')">{{ detail.settleDate }}</a-descriptions-item>
-          <a-descriptions-item :label="conf.paidLabel"><b>¥{{ formatMoney(detail.amount) }}</b></a-descriptions-item>
+          <a-descriptions-item :label="conf.paidLabel"><b>{{ symMoney(detail.amount) }}</b></a-descriptions-item>
           <a-descriptions-item v-if="Number(detail.discountAmount)" :label="$t('fin.settlementForm.discountTotal')">
-            ¥{{ formatMoney(detail.discountAmount) }}
+            {{ symMoney(detail.discountAmount) }}
             <span v-if="isForeign(detail.currency)" class="sub-text">{{ $t('fin.settlementPage.originalN', { amount: `${detail.currency} ${formatMoney(detail.discountFc)}` }) }}</span>
           </a-descriptions-item>
           <a-descriptions-item v-if="Number(detail.advanceAmount)" :label="conf.toAdvance">
@@ -89,7 +89,7 @@
           <a-descriptions-item :label="$t('fin.settlementPage.preparedBy')">{{ detail.createByName }} {{ detail.createTime }}</a-descriptions-item>
           <a-descriptions-item v-if="detail.remark" :label="$t('common.field.remark')">{{ detail.remark }}</a-descriptions-item>
         </a-descriptions>
-        <a-table row-key="id" size="small" :columns="itemColumns" :data-source="detail.items" :pagination="false">
+        <a-table row-key="id" size="small" :columns="itemColumns" :data-source="detail.items" :pagination="false" :scroll="{ x: 950 }">
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'billAmount'">{{ formatMoney(record.billAmount) }}</template>
             <template v-else-if="column.key === 'source'">
@@ -146,6 +146,7 @@ import { settlementConf } from './settlementConf'
 import { useAction } from '@/composables/useAction'
 
 import { ApproveStatus } from '@/constants/enums'
+import { symMoney } from '@/utils/number'
 /** 收款单 / 付款单，kind = receipt | payment */
 const props = defineProps({
   kind: { type: String, required: true }
@@ -217,8 +218,8 @@ const remove = useAction((id) => deleteSettlement(props.kind, id), { successKey:
 // ---------------------------------------------------------------- 新增、修改草稿、确认
 const formRef = ref()
 const openCreate = () => formRef.value.open()
-/** 草稿、已拒绝的付款单可以修改（票据业务生成的除外） */
-const editable = (r) => (r.status === ApproveStatus.DRAFT || r.status === ApproveStatus.REJECTED) && r.method !== 'NOTE'
+/** 草稿、已拒绝的付款单可以修改 */
+const editable = (r) => r.status === ApproveStatus.DRAFT || r.status === ApproveStatus.REJECTED
 const openEdit = (r) => formRef.value.open({ id: r.id })
 function onSaved() {
   load()

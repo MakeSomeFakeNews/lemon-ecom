@@ -11,7 +11,7 @@
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'values'">
             <a-tag v-for="v in record.values" :key="v.id" :bordered="false" class="value-tag">
-              {{ v.value }}<span v-if="v.code" class="sub-text"> {{ v.code }}</span>
+              {{ v.value }}<span v-if="v.code && v.code !== v.value" class="sub-text value-code">{{ v.code }}</span>
             </a-tag>
           </template>
           <template v-else-if="column.key === 'status'">
@@ -138,6 +138,9 @@ const remove = useAction(deleteAttribute, { successKey: 'common.msg.deleteSucces
 }
 .value-tag {
   margin-bottom: 4px;
+}
+.value-code {
+  margin-left: 6px;
 }
 .section-title {
   font-weight: 500;

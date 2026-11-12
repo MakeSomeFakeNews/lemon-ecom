@@ -146,7 +146,6 @@ public class EcomJxcService {
             }
             List<JxcViews.CashRow> source = new ArrayList<>(jxcMapper.selectSettlementByMonth(q.getBegin(), q.getEnd()));
             source.addAll(jxcMapper.selectAdvanceByMonth(q.getBegin(), q.getEnd()));
-            source.addAll(jxcMapper.selectNoteCashByMonth(q.getBegin(), q.getEnd()));
             for (JxcViews.CashRow r : source) {
                 JxcViews.CashRow c = byPeriod.get(r.getPeriod());
                 if (c != null) {

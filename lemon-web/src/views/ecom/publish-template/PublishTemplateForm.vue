@@ -1,34 +1,34 @@
 <template>
-  <FormDrawer :drawer="drawer" :create-title="$t('ecomPublish.template.add')" :edit-title="$t('ecomPublish.template.edit')" width="min(860px, 100vw)">
+  <FormDrawer page :drawer="drawer" :create-title="$t('ecomPublish.template.add')" :edit-title="$t('ecomPublish.template.edit')">
     <a-form ref="formRef" :model="form" :rules="rules" layout="vertical">
-      <a-divider orientation="left" orientation-margin="0" class="first-divider">{{ $t('ecomPublish.item.secBasic') }}</a-divider>
+      <div class="section-title">{{ $t('ecomPublish.item.secBasic') }}</div>
       <a-row :gutter="16">
-        <a-col :xs="24" :sm="12">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('ecomPublish.template.name')" name="name"><a-input v-model:value="form.name" :maxlength="64" /></a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="12">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('ecomPublish.common.platform')" name="platform">
             <a-select v-model:value="form.platform" :options="toOptions(dict.ecom_platform)" @change="onPlatform" />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="6">
+        <a-col :xs="24" :sm="12" :lg="4">
           <a-form-item :label="$t('common.field.status')" name="status">
             <a-switch v-model:checked="form.status" :checked-value="STATUS_ENABLED" :un-checked-value="STATUS_DISABLED" />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="18">
+        <a-col :xs="24" :lg="8">
           <a-form-item :label="$t('common.field.remark')" name="remark"><a-input v-model:value="form.remark" :maxlength="255" /></a-form-item>
         </a-col>
       </a-row>
 
-      <a-divider orientation="left" orientation-margin="0">{{ $t('ecomPublish.item.categoryAttrs') }}</a-divider>
+      <div class="section-title">{{ $t('ecomPublish.item.categoryAttrs') }}</div>
       <a-row :gutter="16">
-        <a-col :span="24">
+        <a-col :xs="24" :lg="8">
           <a-form-item :label="$t('ecomPublish.template.lookupStore')" :extra="$t('ecomPublish.template.lookupStoreExtra')">
             <StoreSelect v-model:value="lookupStoreId" :platform="form.platform" :disabled="!form.platform" @update:value="loadCaps" />
           </a-form-item>
         </a-col>
-        <a-col :span="24">
+        <a-col :xs="24" :lg="16">
           <a-form-item :label="$t('ecomPublish.item.category')">
             <CategoryPicker v-model:id="form.categoryId" v-model:name="form.categoryName" :store-id="lookupStoreId" :remote="hasCap('CATEGORIES')" />
           </a-form-item>
@@ -40,28 +40,28 @@
         </a-col>
       </a-row>
 
-      <a-divider orientation="left" orientation-margin="0">{{ $t('ecomPublish.template.defaults') }}</a-divider>
+      <div class="section-title">{{ $t('ecomPublish.template.defaults') }}</div>
       <a-row :gutter="16">
-        <a-col :xs="24" :sm="8">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('ecomPublish.item.brand')" name="brand"><a-input v-model:value="form.brand" :maxlength="64" /></a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="8">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('ecomPublish.item.shippingTemplate')" name="shippingTemplate"><a-input v-model:value="form.shippingTemplate" :maxlength="128" /></a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="8">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('ecomPublish.item.returnPolicy')" name="returnPolicy"><a-input v-model:value="form.returnPolicy" :maxlength="128" /></a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="8">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('ecomPublish.item.handlingDays')" name="handlingDays">
             <a-input-number v-model:value="form.handlingDays" :min="0" :max="60" :precision="0" class="full" />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="8">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('ecomPublish.item.fulfillment')" name="fulfillment">
             <a-select v-model:value="form.fulfillment" allow-clear :options="toOptions(dict.ecom_fulfillment)" />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="8">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('ecomPublish.item.priceTemplate')" name="priceTemplateId">
             <a-select v-model:value="form.priceTemplateId" allow-clear :options="priceOptions" />
           </a-form-item>
@@ -156,7 +156,8 @@ defineExpose({
 .full {
   width: 100%;
 }
-.first-divider {
-  margin-top: 0;
+.section-title {
+  font-weight: 600;
+  margin: 4px 0 12px;
 }
 </style>

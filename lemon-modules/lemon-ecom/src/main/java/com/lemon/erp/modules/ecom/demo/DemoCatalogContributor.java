@@ -24,12 +24,15 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * 演示数据 · 商品与供应商（order 10）：物料分类（两级）、40 个商品（规格、重量尺寸写在备注、参考成本、零售价、安全库存），
+ * 演示数据 · 商品与供应商（order 10）：物料分类（内置「成品」下两级）、40 个商品（规格、重量尺寸写在备注、参考成本、零售价、安全库存），
  * 每个商品生成一张示意图走物料图片上传（列表、订单显示缩略图）；6 家供应商与供货价格（默认供应商、交期）
  */
 @Component
 @RequiredArgsConstructor
 public class DemoCatalogContributor implements DemoContributor {
+
+    /** 内置分类「成品」的编码 */
+    private static final String FINISHED = "FINISHED";
 
     private final WmsMaterialCategoryService categoryService;
     private final WmsMaterialService materialService;
@@ -83,10 +86,13 @@ public class DemoCatalogContributor implements DemoContributor {
     private Map<String, String> categories() {
         Map<String, String> codes = new LinkedHashMap<>();
         Map<String, Long> ids = new LinkedHashMap<>();
+        // 放在内置分类「成品」下：存货科目取库存商品（凭证科目设置按分类就近匹配）
+        Long root = categoryService.list().stream().filter(c -> FINISHED.equals(c.getCode())).map(WmsMaterialCategory::getId).findFirst().orElse(0L);
         for (Map.Entry<String, String> e : DemoCatalog.CATEGORIES.entrySet()) {
-            WmsMaterialCategory c = find(0L, e.getValue());
+            WmsMaterialCategory c = find(root, e.getValue());
             if (c == null) {
-                Long id = categoryService.create(new MaterialCategoryRequests.Save(null, null, e.getValue(), null, EnableStatus.ENABLED, null));
+                Long id = categoryService.create(new MaterialCategoryRequests.Save(root == 0L ? null : root, null, e.getValue(), null,
+                        EnableStatus.ENABLED, null));
                 c = categoryService.get(id);
             }
             ids.put(e.getKey(), c.getId());

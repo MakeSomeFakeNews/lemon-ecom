@@ -41,7 +41,7 @@
                 <div><DictTag type="fin_settle_method" :value="record.method" /></div>
               </template>
               <template v-else-if="column.key === 'amount'">
-                ¥{{ formatMoney(record.amount) }}
+                {{ symMoney(record.amount) }}
                 <div v-if="isForeign(record.currency)" class="sub-text">{{ fcText(record.currency, record.amountFc, record.exchangeRate) }}</div>
               </template>
               <template v-else-if="column.key === 'used'">
@@ -157,7 +157,7 @@
           <a-descriptions-item :label="KINDS[detail.kind]?.partnerLabel">{{ detail.partnerName }}</a-descriptions-item>
           <a-descriptions-item :label="$t('common.field.date')">{{ detail.advanceDate }}</a-descriptions-item>
           <a-descriptions-item :label="$t('common.field.amount')">
-            <b>¥{{ formatMoney(detail.amount) }}</b>
+            <b>{{ symMoney(detail.amount) }}</b>
             <span v-if="isForeign(detail.currency)" class="sub-text"> {{ fcText(detail.currency, detail.amountFc, detail.exchangeRate) }}</span>
           </a-descriptions-item>
           <a-descriptions-item :label="$t('fin.advance.used')">
@@ -209,7 +209,7 @@ import { useTable } from '@/composables/useTable'
 import { toOptions } from '@/utils/dict'
 import { today } from '@/components/wms/wms'
 import { formatMoney } from '@/components/fin/fin'
-import { round2 } from '@/utils/number'
+import { round2, symMoney } from '@/utils/number'
 import { useAction } from '@/composables/useAction'
 import { BASE_CURRENCY, currencyOptions, currencySymbol, fcText, fetchRate, isForeign, useCurrencies } from '@/components/fin/currency'
 

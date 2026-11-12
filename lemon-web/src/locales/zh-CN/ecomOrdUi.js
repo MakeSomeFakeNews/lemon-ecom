@@ -48,6 +48,11 @@ export default {
     noHistory: '还没有扫描记录'
   },
   track: {
+    package: '包裹信息',
+    order: '订单信息',
+    receiver: '收件信息',
+    daysDelivered: '发货至签收',
+    daysToNow: '发货至今',
     hint: '勾选包裹后可批量拉取轨迹；系统每 2 小时自动拉取',
     empty: '没有符合条件的包裹'
   },
@@ -64,6 +69,7 @@ export default {
     filter: '筛选'
   },
   edit: {
+    title: '修改订单信息 · {no}',
     shipping: '配送与备注'
   },
   logAction: {

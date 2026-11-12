@@ -34,9 +34,17 @@ import java.util.Set;
 public class OperLogAspect {
 
     private static final int MAX_LENGTH = 2000;
-    /** 完全隐藏：密码、第三方应用密钥、群机器人地址和加签密钥、大模型 API Key */
-    private static final Set<String> SECRET_FIELDS = Set.of("password", "oldPassword", "newPassword", "appSecret",
-            "robotWebhook", "robotSecret", "apiKey");
+    /**
+     * 完全隐藏：密码、第三方应用密钥、群机器人地址和加签密钥、大模型 API Key，电商店铺 / 广告 / 1688 / 海外仓 / 物流商的授权
+     * （另外名称以 secret、token、password、credentials、apikey 等结尾的字段也按凭证处理，见 {@link #isSecret}）
+     */
+    private static final Set<String> SECRET_FIELDS = Set.of("password", "oldPassword", "newPassword", "adminPassword", "appSecret",
+            "robotWebhook", "robotSecret", "apiKey", "secret", "secretKey", "clientSecret", "partnerKey", "accessToken",
+            "refreshToken", "adminAccessToken", "credentials", "adsCredentials", "carrierCredentials", "auth", "carrierAuth",
+            "authorization", "cookie");
+    /** 字段名（小写）以这些结尾的按凭证完全隐藏 */
+    private static final String[] SECRET_SUFFIXES = {"secret", "token", "password", "credentials", "apikey", "api_key",
+            "privatekey", "private_key", "partnerkey", "partner_key", "accesskey", "access_key", "secretkey", "secret_key"};
     /** 部分隐藏（保留首尾）：证件号、银行卡号、手机号 */
     private static final Set<String> PARTIAL_FIELDS = Set.of("idCard", "bankAccount", "phone", "mobile", "emergencyPhone");
     /** 薪资类金额：隐藏数值 */
@@ -112,16 +120,63 @@ public class OperLogAspect {
         if (node instanceof ObjectNode obj) {
             for (String name : obj.propertyNames()) {
                 JsonNode v = obj.get(name);
-                if (SECRET_FIELDS.contains(name) || (SALARY_FIELDS.contains(name) && v != null && !v.isNull())) {
+                if (isSecret(name) && v != null && !v.isNull() && !v.isBoolean()
+                        || SALARY_FIELDS.contains(name) && v != null && !v.isNull()) {
                     obj.put(name, MASK);
                 } else if (PARTIAL_FIELDS.contains(name) && v != null && v.isString()) {
                     obj.put(name, partial(v.asString()));
+                } else if (v != null && v.isString()) {
+                    String nested = maskNestedJson(v.asString());
+                    if (nested != null) {
+                        obj.put(name, nested);
+                    }
                 } else {
                     mask(v);
                 }
             }
         } else if (node instanceof ArrayNode arr) {
-            arr.forEach(this::mask);
+            for (int i = 0; i < arr.size(); i++) {
+                JsonNode v = arr.get(i);
+                String nested = v.isString() ? maskNestedJson(v.asString()) : null;
+                if (nested != null) {
+                    arr.set(i, arr.stringNode(nested));
+                } else {
+                    mask(v);
+                }
+            }
+        }
+    }
+
+    static boolean isSecret(String name) {
+        if (SECRET_FIELDS.contains(name)) {
+            return true;
+        }
+        String lower = name.toLowerCase(java.util.Locale.ROOT);
+        for (String suffix : SECRET_SUFFIXES) {
+            if (lower.endsWith(suffix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 字符串本身是 JSON 对象 / 数组（如以 JSON 文本提交的授权）时脱敏后重新序列化；不是 JSON 或无需修改时返回 null */
+    private String maskNestedJson(String text) {
+        String t = text.trim();
+        if (t.length() < 2 || !(t.startsWith("{") && t.endsWith("}") || t.startsWith("[") && t.endsWith("]"))) {
+            return null;
+        }
+        try {
+            JsonNode inner = objectMapper.readTree(t);
+            if (!(inner instanceof ObjectNode || inner instanceof ArrayNode)) {
+                return null;
+            }
+            String before = objectMapper.writeValueAsString(inner);
+            mask(inner);
+            String after = objectMapper.writeValueAsString(inner);
+            return before.equals(after) ? null : after;
+        } catch (Exception e) {
+            return null;
         }
     }
 

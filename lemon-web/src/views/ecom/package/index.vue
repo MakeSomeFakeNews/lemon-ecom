@@ -74,7 +74,7 @@
           </template>
           <template v-else-if="column.key === 'totalQty'">{{ qty(record.totalQty) }}</template>
           <template v-else-if="column.key === 'weight'">{{ record.weight != null ? Number(record.weight) : '-' }}</template>
-          <template v-else-if="column.key === 'shippingCost'">{{ record.shippingCost != null ? `¥${money(record.shippingCost)}` : '-' }}</template>
+          <template v-else-if="column.key === 'shippingCost'">{{ record.shippingCost != null ? `${symMoney(record.shippingCost)}` : '-' }}</template>
           <template v-else-if="column.key === 'route'">
             <div class="ellipsis" :title="record.warehouseName">{{ record.warehouseName || '-' }}</div>
             <div class="sub-text ellipsis" :title="record.channelName">{{ record.channelName || '-' }}</div>
@@ -150,7 +150,7 @@ import { useColumns } from '@/composables/useColumns'
 import { useRouteOpen } from '@/composables/useRouteOpen'
 import { useTable } from '@/composables/useTable'
 import { EcomPackageStatus } from '@/constants/enums'
-import { money, qty } from '@/utils/number'
+import { money, qty, symMoney } from '@/utils/number'
 import { showPdf } from '@/utils/print'
 import { showBatchResult } from '../order/order'
 import { PACKAGE_RESULT_KEYS, PACKAGE_TABS, canCancelPackage, canEditPackage, canLabel, canRefetch, canShipPackage, canTracking, printPickList } from './package'

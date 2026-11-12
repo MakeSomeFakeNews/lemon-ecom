@@ -36,6 +36,11 @@ public class FinBizPeriodGuard implements BizPeriodGuard {
         }
     }
 
+    /** 业务日期所在期间是否已结账 */
+    public boolean isClosed(LocalDate bizDate) {
+        return bizDate != null && periodService.isClosed(periodOf(bizDate));
+    }
+
     @Override
     public void checkStockOpen(LocalDate bizDate, String docName) {
         checkOpen(bizDate, docName);

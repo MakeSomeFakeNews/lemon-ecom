@@ -36,7 +36,7 @@
       <template v-if="ledgerAccount">
         <div class="section-title">{{ $t('fin.reportDrill.ledger', { account: `${ledgerAccount.code} ${ledgerAccount.name}` }) }}</div>
         <a-table
-          :row-key="(r, i) => i"
+          row-key="rowKey"
           size="small"
           bordered
           :columns="ledgerColumns"
@@ -112,7 +112,8 @@ async function openLedger(account) {
   ledgerAccount.value = account
   ledgerLoading.value = true
   try {
-    ledgerRows.value = await ledger({ accountId: account.accountId, begin: props.begin, end: props.end })
+    // 行号作为 rowKey（a-table 的 rowKey 函数不再支持 index 参数）
+    ledgerRows.value = ((await ledger({ accountId: account.accountId, begin: props.begin, end: props.end })) || []).map((r, i) => ({ ...r, rowKey: i }))
   } finally {
     ledgerLoading.value = false
   }

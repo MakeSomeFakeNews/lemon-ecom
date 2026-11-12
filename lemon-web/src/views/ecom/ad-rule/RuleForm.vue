@@ -1,121 +1,153 @@
 <template>
-  <FormDrawer :drawer="drawer" :create-title="$t('ecomAds.rule.add')" :edit-title="$t('ecomAds.rule.edit')" width="min(780px, 100vw)">
-    <a-form ref="formRef" :model="form" :rules="rules" layout="vertical">
-      <a-row :gutter="16">
-        <a-col :xs="24" :sm="12">
-          <a-form-item :label="$t('ecomAds.rule.name')" name="name">
-            <a-input v-model:value="form.name" :maxlength="64" />
-          </a-form-item>
-        </a-col>
-        <a-col :xs="12" :sm="6">
-          <a-form-item :label="$t('ecomAds.rule.level')" name="level">
-            <a-select v-model:value="form.level" :options="levelOptions" @change="onLevelChange" />
-          </a-form-item>
-        </a-col>
-        <a-col :xs="12" :sm="6">
-          <a-form-item :label="$t('ecomAds.rule.window')" name="windowDays">
-            <a-input-number v-model:value="form.windowDays" :min="1" :max="90" :precision="0" :addon-after="$t('ecomAds.rule.windowSuffix')" class="full" />
-          </a-form-item>
-        </a-col>
-      </a-row>
+  <FormDrawer page :drawer="drawer" :create-title="$t('ecomAds.rule.add')" :edit-title="$t('ecomAds.rule.edit')">
+    <a-row :gutter="24">
+      <a-col :xs="24" :xl="17">
+        <a-form ref="formRef" :model="form" :rules="rules" layout="vertical">
+          <div class="section-title">{{ $t('ecomAds.rule.sectionBasic') }}</div>
+          <a-row :gutter="16">
+            <a-col :xs="24" :lg="12">
+              <a-form-item :label="$t('ecomAds.rule.name')" name="name">
+                <a-input v-model:value="form.name" :maxlength="64" />
+              </a-form-item>
+            </a-col>
+            <a-col :xs="12" :lg="6">
+              <a-form-item :label="$t('ecomAds.rule.level')" name="level">
+                <a-select v-model:value="form.level" :options="levelOptions" @change="onLevelChange" />
+              </a-form-item>
+            </a-col>
+            <a-col :xs="12" :lg="6">
+              <a-form-item :label="$t('ecomAds.rule.window')" name="windowDays">
+                <a-input-number v-model:value="form.windowDays" :min="1" :max="90" :precision="0" :addon-after="$t('ecomAds.rule.windowSuffix')" class="full" />
+              </a-form-item>
+            </a-col>
+          </a-row>
 
-      <div class="section-title">{{ $t('ecomAds.rule.scope') }}</div>
-      <a-row :gutter="16">
-        <a-col :xs="24" :sm="12">
-          <a-form-item :label="$t('ecomAds.rule.stores')" name="storeIds">
-            <a-select v-model:value="form.storeIds" mode="multiple" allow-clear :options="storeOptions" option-filter-prop="label" :placeholder="$t('ecomAds.rule.any')" />
-          </a-form-item>
-        </a-col>
-        <a-col :xs="24" :sm="12">
-          <a-form-item :label="$t('ecomAds.rule.adType')" name="adType">
-            <a-select v-model:value="form.adType" allow-clear :options="toOptions(dict.ecom_ad_type)" :placeholder="$t('ecomAds.rule.any')" />
-          </a-form-item>
-        </a-col>
-        <a-col :xs="24" :sm="12">
-          <a-form-item :label="$t('ecomAds.rule.campaignKeyword')" name="campaignKeyword">
-            <a-input v-model:value="form.campaignKeyword" :maxlength="128" :placeholder="$t('ecomAds.rule.any')" />
-          </a-form-item>
-        </a-col>
-        <a-col :xs="24" :sm="12">
-          <a-form-item :label="$t('ecomAds.rule.tags')" name="tags">
-            <a-select v-model:value="form.tags" mode="tags" :open="false" :token-separators="[',']" :placeholder="$t('ecomAds.rule.any')" />
-          </a-form-item>
-        </a-col>
-      </a-row>
+          <div class="section-title">{{ $t('ecomAds.rule.scope') }}</div>
+          <a-row :gutter="16">
+            <a-col :xs="24" :lg="12">
+              <a-form-item :label="$t('ecomAds.rule.stores')" name="storeIds">
+                <a-select v-model:value="form.storeIds" mode="multiple" allow-clear :options="storeOptions" option-filter-prop="label" :placeholder="$t('ecomAds.rule.any')" />
+              </a-form-item>
+            </a-col>
+            <a-col :xs="24" :sm="12" :lg="6">
+              <a-form-item :label="$t('ecomAds.rule.adType')" name="adType">
+                <a-select v-model:value="form.adType" allow-clear :options="toOptions(dict.ecom_ad_type)" :placeholder="$t('ecomAds.rule.any')" />
+              </a-form-item>
+            </a-col>
+            <a-col :xs="24" :sm="12" :lg="6">
+              <a-form-item :label="$t('ecomAds.rule.campaignKeyword')" name="campaignKeyword">
+                <a-input v-model:value="form.campaignKeyword" :maxlength="128" :placeholder="$t('ecomAds.rule.any')" />
+              </a-form-item>
+            </a-col>
+            <a-col :span="24">
+              <a-form-item :label="$t('ecomAds.rule.tags')" name="tags">
+                <a-select v-model:value="form.tags" mode="tags" :open="false" :token-separators="[',']" :placeholder="$t('ecomAds.rule.any')" />
+              </a-form-item>
+            </a-col>
+          </a-row>
 
-      <div class="section-title">{{ $t('ecomAds.rule.conditions') }}</div>
-      <div v-for="(c, i) in form.conditions" :key="i" class="cond">
-        <a-select v-model:value="c.metric" :options="metricOptions" class="metric" />
-        <a-select v-model:value="c.operator" :options="operatorOptions" class="op" />
-        <a-input-number v-model:value="c.value" :min="0" class="val" />
-        <a-button type="text" danger :disabled="form.conditions.length <= 1" @click="form.conditions.splice(i, 1)"><DeleteOutlined /></a-button>
-      </div>
-      <a-button type="dashed" size="small" :disabled="form.conditions.length >= 10" class="add-cond" @click="form.conditions.push(emptyCondition())">
-        <template #icon><PlusOutlined /></template>{{ $t('ecomAds.rule.addCondition') }}
-      </a-button>
+          <div class="section-title">{{ $t('ecomAds.rule.conditions') }}</div>
+          <div class="cond-box">
+            <div v-for="(c, i) in form.conditions" :key="i" class="cond">
+              <span class="cond-no">{{ i + 1 }}</span>
+              <a-select v-model:value="c.metric" :options="metricOptions" class="metric" />
+              <a-select v-model:value="c.operator" :options="operatorOptions" class="op" />
+              <a-input-number v-model:value="c.value" :min="0" class="val" />
+              <a-button type="text" danger :disabled="form.conditions.length <= 1" @click="form.conditions.splice(i, 1)"><DeleteOutlined /></a-button>
+            </div>
+            <a-button type="dashed" size="small" :disabled="form.conditions.length >= 10" @click="form.conditions.push(emptyCondition())">
+              <template #icon><PlusOutlined /></template>{{ $t('ecomAds.rule.addCondition') }}
+            </a-button>
+          </div>
 
-      <div class="section-title">{{ $t('ecomAds.rule.action') }}</div>
-      <a-row :gutter="16">
-        <a-col :xs="24" :sm="12">
-          <a-form-item :label="$t('ecomAds.rule.action')" name="action">
-            <a-select v-model:value="form.action" :options="actionOptions" />
-          </a-form-item>
-        </a-col>
-        <a-col v-if="hasValue" :xs="24" :sm="12">
-          <a-form-item :label="$t('ecomAds.rule.actionValue')" name="actionValue">
-            <a-input-number v-model:value="form.actionValue" :precision="2" class="full" :addon-after="isPercent ? '%' : undefined" />
-            <div v-if="isPercent" class="sub-text">{{ $t('ecomAds.rule.percentSuffix') }}</div>
-          </a-form-item>
-        </a-col>
-        <template v-if="hasValue">
-          <a-col :xs="12" :sm="6">
-            <a-form-item :label="$t('ecomAds.rule.min')" name="minValue">
-              <a-input-number v-model:value="form.minValue" :min="0" :precision="2" class="full" />
-            </a-form-item>
-          </a-col>
-          <a-col :xs="12" :sm="6">
-            <a-form-item :label="$t('ecomAds.rule.max')" name="maxValue">
-              <a-input-number v-model:value="form.maxValue" :min="0" :precision="2" class="full" />
-            </a-form-item>
-          </a-col>
-        </template>
-      </a-row>
+          <div class="section-title">{{ $t('ecomAds.rule.action') }}</div>
+          <a-row :gutter="16">
+            <a-col :xs="24" :sm="12" :lg="8">
+              <a-form-item :label="$t('ecomAds.rule.action')" name="action">
+                <a-select v-model:value="form.action" :options="actionOptions" />
+              </a-form-item>
+            </a-col>
+            <template v-if="hasValue">
+              <a-col :xs="24" :sm="12" :lg="6">
+                <a-form-item :label="$t('ecomAds.rule.actionValue')" name="actionValue" :extra="isPercent ? $t('ecomAds.rule.percentSuffix') : undefined">
+                  <a-input-number v-model:value="form.actionValue" :precision="2" class="full" :addon-after="isPercent ? '%' : undefined" />
+                </a-form-item>
+              </a-col>
+              <a-col :xs="12" :lg="5">
+                <a-form-item :label="$t('ecomAds.rule.min')" name="minValue">
+                  <a-input-number v-model:value="form.minValue" :min="0" :precision="2" class="full" />
+                </a-form-item>
+              </a-col>
+              <a-col :xs="12" :lg="5">
+                <a-form-item :label="$t('ecomAds.rule.max')" name="maxValue">
+                  <a-input-number v-model:value="form.maxValue" :min="0" :precision="2" class="full" />
+                </a-form-item>
+              </a-col>
+            </template>
+          </a-row>
 
-      <div class="section-title">{{ $t('ecomAds.rule.runMode') }}</div>
-      <a-row :gutter="16">
-        <a-col :xs="24" :sm="8">
-          <a-form-item :label="$t('ecomAds.rule.runMode')" name="runMode">
-            <a-radio-group v-model:value="form.runMode" :options="runModeOptions" />
-          </a-form-item>
-        </a-col>
-        <a-col v-if="form.runMode === EcomAdRunMode.DAILY" :xs="12" :sm="6">
-          <a-form-item :label="$t('ecomAds.rule.runHour')" name="runHour">
-            <a-select v-model:value="form.runHour" :options="hourOptions" />
-          </a-form-item>
-        </a-col>
-        <a-col :xs="12" :sm="10">
-          <a-form-item :label="$t('ecomAds.rule.owner')" name="ownerId" :extra="$t('ecomAds.rule.ownerTip')">
-            <IdentityUserSelect v-model:value="form.ownerId" :label="form.ownerName" />
-          </a-form-item>
-        </a-col>
-        <a-col :span="24">
-          <a-form-item name="autoApply" :extra="$t('ecomAds.rule.autoApplyTip')">
-            <a-checkbox v-model:checked="form.autoApply" :disabled="form.action === EcomAdAction.NOTIFY">{{ $t('ecomAds.rule.autoApply') }}</a-checkbox>
-          </a-form-item>
-        </a-col>
-        <a-col :span="24">
-          <a-form-item :label="$t('common.field.remark')" name="remark">
-            <a-input v-model:value="form.remark" :maxlength="255" />
-          </a-form-item>
-        </a-col>
-      </a-row>
-    </a-form>
+          <div class="section-title">{{ $t('ecomAds.rule.runMode') }}</div>
+          <a-row :gutter="16">
+            <a-col :xs="24" :sm="12" :lg="8">
+              <a-form-item :label="$t('ecomAds.rule.runMode')" name="runMode">
+                <a-radio-group v-model:value="form.runMode" :options="runModeOptions" />
+              </a-form-item>
+            </a-col>
+            <a-col v-if="form.runMode === EcomAdRunMode.DAILY" :xs="24" :sm="12" :lg="6">
+              <a-form-item :label="$t('ecomAds.rule.runHour')" name="runHour">
+                <a-select v-model:value="form.runHour" :options="hourOptions" />
+              </a-form-item>
+            </a-col>
+            <a-col :xs="24" :sm="12" :lg="10">
+              <a-form-item :label="$t('ecomAds.rule.owner')" name="ownerId" :extra="$t('ecomAds.rule.ownerTip')">
+                <IdentityUserSelect v-model:value="form.ownerId" :label="form.ownerName" />
+              </a-form-item>
+            </a-col>
+            <a-col :span="24">
+              <a-form-item name="autoApply" :extra="$t('ecomAds.rule.autoApplyTip')">
+                <a-checkbox v-model:checked="form.autoApply" :disabled="form.action === EcomAdAction.NOTIFY">{{ $t('ecomAds.rule.autoApply') }}</a-checkbox>
+              </a-form-item>
+            </a-col>
+            <a-col :span="24">
+              <a-form-item :label="$t('common.field.remark')" name="remark">
+                <a-input v-model:value="form.remark" :maxlength="255" />
+              </a-form-item>
+            </a-col>
+          </a-row>
+        </a-form>
+      </a-col>
+
+      <a-col :xs="24" :xl="7">
+        <section class="summary">
+          <div class="section-title">{{ $t('ecomAds.rule.summaryTitle') }}</div>
+          <a-descriptions :column="1" size="small" class="summary-desc">
+            <a-descriptions-item :label="$t('ecomAds.rule.level')">
+              {{ $t(`ecomAds.enum.level.${form.level}`) }} · {{ $t('ecomAds.rule.windowDays', { n: form.windowDays || '-' }) }}
+            </a-descriptions-item>
+            <a-descriptions-item :label="$t('ecomAds.rule.conditionsShort')">{{ conditionText(form) || '-' }}</a-descriptions-item>
+            <a-descriptions-item :label="$t('ecomAds.rule.action')">{{ form.action ? actionText(form, actionLabel) : '-' }}</a-descriptions-item>
+            <a-descriptions-item :label="$t('ecomAds.rule.runMode')">
+              {{ $t(`ecomAds.enum.runMode.${form.runMode}`) }}<template v-if="form.runMode === EcomAdRunMode.DAILY"> · {{ $t('ecomAds.schedule.hour', { h: form.runHour }) }}</template>
+              · {{ form.autoApply && form.action !== EcomAdAction.NOTIFY ? $t('ecomAds.rule.autoApply') : $t('ecomAds.rule.suggestOnly') }}
+            </a-descriptions-item>
+          </a-descriptions>
+          <template v-if="form.id">
+            <a-button block @click="previewRef.open({ id: form.id, name: form.name })">
+              <template #icon><EyeOutlined /></template>{{ $t('ecomAds.rule.preview') }}
+            </a-button>
+            <div class="sub-text preview-tip">{{ $t('ecomAds.rule.previewSavedTip') }}</div>
+          </template>
+          <div v-else class="sub-text">{{ $t('ecomAds.rule.previewAfterSave') }}</div>
+        </section>
+      </a-col>
+    </a-row>
+    <RulePreview ref="previewRef" />
   </FormDrawer>
 </template>
 
 <script setup>
-import { computed } from 'vue'
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons-vue'
+import { computed, ref } from 'vue'
+import { DeleteOutlined, EyeOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import FormDrawer from '@/components/FormDrawer.vue'
 import IdentityUserSelect from '@/components/common/IdentityUserSelect.vue'
 import { useStores } from '@/components/ecom/StoreSelect.vue'
@@ -123,12 +155,15 @@ import { addAdRule, getAdRule, updateAdRule } from '@/api/ecom/adRule'
 import { useDict } from '@/composables/useDict'
 import { useFormDrawer } from '@/composables/useFormDrawer'
 import { EcomAdAction, EcomAdLevel, EcomAdMetric, EcomAdOperator, EcomAdRunMode } from '@/constants/enums'
-import { toOptions } from '@/utils/dict'
+import { findDict, toOptions } from '@/utils/dict'
 import { t } from '@/locales'
+import RulePreview from './RulePreview.vue'
+import { actionText, conditionText } from './ruleText'
 
 /**
- * 广告规则新增 / 编辑（抽屉）：对象层级与统计窗口、对象范围（店铺、广告类型、活动名称包含、标签）、条件（全部满足）、
- * 动作（竞价 / 预算按百分比或固定值、上下限，暂停 / 启用，仅提醒）、执行方式（手动 / 每天整点）、自动执行与负责人
+ * 广告规则新增 / 编辑（子页）：对象层级与统计窗口、对象范围（店铺、广告类型、活动名称包含、标签）、条件（全部满足）、
+ * 动作（竞价 / 预算按百分比或固定值、上下限，暂停 / 启用，仅提醒）、执行方式（手动 / 每天整点）、自动执行与负责人；
+ * 右侧按当前填写显示规则摘要，编辑时可按已保存的规则预览命中对象
  */
 const emit = defineEmits(['success'])
 const dict = useDict('ecom_ad_type', 'ecom_ad_rule_action')
@@ -139,6 +174,8 @@ const metricOptions = Object.values(EcomAdMetric).map((v) => ({ value: v, label:
 const operatorOptions = Object.values(EcomAdOperator).map((v) => ({ value: v, label: t(`ecomAds.enum.operator.${v}`) }))
 const runModeOptions = Object.values(EcomAdRunMode).map((v) => ({ value: v, label: t(`ecomAds.enum.runMode.${v}`) }))
 const hourOptions = Array.from({ length: 24 }, (_, h) => ({ value: h, label: t('ecomAds.schedule.hour', { h }) }))
+const previewRef = ref()
+const actionLabel = (v) => findDict(dict.ecom_ad_rule_action, v)?.label || v
 const BID = [EcomAdAction.BID_PERCENT, EcomAdAction.BID_SET]
 const BUDGET = [EcomAdAction.BUDGET_PERCENT, EcomAdAction.BUDGET_SET]
 
@@ -236,22 +273,57 @@ defineExpose({ openCreate: drawer.openCreate, openEdit: drawer.openEdit })
   margin: 4px 0 12px;
   font-weight: 600;
 }
+.cond-box {
+  margin-bottom: 24px;
+  padding: 12px 16px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+}
 .cond {
   display: flex;
+  align-items: center;
   gap: 8px;
   margin-bottom: 8px;
 }
+.cond-no {
+  flex: none;
+  width: 20px;
+  color: var(--app-text-3);
+  text-align: center;
+}
 .metric {
-  width: 200px;
+  flex: 2;
+  min-width: 0;
+  max-width: 280px;
 }
 .op {
-  width: 130px;
+  flex: 1;
+  min-width: 0;
+  max-width: 160px;
 }
 .val {
-  width: 140px;
+  flex: 1;
+  min-width: 0;
+  max-width: 180px;
 }
-.add-cond {
-  margin-bottom: 16px;
+.summary {
+  position: sticky;
+  top: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-hover);
+}
+.summary-desc {
+  margin-bottom: 12px;
+}
+.summary-desc :deep(.ant-descriptions-item-label) {
+  min-width: 72px;
+  color: var(--app-text-3);
+  white-space: nowrap;
+}
+.preview-tip {
+  margin-top: 6px;
 }
 .sub-text {
   color: var(--app-text-3);

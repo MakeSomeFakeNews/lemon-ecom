@@ -15,6 +15,14 @@
       >
         <template #icon><CheckCircleOutlined /></template>{{ $t('common.action.confirm') }}
       </a-button>
+      <a-button
+        v-if="detail && detail.status === SettlementStatus.CONFIRMED && !detail.finSettlementId"
+        v-perm="'ecom:settlement:confirm'"
+        type="primary"
+        @click="emit('receipt', detail)"
+      >
+        <template #icon><CheckCircleOutlined /></template>{{ $t('ecomFixa.settlement.createReceipt') }}
+      </a-button>
     </template>
     <a-spin :spinning="loading">
       <template v-if="detail">
@@ -87,9 +95,9 @@ import { t } from '@/locales'
 
 /**
  * 结算单详情子页：头部汇总（店铺币种的各项金额）与明细表。
- * open(id) 打开，reload() 重新加载当前结算单；点「确认」时向页面发出 confirm(结算单)
+ * open(id) 打开，reload() 重新加载当前结算单；点「确认」时向页面发出 confirm(结算单)，点「生成收款单」时发出 receipt(结算单)
  */
-const emit = defineEmits(['confirm'])
+const emit = defineEmits(['confirm', 'receipt'])
 
 const dict = useDict('ecom_settlement_item_type')
 const typeLabel = (v) => findDict(dict.ecom_settlement_item_type, v)?.label || v

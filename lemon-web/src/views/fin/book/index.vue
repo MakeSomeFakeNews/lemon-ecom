@@ -212,7 +212,7 @@ const auxColumns = computed(() => [
   { title: t('fin.book.periodCredit'), key: 'credit', width: 150, align: 'right' },
   { title: t('fin.book.closeBalance'), key: 'balance', width: 170, align: 'right' }
 ])
-const aux = reactive({ dimension: 'PROJECT', accountId: undefined, rows: [], loading: false, loaded: false })
+const aux = reactive({ dimension: 'DEPT', accountId: undefined, rows: [], loading: false, loaded: false })
 async function loadAux() {
   aux.loaded = true
   aux.loading = true

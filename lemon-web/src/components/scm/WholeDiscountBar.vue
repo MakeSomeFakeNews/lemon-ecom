@@ -38,11 +38,11 @@ import { money, nz, round2 } from '@/utils/number'
 
 /**
  * 整单优惠（含税，抹零也用它）：显示合计、优惠输入、优惠后合计，「抹零」按优惠后合计向下取整到角 / 元 / 十元，差额累加到优惠。
- * 分摊由后端在保存时按行金额比例完成（先促销、再返利、最后整单优惠），这里只录入金额。
+ * 分摊由后端在保存时按行金额比例完成（先促销、最后整单优惠），这里只录入金额。
  * 用法：<WholeDiscountBar v-model:value="form.wholeDiscount" :total="合计" symbol="¥" />
  */
 const props = defineProps({
-  /** 优惠前合计（已扣除促销、返利） */
+  /** 优惠前合计（已扣除促销） */
   total: { type: Number, default: 0 },
   value: Number,
   symbol: { type: String, default: '¥' },

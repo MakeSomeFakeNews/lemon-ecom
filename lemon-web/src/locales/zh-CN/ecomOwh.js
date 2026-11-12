@@ -393,6 +393,7 @@ export default {
   },
   section: {
     basic: '基本信息',
+    api: '接口与同步',
     logistics: '物流信息',
     progress: '收货进度',
     quality: '质检结果',

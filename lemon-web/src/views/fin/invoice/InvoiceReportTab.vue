@@ -12,10 +12,10 @@
   </div>
   <div class="stats">
     <span>{{ kindModel === InvoiceKind.OUTPUT ? $t('fin.invoice.customerCount', { n: report.length }) : $t('fin.invoice.supplierCount', { n: report.length }) }}</span>
-    <span>{{ $t('fin.invoice.billAmount') }} ¥{{ formatMoney(reportTotal.amount) }}</span>
-    <span>{{ kindModel === InvoiceKind.OUTPUT ? $t('fin.invoice.invoicedOut') : $t('fin.invoice.invoicedIn') }} ¥{{ formatMoney(reportTotal.invoiced) }}</span>
-    <span>{{ kindModel === InvoiceKind.OUTPUT ? $t('fin.invoice.uninvoicedOut') : $t('fin.invoice.estimated') }} <b class="neg">¥{{ formatMoney(reportTotal.uninvoiced) }}</b></span>
-    <span>{{ $t('fin.invoice.ofWhichTax') }} ¥{{ formatMoney(reportTotal.uninvoicedTax) }}</span>
+    <span>{{ $t('fin.invoice.billAmount') }} {{ symMoney(reportTotal.amount) }}</span>
+    <span>{{ kindModel === InvoiceKind.OUTPUT ? $t('fin.invoice.invoicedOut') : $t('fin.invoice.invoicedIn') }} {{ symMoney(reportTotal.invoiced) }}</span>
+    <span>{{ kindModel === InvoiceKind.OUTPUT ? $t('fin.invoice.uninvoicedOut') : $t('fin.invoice.estimated') }} <b class="neg">{{ symMoney(reportTotal.uninvoiced) }}</b></span>
+    <span>{{ $t('fin.invoice.ofWhichTax') }} {{ symMoney(reportTotal.uninvoicedTax) }}</span>
   </div>
   <a-table
     row-key="partnerId"
@@ -40,6 +40,7 @@ import { useI18n } from 'vue-i18n'
 import { uninvoiced } from '@/api/fin'
 import { formatMoney } from '@/components/fin/fin'
 import { InvoiceKind } from '@/constants/enums'
+import { symMoney } from '@/utils/number'
 
 /** 未开票 / 暂估：按往来单位汇总截止日未开票的单据。种类、截止日由页面保存（v-model:report-kind、v-model:as-of），切换页签后保持 */
 const props = defineProps({ reportKind: { type: String, required: true }, asOf: { type: String, required: true } })

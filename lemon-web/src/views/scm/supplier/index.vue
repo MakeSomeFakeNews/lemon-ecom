@@ -26,10 +26,10 @@
         :columns="columns"
         @refresh="load"
       >
-        <a-button v-perm="'scm:supplier:add'" type="primary" @click="drawer.openCreate()">
+        <a-button v-perm="'scm:supplier:add'" type="primary" @click="formRef.openCreate()">
           <template #icon><PlusOutlined /></template>{{ $t('scm.supplier.add') }}
         </a-button>
-        <AiExtractButton target="scm.supplier" perm="scm:supplier:add" :title="$t('scm.supplier.supplier')" @result="ai.apply" />
+        <AiExtractButton target="scm.supplier" perm="scm:supplier:add" :title="$t('scm.supplier.supplier')" @result="(r) => formRef.applyAi(r)" />
         <a-button v-perm="'scm:supplier:add'" @click="importOpen = true">
           <template #icon><ImportOutlined /></template>{{ $t('common.action.import') }}
         </a-button>
@@ -92,97 +92,7 @@
       </a-table>
     </a-card>
 
-    <FormDrawer :drawer="drawer" :create-title="$t('scm.supplier.add')" :edit-title="$t('scm.supplier.edit')">
-      <AiPrefillAlert :ai="ai" />
-      <a-form ref="formRef" :model="form" :rules="rules" layout="vertical">
-        <a-row :gutter="16">
-          <a-col :xs="24" :sm="12">
-            <a-form-item :label="$t('scm.supplier.code')" name="code">
-              <a-input v-model:value="form.code" :maxlength="32" :placeholder="$t('scm.supplier.codePlaceholder')" />
-            </a-form-item>
-          </a-col>
-          <a-col :xs="24" :sm="12">
-            <a-form-item :label="$t('scm.supplier.name')" name="name" :class="ai.cls('name')">
-              <a-input v-model:value="form.name" :maxlength="128" />
-            </a-form-item>
-          </a-col>
-          <a-col :xs="24" :sm="12">
-            <a-form-item :label="$t('scm.supplier.level')" name="level" :extra="$t('scm.supplier.levelTip')">
-              <a-select v-model:value="form.level" allow-clear :options="toOptions(dict.scm_supplier_level)" />
-            </a-form-item>
-          </a-col>
-          <a-col :xs="24" :sm="12">
-            <a-form-item :label="$t('scm.supplier.paymentDays')" name="paymentDays" :extra="$t('scm.supplier.paymentDaysTip')">
-              <a-input-number v-model:value="form.paymentDays" :min="0" :max="365" :addon-after="$t('scm.supplier.day')" class="full" />
-            </a-form-item>
-          </a-col>
-          <a-col :xs="24" :sm="12">
-            <a-form-item :label="$t('scm.supplier.contact')" name="contact">
-              <a-input v-model:value="form.contact" :maxlength="64" />
-            </a-form-item>
-          </a-col>
-          <a-col :xs="24" :sm="12">
-            <a-form-item :label="$t('scm.supplier.phone')" name="phone">
-              <a-input v-model:value="form.phone" :maxlength="32" />
-            </a-form-item>
-          </a-col>
-          <a-col :xs="24" :sm="12">
-            <a-form-item :label="$t('common.field.email')" name="email" :class="ai.cls('email')">
-              <a-input v-model:value="form.email" :maxlength="128" />
-            </a-form-item>
-          </a-col>
-          <a-col :xs="24" :sm="12">
-            <a-form-item :label="$t('scm.supplier.taxNo')" name="taxNo" :class="ai.cls('taxNo')">
-              <a-input v-model:value="form.taxNo" :maxlength="32" />
-            </a-form-item>
-          </a-col>
-          <a-col :xs="24" :sm="12">
-            <a-form-item :label="$t('scm.supplier.bankName')" name="bankName">
-              <a-input v-model:value="form.bankName" :maxlength="128" />
-            </a-form-item>
-          </a-col>
-          <a-col :xs="24" :sm="12">
-            <a-form-item :label="$t('scm.supplier.bankAccount')" name="bankAccount">
-              <a-input v-model:value="form.bankAccount" :maxlength="64" />
-            </a-form-item>
-          </a-col>
-          <a-col :xs="24" :sm="12">
-            <a-form-item :label="$t('scm.supplier.type')" name="logistics" :extra="$t('scm.supplier.logisticsExtra')">
-              <a-checkbox :checked="form.logistics === 1" @update:checked="(v) => (form.logistics = v ? 1 : 0)">
-                {{ $t('scm.supplier.logisticsLabel') }}
-              </a-checkbox>
-            </a-form-item>
-          </a-col>
-          <a-col v-if="form.logistics === 1" :span="24">
-            <a-form-item :label="$t('scm.supplier.routes')" name="routes">
-              <a-textarea
-                v-model:value="form.routes"
-                :auto-size="{ minRows: 2, maxRows: 6 }"
-                :maxlength="1000"
-                show-count
-                :placeholder="$t('scm.supplier.routesPlaceholder')"
-              />
-            </a-form-item>
-          </a-col>
-          <a-col :span="24">
-            <a-form-item :label="$t('scm.supplier.linkedCustomer')" name="customerId" :extra="$t('scm.supplier.linkedCustomerExtra')">
-              <PartnerSelect v-model:value="form.customerId" :label="form.customerName" type="customer" allow-clear />
-            </a-form-item>
-          </a-col>
-          <a-col :span="24">
-            <a-form-item :label="$t('scm.supplier.address')" name="address">
-              <a-input v-model:value="form.address" :maxlength="255" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="24">
-            <a-form-item :label="$t('common.field.remark')" name="remark">
-              <a-textarea v-model:value="form.remark" :rows="2" :maxlength="255" show-count />
-            </a-form-item>
-          </a-col>
-        </a-row>
-        <CustomFieldsForm :fields="cfFields" :values="form.cf || {}" :title="$t('scm.supplier.extInfo')" />
-      </a-form>
-    </FormDrawer>
+    <SupplierForm ref="formRef" @saved="load" />
 
     <SupplierPriceDrawer v-model:open="priceOpen" :supplier="priceSupplier" />
     <PartnerMergeModal ref="mergeRef" type="supplier" @merged="load" />
@@ -209,7 +119,6 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { DollarOutlined, ImportOutlined, MergeCellsOutlined, PaperClipOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import DictTag from '@/components/DictTag.vue'
-import FormDrawer from '@/components/FormDrawer.vue'
 import ImportModal from '@/components/ImportModal.vue'
 import RecordExtrasModal from '@/components/RecordExtrasModal.vue'
 import SearchForm from '@/components/SearchForm.vue'
@@ -217,22 +126,18 @@ import StatusSwitch from '@/components/StatusSwitch.vue'
 import TableToolbar from '@/components/TableToolbar.vue'
 import SupplierPriceDrawer from '@/components/scm/SupplierPriceDrawer.vue'
 import PartnerMergeModal from '@/components/scm/PartnerMergeModal.vue'
-import PartnerSelect from '@/components/scm/PartnerSelect.vue'
-import { addPartner, changePartnerStatus, deletePartner, getPartner, pagePartner, updatePartner, importPartner } from '@/api/scm/partner'
+import { changePartnerStatus, deletePartner, pagePartner, importPartner } from '@/api/scm/partner'
 import { sumWidth, useColumns } from '@/composables/useColumns'
 import { useDict } from '@/composables/useDict'
-import { useFormDrawer } from '@/composables/useFormDrawer'
 import { useTable } from '@/composables/useTable'
 import { useUserStore } from '@/store/user'
 import { toOptions } from '@/utils/dict'
-import CustomFieldsForm from '@/components/common/CustomFieldsForm.vue'
-import { useCustomColumns, useCustomFields } from '@/composables/useCustomFields'
+import { useCustomColumns } from '@/composables/useCustomFields'
 import { useAction } from '@/composables/useAction'
 import AiExtractButton from '@/components/ai/AiExtractButton.vue'
-import AiPrefillAlert from '@/components/ai/AiPrefillAlert.vue'
-import { useAiPrefill } from '@/composables/useAiPrefill'
 import TableActions from '@/components/common/TableActions.vue'
 import { actionColumn } from '@/components/common/tableActions'
+import SupplierForm from './SupplierForm.vue'
 
 const { t } = useI18n()
 const userStore = useUserStore()
@@ -291,8 +196,6 @@ const typeOptions = [
 ]
 const { list, loading, size, pagination, load, search, onTableChange, exportAll } = useTable((p) => pagePartner('supplier', p), query)
 // 自定义字段：表单中填写，勾选「列表显示」的作为列
-const cf = useCustomFields('scm_supplier')
-const cfFields = cf.fields
 const { columns: cfColumns, cell: cfCell } = useCustomColumns('scm_supplier', list)
 const tableColumns = computed(() => {
   const cols = visibleColumns.value
@@ -307,32 +210,8 @@ function resetQuery() {
 
 onMounted(load)
 
-const rules = {
-  code: [
-    { required: true, message: t('scm.supplier.codeRequired') },
-    { pattern: /^[A-Za-z0-9_-]{1,32}$/, message: t('scm.supplier.codePattern') }
-  ],
-  name: [{ required: true, whitespace: true, message: t('scm.supplier.nameRequired') }],
-  email: [{ type: 'email', message: t('common.rule.email') }]
-}
-const FIELDS = ['code', 'name', 'level', 'contact', 'phone', 'email', 'address', 'taxNo', 'bankName', 'bankAccount', 'paymentDays', 'logistics', 'routes', 'customerId', 'remark']
-const drawer = useFormDrawer(
-  cf.wrap({
-    emptyForm: () => ({ id: undefined, ...Object.fromEntries(FIELDS.map((f) => [f, undefined])), paymentDays: 30, logistics: 0 }),
-    fetch: (record) => getPartner('supplier', record.id),
-    create: (data) => addPartner('supplier', data),
-    update: (id, data) => updatePartner('supplier', id, data),
-    toPayload: (f) => ({
-      ...Object.fromEntries(FIELDS.map((k) => [k, f[k] === '' ? null : f[k]])),
-      logistics: f.logistics === 1 ? 1 : 0,
-      routes: f.logistics === 1 ? f.routes || null : null
-    }),
-    onSuccess: load
-  })
-)
-const { formRef, form } = drawer
-// 智能录入：名片、营业执照等识别结果打开新增表单并预填
-const ai = useAiPrefill('supplier', (data) => drawer.openCreate(data), () => drawer.open.value)
+// 新增 / 编辑（子页）
+const formRef = ref()
 
 const remove = useAction((id) => deletePartner('supplier', id), { successKey: 'common.msg.deleteSuccess', reload: () => load() })
 
@@ -341,7 +220,7 @@ const mergeRef = ref()
 
 /** 行操作：编辑、供应商价格、删除直接显示，资料、合并在「更多」中 */
 const rowActions = (record) => [
-  { type: 'edit', perm: 'scm:supplier:edit', onClick: () => drawer.openEdit(record) },
+  { type: 'edit', perm: 'scm:supplier:edit', onClick: () => formRef.value.openEdit(record) },
   { key: 'prices', label: t('scm.supplier.prices'), icon: DollarOutlined, onClick: () => openPrices(record) },
   { type: 'delete', perm: 'scm:supplier:remove', confirm: t('scm.supplier.confirmDelete', { name: record.name }), onClick: () => remove(record.id) },
   { key: 'extras', label: t('scm.supplier.extras'), icon: PaperClipOutlined, more: true, onClick: () => openExtras(record) },
@@ -353,9 +232,6 @@ const rowActions = (record) => [
 .sub-text {
   color: var(--app-text-3);
   font-size: 12px;
-}
-.full {
-  width: 100%;
 }
 .logistics-tag {
   margin-left: 4px;

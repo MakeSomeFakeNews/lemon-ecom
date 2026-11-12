@@ -31,7 +31,7 @@ export const rangeParams = (range) => ({ beginDate: range?.[0], endDate: range?.
 export const ratio = (num, den) => (nz(den) ? (nz(num) / nz(den)) * 100 : null)
 
 /** 指标卡、图表提示上的金额：¥ 1.2 万 */
-export const yuan = (v) => t('ecomReport.common.yuan', { v: shortMoney(v) })
+export const yuan = (v) => `${nz(v) < 0 ? '-' : ''}${t('ecomReport.common.yuan', { v: shortMoney(Math.abs(nz(v))) })}`
 
 /** 接口返回数组、前端分页时 a-table 的 pagination（受控 current，重新查询后由页面回到第一页） */
 export const localPagination = (pageSize = 20) => ({

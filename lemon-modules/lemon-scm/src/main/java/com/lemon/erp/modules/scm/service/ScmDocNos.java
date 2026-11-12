@@ -31,12 +31,9 @@ public class ScmDocNos {
     @Order(1)
     public DocNoCatalog scmDocNoCatalog() {
         List<DocNoCatalog.Type> types = new ArrayList<>();
-        types.add(doc(ScmPurchaseContractService.DOC_NO, "scm.label.purchaseContract"));
         Arrays.stream(OrderKind.values()).forEach(k -> types.add(doc(k.getPrefix(), k.getLabelKey())));
         types.add(doc(ORDER_CHANGE, "scm.label.orderChange"));
         Arrays.stream(TradeKind.values()).forEach(k -> types.add(doc(k.getPrefix(), k.getLabelKey())));
-        types.add(doc(ScmRebateService.DOC_NO, "scm.label.salesRebate"));
-        types.add(doc(ScmRebateService.PURCHASE_DOC_NO, "scm.label.purchaseRebate"));
         types.add(master(SUPPLIER, "scm.label.supplierCode"));
         types.add(master(CUSTOMER, "scm.label.customerCode"));
         return new DocNoCatalog("scm.label.supplyChainManagement", types);

@@ -3,6 +3,7 @@ package com.lemon.erp.modules.ecom.publish.service;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.lemon.erp.common.exception.BizException;
 import com.lemon.erp.common.i18n.Messages;
+import com.lemon.erp.modules.ecom.assistant.service.EcomBannedWordService;
 import com.lemon.erp.modules.ecom.connector.ConnectorContext;
 import com.lemon.erp.modules.ecom.entity.EcomListing;
 import com.lemon.erp.modules.ecom.entity.EcomStore;
@@ -55,6 +56,8 @@ public class EcomPublishService {
     private final PublishConnectorRegistry registry;
     private final EcomPublishSupport support;
     private final TransactionTemplate transactionTemplate;
+    /** 违禁词检查（AI 运营助手）：命中阻止发布的词时不能提交 */
+    private final EcomBannedWordService bannedWordService;
 
     // ---------------------------------------------------------------- 能力、类目与属性
 
@@ -144,6 +147,12 @@ public class EcomPublishService {
             return Messages.get("ecom.error.pub.notSubmittable", item.getTitle());
         }
         EcomStore store = storeService.detail(item.getStoreId());
+        // 违禁词：命中阻止发布的词时不能提交（只提醒的词不阻止）
+        String banned = bannedWordService.blockReason(store.getPlatform(), store.getMarketplace(), item.getTitle(), item.getBullets(),
+                item.getDescription());
+        if (banned != null) {
+            return banned;
+        }
         PublishConnector c = registry.find(store.getPlatform()).orElse(null);
         if (c == null || !c.supports(PublishCapability.PUBLISH)) {
             return Messages.get("ecom.error.pub.publishUnsupported", store.getPlatform().name());

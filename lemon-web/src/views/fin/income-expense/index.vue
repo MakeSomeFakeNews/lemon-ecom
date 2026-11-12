@@ -34,7 +34,7 @@
               </template>
               <template v-else-if="column.key === 'direction'"><DictTag type="fin_fund_direction" :value="record.direction" /></template>
               <template v-else-if="column.key === 'amount'">
-                <span :class="record.direction === FundDirection.OUT ? 'out' : 'in'">¥{{ formatMoney(record.amount) }}</span>
+                <span :class="record.direction === FundDirection.OUT ? 'out' : 'in'">{{ symMoney(record.amount) }}</span>
               </template>
               <template v-else-if="column.key === 'source'">
                 <SourceDocLink v-if="record.sourceType" :type="record.sourceType" :id="record.sourceId" :no="record.sourceNo" />
@@ -91,6 +91,7 @@ import IoDetail from './IoDetail.vue'
 import IoForm from './IoForm.vue'
 import IoSummary from './IoSummary.vue'
 import { useIoActions } from './useIoActions'
+import { symMoney } from '@/utils/number'
 
 /**
  * 其他收支（现金银行）：其他收入单（废料销售、佣金收入等）、费用支出单（房租、水电、差旅等），确认后生成凭证并进入出纳日记账、资金日报；

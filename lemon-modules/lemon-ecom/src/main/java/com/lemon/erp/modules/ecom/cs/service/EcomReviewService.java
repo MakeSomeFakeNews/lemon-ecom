@@ -58,6 +58,11 @@ public class EcomReviewService {
     private final EcomCsSupport support;
     private final MessageConnectorRegistry registry;
     private final MessageSender messageSender;
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
+
+    /** 新增了一条评价（自动化规则「新差评」在提交后处理） */
+    public record ReviewCreatedEvent(Long reviewId) {
+    }
 
     // ---------------------------------------------------------------- 查询与统计
 
@@ -189,6 +194,7 @@ public class EcomReviewService {
         }
         if (created) {
             reviewMapper.insert(r);
+            eventPublisher.publishEvent(new ReviewCreatedEvent(r.getId()));
             if (rating <= CsConstants.LOW_RATING) {
                 alertLow(store, r.getId(), "/ecom/cs-review?id=" + r.getId(), rating, r.getSellerSku(), r.getContent());
             }

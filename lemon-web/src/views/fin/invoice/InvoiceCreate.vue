@@ -42,7 +42,7 @@
     <div class="bills-head">
       <span class="section-title">{{ conf.billsTitle }}</span>
       <a-space>
-        <span>{{ $t('fin.invoice.matchTotal') }} <b class="total">¥{{ formatMoney(itemTotal) }}</b></span>
+        <span>{{ $t('fin.invoice.matchTotal') }} <b class="total">{{ symMoney(itemTotal) }}</b></span>
         <a-tag v-if="form.amount != null && Math.abs(itemTotal - Number(form.amount)) >= 0.005" color="red" :bordered="false">{{ $t('fin.invoice.mismatch') }}</a-tag>
       </a-space>
     </div>
@@ -95,7 +95,7 @@ import PartnerSelect from '@/components/scm/PartnerSelect.vue'
 import { addInvoice, invoiceOpenBills } from '@/api/fin'
 import { useDict } from '@/composables/useDict'
 import { toOptions } from '@/utils/dict'
-import { round2 } from '@/utils/number'
+import { round2, symMoney } from '@/utils/number'
 import { today } from '@/components/wms/wms'
 import { formatMoney } from '@/components/fin/fin'
 import { KINDS, billColumns as makeBillColumns, billRemaining, useInvoiceBills } from './invoice'

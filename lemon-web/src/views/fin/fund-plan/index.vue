@@ -12,19 +12,19 @@
       <div class="stats">
         <div class="stat">
           <div class="stat-label">{{ $t('fin.fundPlan.currentBalance') }}</div>
-          <div class="stat-value">¥{{ formatMoney(plan?.opening) }}</div>
+          <div class="stat-value">{{ symMoney(plan?.opening) }}</div>
         </div>
         <div class="stat">
           <div class="stat-label">{{ $t('fin.fundPlan.periodIn') }}</div>
-          <div class="stat-value in">¥{{ formatMoney(sum('totalIn')) }}</div>
+          <div class="stat-value in">{{ symMoney(sum('totalIn')) }}</div>
         </div>
         <div class="stat">
           <div class="stat-label">{{ $t('fin.fundPlan.periodOut') }}</div>
-          <div class="stat-value out">¥{{ formatMoney(sum('totalOut')) }}</div>
+          <div class="stat-value out">{{ symMoney(sum('totalOut')) }}</div>
         </div>
         <div class="stat">
           <div class="stat-label">{{ $t('fin.fundPlan.minBalance') }}</div>
-          <div :class="['stat-value', { out: minClosing < 0 }]">¥{{ formatMoney(minClosing) }}</div>
+          <div :class="['stat-value', { out: minClosing < 0 }]">{{ symMoney(minClosing) }}</div>
           <div v-if="shortages.length" class="stat-sub out">{{ $t('fin.fundPlan.shortageSummary', { n: shortages.length, first: shortages[0].label }) }}</div>
           <div v-else class="stat-sub">{{ $t('fin.fundPlan.sufficient') }}</div>
         </div>
@@ -78,7 +78,7 @@
           <template v-if="column.key === 'direction'">
             <a-tag :color="record.direction === FundDirection.IN ? 'green' : 'red'" :bordered="false">{{ record.direction === FundDirection.IN ? $t('fin.fundPlan.in') : $t('fin.fundPlan.out') }}</a-tag>
           </template>
-          <template v-else-if="column.key === 'amount'">¥{{ formatMoney(record.amount) }}</template>
+          <template v-else-if="column.key === 'amount'">{{ symMoney(record.amount) }}</template>
           <template v-else-if="column.key === 'action'">
             <TableActions
               :actions="[
@@ -118,7 +118,7 @@
             <a-tag :color="record.direction === FundDirection.IN ? 'green' : 'red'" :bordered="false">{{ record.direction === FundDirection.IN ? $t('fin.fundPlan.in') : $t('fin.fundPlan.out') }}</a-tag>
           </template>
           <template v-else-if="column.key === 'source'">{{ SOURCE_LABELS[record.source] }}</template>
-          <template v-else-if="column.key === 'amount'">¥{{ formatMoney(record.amount) }}</template>
+          <template v-else-if="column.key === 'amount'">{{ symMoney(record.amount) }}</template>
         </template>
       </a-table>
     </SubPage>
@@ -148,6 +148,7 @@ import { today } from '@/components/wms/wms'
 import { useFormDrawer } from '@/composables/useFormDrawer'
 
 import { FundDirection, FundSource, PlanUnit } from '@/constants/enums'
+import { symMoney } from '@/utils/number'
 /** 资金计划：按周 / 月预计资金流入流出与余额，标出资金缺口 */
 const UNIT_OPTIONS = [
   { label: t('fin.fundPlan.byWeek'), value: 'WEEK' },
@@ -157,13 +158,11 @@ const UNIT_OPTIONS = [
 const SOURCE_LABELS = {
   AR: t('fin.fundPlan.source.AR'),
   AP: t('fin.fundPlan.source.AP'),
-  NOTE_IN: t('fin.fundPlan.source.NOTE_IN'),
-  NOTE_OUT: t('fin.fundPlan.source.NOTE_OUT'),
   CLAIM: t('fin.fundPlan.source.CLAIM'),
   PLAN: t('fin.fundPlan.source.PLAN')
 }
-const IN_SOURCES = [FundSource.AR, FundSource.NOTE_IN, FundSource.PLAN]
-const OUT_SOURCES = [FundSource.AP, FundSource.NOTE_OUT, FundSource.CLAIM, FundSource.PLAN]
+const IN_SOURCES = [FundSource.AR, FundSource.PLAN]
+const OUT_SOURCES = [FundSource.AP, FundSource.CLAIM, FundSource.PLAN]
 
 const unit = ref('WEEK')
 const periods = ref(12)

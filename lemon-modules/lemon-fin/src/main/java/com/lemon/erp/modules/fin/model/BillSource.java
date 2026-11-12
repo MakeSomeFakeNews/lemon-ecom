@@ -17,20 +17,8 @@ public enum BillSource {
     PURCHASE_RETURN,
     /** 期初 / 手工 */
     MANUAL,
-    /** 项目开票 */
-    PROJECT,
-    /** 运费 */
-    SHIPMENT,
-    /** 服务收费 */
-    TICKET,
     /** 固定资产 */
     ASSET,
-    /** 票据拒付 */
-    NOTE,
-    /** 质量索赔 */
-    QUALITY_CLAIM,
-    /** 销售返利 */
-    REBATE,
     /** 冲账单（垫付运费、返利、三包赔偿等抵扣往来款，红字） */
     OFFSET,
     /** 订单尾差调整：部分出入库的订单关闭时，已出入库金额与订单口径的差额（蓝字或红字） */
@@ -42,7 +30,9 @@ public enum BillSource {
     /** 销售退货运费：客户代垫的退货运费，来源为该退货单（红字应收） */
     SALES_RETURN_FREIGHT,
     /** 采购退货运费：本公司替供应商垫付的退货运费，来源为该退货单（红字应付、月结的承运商应付） */
-    PURCHASE_RETURN_FREIGHT;
+    PURCHASE_RETURN_FREIGHT,
+    /** 电商平台费用：平台结算确认时按费用科目生成的红字应收（借 费用科目 / 贷 应收账款），收款只按结算净额核销 */
+    PLATFORM_FEE;
 
     /** 供应链出入库生成的单据（与 scm TradeKind 同名） */
     public static final Set<BillSource> TRADE = EnumSet.of(SALES_OUT, SALES_RETURN, PURCHASE_IN, PURCHASE_RETURN);

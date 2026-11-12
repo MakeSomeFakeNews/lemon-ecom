@@ -24,6 +24,8 @@ export default {
     add: '新增监控',
     addTitle: '新增监控',
     editTitle: '修改监控',
+    sectionTarget: '监控对象',
+    sectionAlert: '抓取与预警',
     fetch: '接口取数',
     fetchSelected: '取数（{n}）',
     fetchSelect: '先勾选要取数的监控',

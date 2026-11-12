@@ -357,6 +357,8 @@ export default {
     tip: '三边保存时按从大到小排列；「从预估费用报告同步」带入亚马逊测量的尺寸重量（GET_FBA_ESTIMATED_FBA_FEES_TXT_DATA）'
   },
   tier: {
+    sectionBasic: '基本信息',
+    sectionLimits: '尺寸与重量上限',
     marketplace: '站点',
     code: '编码',
     name: '名称',

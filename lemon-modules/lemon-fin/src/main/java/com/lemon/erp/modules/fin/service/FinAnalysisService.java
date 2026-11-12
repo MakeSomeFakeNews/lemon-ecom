@@ -171,11 +171,9 @@ public class FinAnalysisService {
         for (FinAnalysis.CategoryAmount r : analysisMapper.selectCostCloseByCategory(period)) {
             costByAccount.merge(accountRules.code(AccountRole.INVENTORY, r.getCategory()), dec(r.getCloseAmount()), BigDecimal::add);
         }
-        String outsource = accountRules.code(AccountRole.OUTSOURCE_MATERIAL, null);
         Set<String> codes = new TreeSet<>(costByAccount.keySet());
         codes.add(accountRules.code(AccountRole.INVENTORY, FinConstants.CATEGORY_RAW));
         codes.add(accountRules.code(AccountRole.INVENTORY, FinConstants.CATEGORY_FINISHED));
-        codes.add(outsource);
         List<FinAccount> all = accountService.listAll();
         List<FinAnalysis.InventoryAccount> accounts = new ArrayList<>();
         for (String code : codes) {
@@ -189,9 +187,8 @@ public class FinAnalysisService {
                     gl = gl.add(entryMapper.sumBalanceUpTo(a.getId(), period));
                 }
             }
-            BigDecimal costAmount = outsource.equals(code) ? null : costByAccount.getOrDefault(code, BigDecimal.ZERO);
-            accounts.add(new FinAnalysis.InventoryAccount(code, parent.getName(), gl, costAmount,
-                    costAmount == null ? null : gl.subtract(costAmount)));
+            BigDecimal costAmount = costByAccount.getOrDefault(code, BigDecimal.ZERO);
+            accounts.add(new FinAnalysis.InventoryAccount(code, parent.getName(), gl, costAmount, gl.subtract(costAmount)));
         }
         List<FinAnalysis.QtyDiff> qty = analysisMapper.selectQtyDiff(period, toYearMonth(period).atEndOfMonth());
         return new FinAnalysis.InventoryReconciliation(period, accounts, qty);

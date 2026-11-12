@@ -252,9 +252,6 @@ public final class JxcViews {
         private BigDecimal apBalance;
         private BigDecimal advanceReceived;
         private BigDecimal advancePaid;
-        /** 持有的应收票据、未兑付的应付票据（票面金额） */
-        private BigDecimal notesReceivable;
-        private BigDecimal notesPayable;
     }
 
     /** 已生效、还没有生成凭证的收付款（资金余额取自凭证，不含它们） */

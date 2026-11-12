@@ -32,7 +32,7 @@
           </a-descriptions-item>
           <a-descriptions-item v-if="foreign" :label="$t('scm.order.currencyRate')">
             {{ detail.currency }} @{{ Number(detail.exchangeRate) }}
-            <span class="sub-text">（≈ ¥{{ formatMoney(Number(detail.totalAmount) * Number(detail.exchangeRate || 0)) }}）</span>
+            <span class="sub-text">（≈ {{ symMoney(Number(detail.totalAmount) * Number(detail.exchangeRate || 0)) }}）</span>
           </a-descriptions-item>
           <a-descriptions-item v-if="Number(detail.wholeDiscount)" :label="$t('scm.order.discount')">
             <span>{{ $t('scm.wholeDiscount.value', { amount: symbol + formatMoney(detail.wholeDiscount) }) }}</span>
@@ -101,10 +101,10 @@
             </a-table>
           </a-tab-pane>
           <a-tab-pane v-for="t in conf.trades" :key="t" :tab="$t('scm.order.tradeRecords', { kind: TRADE_KINDS[t].label })">
-            <a-table row-key="id" size="small" :columns="tradeColumns" :data-source="trades[t]" :pagination="false">
+            <a-table row-key="id" size="small" :columns="tradeColumns" :data-source="trades[t]" :pagination="false" :scroll="{ x: 940 }">
               <template #bodyCell="{ column, record }">
                 <template v-if="column.key === 'totalQty'">{{ formatQty(record.totalQty) }}</template>
-                <template v-else-if="column.key === 'totalAmount'">¥{{ formatMoney(record.totalAmount) }}</template>
+                <template v-else-if="column.key === 'totalAmount'">{{ symMoney(record.totalAmount) }}</template>
               </template>
             </a-table>
           </a-tab-pane>
@@ -170,6 +170,7 @@ import { ORDER_KINDS, TRADE_KINDS, formatMoney, grossAmount, grossPrice, netQty 
 import { materialColumns, printDocs } from '@/utils/print'
 
 import { OrderSource, OrderStatus } from '@/constants/enums'
+import { symMoney } from '@/utils/number'
 /**
  * 订单详情：明细执行进度、入库 / 出库与退货记录，按状态提供审核、撤回、反审核、关闭、入库 / 出库、退货等操作。
  * 触发 edit(order)、trade(tradeKind, order)、changed
@@ -221,10 +222,10 @@ function print() {
       [t('scm.order.deliveryDate'), d.deliveryDate],
       [c.warehouseLabel, d.warehouseName],
       ...(d.invoiceKind ? [[t('print.name.invoiceKind'), findDict(invoiceKinds.scm_invoice_kind, d.invoiceKind)?.label || d.invoiceKind]] : []),
-      ...(Number(d.wholeDiscount) ? [[t('print.name.grossTotal'), `${currencySymbol(d.currency)}${formatMoney(grossTotal.value)}`],
-        [t('scm.wholeDiscount.label'), `${currencySymbol(d.currency)}${formatMoney(d.wholeDiscount)}`]] : []),
-      [Number(d.wholeDiscount) ? t('print.name.discountedTotal') : t('scm.order.totalAmount'), `${currencySymbol(d.currency)}${formatMoney(d.totalAmount)}`],
-      [t('scm.order.taxAmount'), `${currencySymbol(d.currency)}${formatMoney(d.taxAmount)}`],
+      ...(Number(d.wholeDiscount) ? [[t('print.name.grossTotal'), `${symMoney(grossTotal.value, currencySymbol(d.currency))}`],
+        [t('scm.wholeDiscount.label'), `${symMoney(d.wholeDiscount, currencySymbol(d.currency))}`]] : []),
+      [Number(d.wholeDiscount) ? t('print.name.discountedTotal') : t('scm.order.totalAmount'), `${symMoney(d.totalAmount, currencySymbol(d.currency))}`],
+      [t('scm.order.taxAmount'), `${symMoney(d.taxAmount, currencySymbol(d.currency))}`],
       ...(isForeign(d.currency) ? [[t('scm.order.currencyRate'), `${d.currency} @${Number(d.exchangeRate)}`]] : []),
       ...(d.version > 1 ? [[t('scm.order.version'), `V${d.version}`]] : [])
     ],
@@ -267,7 +268,7 @@ const qtyText = (i) =>
     : `${formatQty(i.qty)} ${i.unit || ''}`
 const percent = (i) => Math.min(Math.round((netQty(i) / Number(i.qty)) * 100), 100)
 
-// 业务员（销售提成按此统计）
+// 业务员（销售报表按业务员统计）
 const salesmanEditing = ref(false)
 const salesmanId = ref()
 watch(salesmanEditing, (v) => v && (salesmanId.value = detail.value?.salesmanId))

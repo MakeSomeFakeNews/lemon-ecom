@@ -27,7 +27,7 @@
             <a-input-search v-model:value="trades.keyword" :placeholder="$t('pricing.lookup.tradeKeyword')" allow-clear class="qh-keyword" @search="loadTrades(1)" />
           </div>
           <a-table
-            :row-key="(r, i) => `${r.docId}-${i}`"
+            :row-key="(r) => `${r.docId}-${seqKey(r)}`"
             size="small"
             :columns="tradeColumns"
             :data-source="trades.list"
@@ -56,6 +56,10 @@ import { quickLookupSummary, quickLookupTrades } from '@/api/scm/quickLookup'
 import { OrderKind } from '@/constants/enums'
 import { useUserStore } from '@/store/user'
 import { price, qty } from '@/utils/number'
+import { seqRowKey } from '@/utils/rowKey'
+
+/** 行没有唯一字段，按行对象分配序号 */
+const seqKey = seqRowKey()
 
 /**
  * 售价 / 进价历史参考：最近 3 次、系统最新价、最高价、最低价（按看得到的出入库单统计，优惠前含税单价）；

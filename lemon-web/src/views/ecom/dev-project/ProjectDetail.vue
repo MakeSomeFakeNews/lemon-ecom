@@ -56,11 +56,11 @@
               <a v-if="detail.competitorUrl" :href="detail.competitorUrl" target="_blank" rel="noopener" class="ml"><LinkOutlined /></a>
             </a-descriptions-item>
             <a-descriptions-item :label="$t('ecomDev.project.targetPrice')">{{ detail.targetPrice != null ? `${detail.currency || ''} ${money(detail.targetPrice)}` : '-' }}</a-descriptions-item>
-            <a-descriptions-item :label="$t('ecomDev.project.estPurchasePrice')">{{ detail.estPurchasePrice != null ? `¥ ${money(detail.estPurchasePrice)}` : '-' }}</a-descriptions-item>
+            <a-descriptions-item :label="$t('ecomDev.project.estPurchasePrice')">{{ detail.estPurchasePrice != null ? `${symMoney(detail.estPurchasePrice)}` : '-' }}</a-descriptions-item>
             <a-descriptions-item :label="$t('ecomDev.project.estMargin')">
               <span v-if="detail.estMargin != null" :class="['margin', marginClass(detail.estMargin)]">{{ Number(detail.estMargin) }}%</span>
               <span v-else class="sub-text">{{ $t('ecomDev.project.noEstimate') }}</span>
-              <span v-if="detail.estProfit != null" class="sub-text"> · ¥ {{ money(detail.estProfit) }}</span>
+              <span v-if="detail.estProfit != null" class="sub-text"> · {{ symMoney(detail.estProfit) }}</span>
             </a-descriptions-item>
             <a-descriptions-item :label="$t('ecomDev.project.size')">
               {{ sizeText(detail) || '-' }}<span v-if="detail.weightKg != null"> · {{ Number(detail.weightKg) }} kg</span>
@@ -168,7 +168,7 @@ import CreateDraftModal from '../publish/CreateDraftModal.vue'
 import { deleteDevImage, deleteDevSample, getDevProject, mainDevImage, uploadDevImage } from '@/api/ecom/dev'
 import { DevLogAction, DevProjectStatus } from '@/constants/enums'
 import { useUserStore } from '@/store/user'
-import { money } from '@/utils/number'
+import { money, symMoney } from '@/utils/number'
 import { canDelete, canGenerateMaterial, canManualApprove, canSubmit, imagesOf, isEditable, isPending, marginClass, MOVES, sizeText } from './dev'
 import { useDevActions } from './useDevActions'
 

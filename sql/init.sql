@@ -24,20 +24,8 @@ DROP TABLE IF EXISTS ai_message;
 DROP TABLE IF EXISTS ai_conversation;
 DROP TABLE IF EXISTS ai_usage;
 DROP TABLE IF EXISTS ai_config;
-DROP TABLE IF EXISTS fin_commission_line;
-DROP TABLE IF EXISTS fin_commission;
-DROP TABLE IF EXISTS fin_commission_rule;
 DROP TABLE IF EXISTS fin_account_rule;
 DROP TABLE IF EXISTS fin_budget;
-DROP TABLE IF EXISTS fin_note_log;
-DROP TABLE IF EXISTS scm_delivery_package_item;
-DROP TABLE IF EXISTS scm_delivery_package;
-DROP TABLE IF EXISTS scm_wave;
-DROP TABLE IF EXISTS scm_channel_report_item;
-DROP TABLE IF EXISTS scm_channel_report;
-DROP TABLE IF EXISTS scm_rebate_item;
-DROP TABLE IF EXISTS scm_rebate_tier;
-DROP TABLE IF EXISTS scm_rebate;
 DROP TABLE IF EXISTS scm_promotion_usage;
 DROP TABLE IF EXISTS scm_promotion;
 DROP TABLE IF EXISTS fin_consumable_use_item;
@@ -47,16 +35,8 @@ DROP TABLE IF EXISTS fin_asset_check;
 DROP TABLE IF EXISTS fin_asset_move;
 DROP TABLE IF EXISTS fin_supplier_statement_line;
 DROP TABLE IF EXISTS fin_supplier_statement;
-DROP TABLE IF EXISTS scm_asn_item;
-DROP TABLE IF EXISTS scm_asn;
-DROP TABLE IF EXISTS scm_bid_item;
-DROP TABLE IF EXISTS scm_bid;
-DROP TABLE IF EXISTS scm_tender_supplier;
-DROP TABLE IF EXISTS scm_tender_item;
-DROP TABLE IF EXISTS scm_tender;
 DROP TABLE IF EXISTS scm_purchase_contract_item;
 DROP TABLE IF EXISTS scm_purchase_contract;
-DROP TABLE IF EXISTS fin_note;
 DROP TABLE IF EXISTS fin_fund_transfer;
 DROP TABLE IF EXISTS fin_fund_plan_item;
 DROP TABLE IF EXISTS fin_cost_layer;
@@ -90,10 +70,6 @@ DROP TABLE IF EXISTS fin_account_opening;
 DROP TABLE IF EXISTS fin_exchange_rate;
 DROP TABLE IF EXISTS fin_currency;
 DROP TABLE IF EXISTS fin_account;
-DROP TABLE IF EXISTS scm_delivery;
-DROP TABLE IF EXISTS scm_delivery_item;
-DROP TABLE IF EXISTS scm_delivery_pick;
-DROP TABLE IF EXISTS scm_shipment_track;
 DROP TABLE IF EXISTS scm_shipment;
 DROP TABLE IF EXISTS scm_trade_draft_item;
 DROP TABLE IF EXISTS scm_trade_draft;
@@ -110,14 +86,6 @@ DROP TABLE IF EXISTS scm_price_list;
 DROP TABLE IF EXISTS scm_price_control;
 DROP TABLE IF EXISTS scm_customer_price;
 DROP TABLE IF EXISTS scm_price_memory;
-DROP TABLE IF EXISTS scm_requisition;
-DROP TABLE IF EXISTS scm_requisition_item;
-DROP TABLE IF EXISTS scm_inquiry;
-DROP TABLE IF EXISTS scm_inquiry_item;
-DROP TABLE IF EXISTS scm_inquiry_quote;
-DROP TABLE IF EXISTS scm_inquiry_supplier;
-DROP TABLE IF EXISTS scm_quotation;
-DROP TABLE IF EXISTS scm_quotation_item;
 DROP TABLE IF EXISTS scm_supplier_price;
 DROP TABLE IF EXISTS scm_supplier;
 DROP TABLE IF EXISTS wms_doc_sequence;
@@ -1325,154 +1293,6 @@ CREATE TABLE scm_price_memory (
     KEY idx_price_memory_material (material_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '价格记忆：销售出库、采购入库确认后登记往来单位 × 物料的最新 / 最低 / 最高价';
 
-CREATE TABLE scm_requisition (
-    id               BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id        BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
-    req_no           VARCHAR(32)  NOT NULL COMMENT '请购单号',
-    req_date         DATE         NOT NULL COMMENT '请购日期',
-    status           VARCHAR(16)  NOT NULL DEFAULT 'DRAFT' COMMENT '状态(字典 scm_requisition_status) DRAFT草稿 APPROVING审批中 APPROVED已批准 ORDERED已下单 CLOSED已关闭',
-    remark           VARCHAR(255)          DEFAULT NULL COMMENT '说明',
-    flow_instance_id VARCHAR(64)           DEFAULT NULL COMMENT '审批流程实例',
-    approve_by       BIGINT                DEFAULT NULL COMMENT '批准人',
-    approve_time     DATETIME              DEFAULT NULL COMMENT '批准时间',
-    dept_id          BIGINT                DEFAULT NULL COMMENT '请购部门',
-    create_by        BIGINT                DEFAULT NULL COMMENT '请购人',
-    create_time      DATETIME              DEFAULT NULL COMMENT '创建时间',
-    update_time      DATETIME              DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_requisition_no (req_no, tenant_id),
-    KEY idx_requisition_status (status)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '请购单';
-
-CREATE TABLE scm_requisition_item (
-    id             BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id      BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
-    requisition_id BIGINT         NOT NULL COMMENT '请购单',
-    material_id    BIGINT         NOT NULL COMMENT '物料',
-    qty            DECIMAL(18, 4) NOT NULL COMMENT '请购数量',
-    required_date  DATE                    DEFAULT NULL COMMENT '需求日期',
-    supplier_id    BIGINT                  DEFAULT NULL COMMENT '建议供应商，为空时下单取默认供应商',
-    order_id       BIGINT                  DEFAULT NULL COMMENT '生成的采购订单',
-    remark         VARCHAR(255)            DEFAULT NULL COMMENT '备注',
-    create_time    DATETIME                DEFAULT NULL COMMENT '创建时间',
-    update_time    DATETIME                DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id),
-    KEY idx_requisition_item_req (requisition_id),
-    KEY idx_requisition_item_material (material_id),
-    KEY idx_requisition_item_order (order_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '请购单明细';
-
-CREATE TABLE scm_inquiry (
-    id           BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id    BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
-    inquiry_no   VARCHAR(32)  NOT NULL COMMENT '询价单号',
-    inquiry_date DATE         NOT NULL COMMENT '询价日期',
-    deadline     DATE                  DEFAULT NULL COMMENT '报价截止日期',
-    status       VARCHAR(16)  NOT NULL DEFAULT 'QUOTING' COMMENT '状态(字典 scm_inquiry_status) QUOTING询价中 FINISHED已定标 CLOSED已关闭',
-    remark       VARCHAR(255)          DEFAULT NULL COMMENT '说明',
-    dept_id      BIGINT                DEFAULT NULL COMMENT '部门',
-    create_by    BIGINT                DEFAULT NULL COMMENT '询价人',
-    create_time  DATETIME              DEFAULT NULL COMMENT '创建时间',
-    update_time  DATETIME              DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_inquiry_no (inquiry_no, tenant_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '询价单';
-
-CREATE TABLE scm_inquiry_item (
-    id                BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id         BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
-    inquiry_id        BIGINT         NOT NULL COMMENT '询价单',
-    material_id       BIGINT         NOT NULL COMMENT '物料',
-    qty               DECIMAL(18, 4) NOT NULL COMMENT '询价数量',
-    required_date     DATE                    DEFAULT NULL COMMENT '需求日期',
-    selected_quote_id BIGINT                  DEFAULT NULL COMMENT '中标报价',
-    order_id          BIGINT                  DEFAULT NULL COMMENT '生成的采购订单',
-    remark            VARCHAR(255)            DEFAULT NULL COMMENT '备注',
-    create_time       DATETIME                DEFAULT NULL COMMENT '创建时间',
-    update_time       DATETIME                DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id),
-    KEY idx_inquiry_item_inquiry (inquiry_id),
-    KEY idx_inquiry_item_material (material_id),
-    KEY idx_inquiry_item_order (order_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '询价单明细';
-
-CREATE TABLE scm_inquiry_quote (
-    id          BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id   BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
-    inquiry_id  BIGINT         NOT NULL COMMENT '询价单',
-    item_id     BIGINT         NOT NULL COMMENT '询价明细',
-    supplier_id BIGINT         NOT NULL COMMENT '供应商',
-    price       DECIMAL(18, 4) NOT NULL COMMENT '含税单价',
-    tax_rate    DECIMAL(5, 2)           DEFAULT NULL COMMENT '税率（%）',
-    lead_days   INT                     DEFAULT NULL COMMENT '交期（天）',
-    remark      VARCHAR(255)            DEFAULT NULL COMMENT '备注',
-    create_time DATETIME                DEFAULT NULL COMMENT '创建时间',
-    update_time DATETIME                DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id),
-    KEY idx_inquiry_quote_inquiry (inquiry_id),
-    KEY idx_inquiry_quote_supplier (supplier_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '供应商报价';
-
-CREATE TABLE scm_inquiry_supplier (
-    id             BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id      BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
-    inquiry_id     BIGINT         NOT NULL COMMENT '询价单',
-    supplier_id    BIGINT         NOT NULL COMMENT '供应商',
-    whole_discount DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '整单优惠承诺（含税，按该供应商全部报价行的合计）',
-    create_time    DATETIME                DEFAULT NULL COMMENT '创建时间',
-    update_time    DATETIME                DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_inquiry_supplier (inquiry_id, supplier_id, tenant_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '询价单的供应商报价汇总（整单优惠承诺）';
-
-CREATE TABLE scm_quotation (
-    id               BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id        BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
-    quote_no         VARCHAR(32)    NOT NULL COMMENT '报价单号',
-    customer_id      BIGINT         NOT NULL COMMENT '客户',
-    opportunity_id   BIGINT                  DEFAULT NULL COMMENT '商机（CRM）',
-    quote_date       DATE           NOT NULL COMMENT '报价日期',
-    valid_to         DATE                    DEFAULT NULL COMMENT '有效期至',
-    status           VARCHAR(16)    NOT NULL DEFAULT 'DRAFT' COMMENT '状态(字典 scm_quotation_status) DRAFT草稿 APPROVING审批中 APPROVED已批准 ORDERED已成交 LOST已失效',
-    total_amount     DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '价税合计',
-    tax_amount       DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '税额',
-    whole_discount   DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '整单优惠（含税，含抹零），已从价税合计中扣除；转订单时分摊到订单各行',
-    invoice_kind     VARCHAR(16)             DEFAULT NULL COMMENT '发票类型(业务字典 scm_invoice_kind)：明细未填写税率时取它的税率，转销售订单时带到订单',
-    remark           VARCHAR(255)            DEFAULT NULL COMMENT '备注',
-    lost_reason      VARCHAR(255)            DEFAULT NULL COMMENT '失效原因',
-    order_id         BIGINT                  DEFAULT NULL COMMENT '成交生成的销售订单',
-    flow_instance_id VARCHAR(64)             DEFAULT NULL COMMENT '审批流程实例',
-    approve_by       BIGINT                  DEFAULT NULL COMMENT '批准人',
-    approve_time     DATETIME                DEFAULT NULL COMMENT '批准时间',
-    dept_id          BIGINT                  DEFAULT NULL COMMENT '部门',
-    create_by        BIGINT                  DEFAULT NULL COMMENT '报价人',
-    create_time      DATETIME                DEFAULT NULL COMMENT '创建时间',
-    update_time      DATETIME                DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_quotation_no (quote_no, tenant_id),
-    KEY idx_quotation_customer (customer_id),
-    KEY idx_quotation_opportunity (opportunity_id),
-    KEY idx_quotation_order (order_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '销售报价单';
-
-CREATE TABLE scm_quotation_item (
-    id           BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id    BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
-    quotation_id BIGINT         NOT NULL COMMENT '报价单',
-    material_id  BIGINT         NOT NULL COMMENT '物料',
-    qty          DECIMAL(18, 4) NOT NULL COMMENT '数量',
-    price        DECIMAL(18, 4) NOT NULL COMMENT '含税单价',
-    tax_rate     DECIMAL(5, 2)  NOT NULL DEFAULT 13 COMMENT '税率（%）',
-    list_price   DECIMAL(18, 4)          DEFAULT NULL COMMENT '价目表单价',
-    amount       DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '价税合计',
-    remark       VARCHAR(255)            DEFAULT NULL COMMENT '备注',
-    create_time  DATETIME                DEFAULT NULL COMMENT '创建时间',
-    update_time  DATETIME                DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id),
-    KEY idx_quotation_item_quotation (quotation_id),
-    KEY idx_quotation_item_material (material_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '销售报价单明细';
-
 CREATE TABLE scm_supplier_eval (
     id             BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键',
     tenant_id      BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
@@ -1639,7 +1459,7 @@ CREATE TABLE scm_order_item (
     KEY idx_order_item_material (material_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '订单明细';
 
--- 促销：按期间、客户等级、物料 / 分类设置折扣、满减、买赠，手工新建 / 修改销售订单时自动应用（先折扣，再满减，再返利抵扣）
+-- 促销：按期间、客户等级、物料 / 分类设置折扣、满减、买赠，手工新建 / 修改销售订单时自动应用（先折扣，再满减）
 CREATE TABLE scm_promotion (
     id                BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
     tenant_id         BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
@@ -1678,85 +1498,6 @@ CREATE TABLE scm_promotion_usage (
     KEY idx_promotion_usage (promotion_id),
     KEY idx_promotion_usage_order (order_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '促销应用记录（订单保存时重算）';
-
--- 返利：客户 × 期间的销售额阶梯返利协议，期末按销售出库 - 退货的含税金额计算，达到的最高一档返利率 × 全部金额
-CREATE TABLE scm_rebate (
-    id            BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id     BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
-    rebate_no     VARCHAR(32)    NOT NULL COMMENT '协议号',
-    kind          VARCHAR(16)    NOT NULL DEFAULT 'SALES' COMMENT '种类(字典 scm_rebate_kind) SALES销售返利（客户） PURCHASE采购返利（供应商）',
-    calc_mode     VARCHAR(16)    NOT NULL DEFAULT 'TIER' COMMENT '计算方式(字典 scm_rebate_calc) TIER阶梯比例 ITEM按项目填写金额',
-    customer_id   BIGINT                  DEFAULT NULL COMMENT '客户（销售返利）',
-    supplier_id   BIGINT                  DEFAULT NULL COMMENT '供应商（采购返利）',
-    begin_date    DATE           NOT NULL COMMENT '期间开始',
-    end_date      DATE           NOT NULL COMMENT '期间结束',
-    settle_mode   VARCHAR(16)    NOT NULL COMMENT '兑付方式(字典 scm_rebate_settle) CREDIT_NOTE红字应收（采购返利为红字应付） NEXT_ORDER下次订单抵扣',
-    status        VARCHAR(16)    NOT NULL COMMENT '状态(字典 scm_rebate_status) ACTIVE执行中 SETTLED已结算',
-    sales_amount  DECIMAL(18, 2)          DEFAULT NULL COMMENT '结算：期间销售额 / 采购额（出库 - 退货或入库 - 退货，含税）',
-    rate          DECIMAL(5, 2)           DEFAULT NULL COMMENT '结算：返利率（%）',
-    rebate_amount DECIMAL(18, 2)          DEFAULT NULL COMMENT '结算：返利金额',
-    settle_date   DATE                    DEFAULT NULL COMMENT '结算日期',
-    settle_by     BIGINT                  DEFAULT NULL COMMENT '结算人',
-    bill_id       BIGINT                  DEFAULT NULL COMMENT '红字应收 / 应付单（兑付方式为红字应收时）',
-    remark        VARCHAR(255)            DEFAULT NULL COMMENT '说明',
-    create_by     BIGINT                  DEFAULT NULL COMMENT '创建人',
-    create_time   DATETIME                DEFAULT NULL COMMENT '创建时间',
-    update_time   DATETIME                DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_rebate_no (rebate_no, tenant_id),
-    KEY idx_rebate_customer (customer_id),
-    KEY idx_rebate_supplier (supplier_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '返利协议（销售返利、采购返利）';
-
-CREATE TABLE scm_rebate_tier (
-    id         BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id  BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
-    rebate_id  BIGINT         NOT NULL COMMENT '返利协议',
-    min_amount DECIMAL(18, 2) NOT NULL COMMENT '销售额达到',
-    rate       DECIMAL(5, 2)  NOT NULL COMMENT '返利率（%）',
-    PRIMARY KEY (id),
-    KEY idx_rebate_tier (rebate_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '返利阶梯';
-
-CREATE TABLE scm_rebate_item (
-    id        BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
-    rebate_id BIGINT         NOT NULL COMMENT '返利协议',
-    item_name VARCHAR(64)    NOT NULL COMMENT '返利项目',
-    brand     VARCHAR(64)             DEFAULT NULL COMMENT '品牌(业务字典 wms_material_brand)',
-    category  VARCHAR(32)             DEFAULT NULL COMMENT '物料分类编码(wms_material_category.code)',
-    amount    DECIMAL(18, 2) NOT NULL COMMENT '返利金额（含税）',
-    remark    VARCHAR(255)            DEFAULT NULL COMMENT '说明',
-    PRIMARY KEY (id),
-    KEY idx_rebate_item (rebate_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '返利项目（按项目填写金额）';
-
--- 渠道库存与销量上报：经销商在门户按月上报各物料的期末库存和当月销量，同一期间重复上报覆盖
-CREATE TABLE scm_channel_report (
-    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id   BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
-    customer_id BIGINT       NOT NULL COMMENT '经销商（客户）',
-    period      INT          NOT NULL COMMENT '期间 yyyyMM',
-    remark      VARCHAR(255)          DEFAULT NULL COMMENT '说明',
-    report_by   BIGINT                DEFAULT NULL COMMENT '上报人（经销商门户账号）',
-    report_time DATETIME              DEFAULT NULL COMMENT '上报时间',
-    create_time DATETIME              DEFAULT NULL COMMENT '创建时间',
-    update_time DATETIME              DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_channel_report (customer_id, period, tenant_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '渠道库存销量上报';
-
-CREATE TABLE scm_channel_report_item (
-    id          BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id   BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
-    report_id   BIGINT         NOT NULL COMMENT '上报',
-    material_id BIGINT         NOT NULL COMMENT '物料',
-    sell_qty    DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '当月销量（卖给终端客户）',
-    stock_qty   DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '期末渠道库存',
-    PRIMARY KEY (id),
-    KEY idx_channel_report_item (report_id),
-    KEY idx_channel_report_material (material_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '渠道库存销量上报明细';
 
 CREATE TABLE scm_trade_doc (
     id           BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
@@ -1923,124 +1664,6 @@ CREATE TABLE scm_shipment (
     KEY idx_shipment_trade_doc (trade_doc_id),
     KEY idx_shipment_tracking (tracking_no)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '物流发运单';
-
-CREATE TABLE scm_delivery (
-    id           BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id    BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
-    delivery_no  VARCHAR(32)  NOT NULL COMMENT '发货通知单号',
-    order_id     BIGINT       NOT NULL COMMENT '销售订单',
-    customer_id  BIGINT       NOT NULL COMMENT '客户',
-    warehouse_id BIGINT       NOT NULL COMMENT '发货仓库',
-    ship_date    DATE         NOT NULL COMMENT '计划发货日期',
-    status       VARCHAR(16)  NOT NULL DEFAULT 'PENDING' COMMENT '状态(字典 scm_delivery_status) PENDING待拣货 PICKED已拣货 SHIPPED已出库 CANCELLED已取消',
-    remark       VARCHAR(255)          DEFAULT NULL COMMENT '备注',
-    trade_doc_id BIGINT                DEFAULT NULL COMMENT '生成的销售出库单',
-    wave_id      BIGINT                DEFAULT NULL COMMENT '所属拣货波次',
-    pick_by      BIGINT                DEFAULT NULL COMMENT '拣货人',
-    pick_time    DATETIME              DEFAULT NULL COMMENT '拣货时间',
-    dept_id      BIGINT                DEFAULT NULL COMMENT '部门',
-    create_by    BIGINT                DEFAULT NULL COMMENT '创建人',
-    create_time  DATETIME              DEFAULT NULL COMMENT '创建时间',
-    update_time  DATETIME              DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_delivery_no (delivery_no, tenant_id),
-    KEY idx_delivery_order (order_id),
-    KEY idx_delivery_status (status),
-    KEY idx_delivery_wave (wave_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '发货通知单';
-
--- 拣货波次：同一仓库的多张待拣货发货通知合并拣货，拣货单按库位路径（区域 → 排序 → 编码）汇总，再按单分拣
-CREATE TABLE scm_wave (
-    id           BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id    BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
-    wave_no      VARCHAR(32)  NOT NULL COMMENT '波次号',
-    warehouse_id BIGINT       NOT NULL COMMENT '仓库',
-    status       VARCHAR(16)  NOT NULL COMMENT '状态(字典 scm_wave_status) PICKING拣货中 DONE已完成 CANCELLED已取消',
-    remark       VARCHAR(255)          DEFAULT NULL COMMENT '备注',
-    pick_by      BIGINT                DEFAULT NULL COMMENT '完成拣货人',
-    pick_time    DATETIME              DEFAULT NULL COMMENT '完成拣货时间',
-    dept_id      BIGINT                DEFAULT NULL COMMENT '部门',
-    create_by    BIGINT                DEFAULT NULL COMMENT '创建人',
-    create_time  DATETIME              DEFAULT NULL COMMENT '创建时间',
-    update_time  DATETIME              DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_wave_no (wave_no, tenant_id),
-    KEY idx_wave_status (status)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '拣货波次';
-
--- 装箱：已拣货的发货通知按箱录入箱号、重量、体积和箱内物料，每个通知明细装箱合计不超过通知数量
-CREATE TABLE scm_delivery_package (
-    id          BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id   BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
-    delivery_id BIGINT         NOT NULL COMMENT '发货通知',
-    box_no      VARCHAR(48)    NOT NULL COMMENT '箱号：发货通知号-序号',
-    seq         INT            NOT NULL COMMENT '箱序号',
-    weight      DECIMAL(10, 3)          DEFAULT NULL COMMENT '毛重（kg）',
-    volume      DECIMAL(10, 4)          DEFAULT NULL COMMENT '体积（m³）',
-    remark      VARCHAR(255)            DEFAULT NULL COMMENT '备注',
-    create_by   BIGINT                  DEFAULT NULL COMMENT '装箱人',
-    create_time DATETIME                DEFAULT NULL COMMENT '创建时间',
-    update_time DATETIME                DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_delivery_package_box (box_no, tenant_id),
-    KEY idx_delivery_package (delivery_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '发货装箱';
-
-CREATE TABLE scm_delivery_package_item (
-    id               BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id        BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
-    package_id       BIGINT         NOT NULL COMMENT '箱',
-    delivery_item_id BIGINT         NOT NULL COMMENT '发货通知明细',
-    material_id      BIGINT         NOT NULL COMMENT '物料',
-    qty              DECIMAL(18, 4) NOT NULL COMMENT '数量',
-    PRIMARY KEY (id),
-    KEY idx_delivery_package_item (package_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '装箱明细';
-
-CREATE TABLE scm_delivery_item (
-    id            BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id     BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
-    delivery_id   BIGINT         NOT NULL COMMENT '发货通知',
-    order_item_id BIGINT         NOT NULL COMMENT '订单明细',
-    material_id   BIGINT         NOT NULL COMMENT '物料',
-    qty           DECIMAL(18, 4) NOT NULL COMMENT '通知数量',
-    remark        VARCHAR(255)            DEFAULT NULL COMMENT '备注',
-    create_time   DATETIME                DEFAULT NULL COMMENT '创建时间',
-    update_time   DATETIME                DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id),
-    KEY idx_delivery_item_delivery (delivery_id),
-    KEY idx_delivery_item_order_item (order_item_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '发货通知明细';
-
-CREATE TABLE scm_delivery_pick (
-    id               BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id        BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
-    delivery_id      BIGINT         NOT NULL COMMENT '发货通知',
-    delivery_item_id BIGINT         NOT NULL COMMENT '通知明细',
-    material_id      BIGINT         NOT NULL COMMENT '物料',
-    location_id      BIGINT         NOT NULL DEFAULT 0 COMMENT '库位，0 表示未分库位',
-    batch_no         VARCHAR(64)    NOT NULL DEFAULT '' COMMENT '批次号',
-    qty              DECIMAL(18, 4) NOT NULL COMMENT '拣货数量',
-    serial_nos       TEXT                    DEFAULT NULL COMMENT '序列号，逗号分隔',
-    create_time      DATETIME                DEFAULT NULL COMMENT '创建时间',
-    update_time      DATETIME                DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id),
-    KEY idx_delivery_pick_delivery (delivery_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '拣货明细（待拣货时为先到期先出的建议）';
-
-CREATE TABLE scm_shipment_track (
-    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id   BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
-    shipment_id BIGINT       NOT NULL COMMENT '发运单ID',
-    track_time  DATETIME     NOT NULL COMMENT '时间',
-    status      VARCHAR(16)           DEFAULT NULL COMMENT '记录时的发运状态',
-    content     VARCHAR(255) NOT NULL COMMENT '物流动态',
-    create_by   BIGINT                DEFAULT NULL COMMENT '记录人',
-    create_time DATETIME              DEFAULT NULL COMMENT '创建时间',
-    update_time DATETIME              DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id),
-    KEY idx_shipment_track (shipment_id, track_time)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '物流跟踪记录';
 
 -- ---------------------------------------------------------------- 财务管理
 
@@ -2542,124 +2165,7 @@ CREATE TABLE scm_purchase_contract_item (
     KEY idx_purchase_contract_material (material_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '采购合同明细';
 
--- 招标：邀请供应商在门户投标（也可由采购代录），截止后开标比价，定标后生成采购合同或采购订单
-CREATE TABLE scm_tender (
-    id                BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id         BIGINT       NOT NULL DEFAULT 1 COMMENT '租户ID',
-    tender_no         VARCHAR(32)  NOT NULL COMMENT '招标编号',
-    title             VARCHAR(128) NOT NULL COMMENT '招标标题',
-    deadline          DATETIME     NOT NULL COMMENT '投标截止时间',
-    status            VARCHAR(16)  NOT NULL COMMENT '状态(字典 scm_tender_status) DRAFT草稿 BIDDING投标中 OPENED已开标 AWARDED已定标 CANCELLED已取消',
-    open_time         DATETIME              DEFAULT NULL COMMENT '开标时间',
-    award_supplier_id BIGINT                DEFAULT NULL COMMENT '中标供应商',
-    award_reason      VARCHAR(255)          DEFAULT NULL COMMENT '定标说明',
-    contract_id       BIGINT                DEFAULT NULL COMMENT '生成的采购合同',
-    order_id          BIGINT                DEFAULT NULL COMMENT '生成的采购订单',
-    remark            VARCHAR(500)          DEFAULT NULL COMMENT '招标说明',
-    dept_id           BIGINT                DEFAULT NULL COMMENT '部门',
-    create_by         BIGINT                DEFAULT NULL COMMENT '创建人',
-    create_time       DATETIME              DEFAULT NULL COMMENT '创建时间',
-    update_time       DATETIME              DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_tender_no (tender_no, tenant_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '招标';
-
-CREATE TABLE scm_tender_item (
-    id            BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id     BIGINT         NOT NULL DEFAULT 1 COMMENT '租户ID',
-    tender_id     BIGINT         NOT NULL COMMENT '招标',
-    material_id   BIGINT         NOT NULL COMMENT '物料',
-    qty           DECIMAL(18, 4) NOT NULL COMMENT '数量',
-    required_date DATE                    DEFAULT NULL COMMENT '需求日期',
-    remark        VARCHAR(255)            DEFAULT NULL COMMENT '要求',
-    create_time   DATETIME                DEFAULT NULL COMMENT '创建时间',
-    update_time   DATETIME                DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id),
-    KEY idx_tender_item (tender_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '招标明细';
-
-CREATE TABLE scm_tender_supplier (
-    id          BIGINT   NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id   BIGINT   NOT NULL DEFAULT 1 COMMENT '租户ID',
-    tender_id   BIGINT   NOT NULL COMMENT '招标',
-    supplier_id BIGINT   NOT NULL COMMENT '邀请的供应商',
-    create_time DATETIME          DEFAULT NULL COMMENT '创建时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_tender_supplier (tender_id, supplier_id, tenant_id),
-    KEY idx_tender_supplier (supplier_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '招标邀请的供应商';
-
-CREATE TABLE scm_bid (
-    id            BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id     BIGINT         NOT NULL DEFAULT 1 COMMENT '租户ID',
-    tender_id     BIGINT         NOT NULL COMMENT '招标',
-    supplier_id   BIGINT         NOT NULL COMMENT '投标供应商',
-    total_amount  DECIMAL(18, 2) NOT NULL COMMENT '投标总价（价税合计）',
-    delivery_days INT                     DEFAULT NULL COMMENT '交货期（天）',
-    remark        VARCHAR(500)            DEFAULT NULL COMMENT '投标说明',
-    submit_by     BIGINT                  DEFAULT NULL COMMENT '提交人（供应商门户账号或代录的采购员）',
-    submit_time   DATETIME                DEFAULT NULL COMMENT '提交时间',
-    create_time   DATETIME                DEFAULT NULL COMMENT '创建时间',
-    update_time   DATETIME                DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_bid (tender_id, supplier_id, tenant_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '投标';
-
-CREATE TABLE scm_bid_item (
-    id             BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id      BIGINT         NOT NULL DEFAULT 1 COMMENT '租户ID',
-    bid_id         BIGINT         NOT NULL COMMENT '投标',
-    tender_item_id BIGINT         NOT NULL COMMENT '招标明细',
-    price          DECIMAL(18, 4) NOT NULL COMMENT '含税单价',
-    tax_rate       DECIMAL(5, 2)  NOT NULL COMMENT '税率（%）',
-    remark         VARCHAR(255)            DEFAULT NULL COMMENT '备注',
-    create_time    DATETIME                DEFAULT NULL COMMENT '创建时间',
-    update_time    DATETIME                DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id),
-    KEY idx_bid_item (bid_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '投标明细';
-
--- 送货通知（ASN）：供应商在门户按采购订单发起，仓库按送货通知收货（生成采购入库）
-CREATE TABLE scm_asn (
-    id            BIGINT      NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id     BIGINT      NOT NULL DEFAULT 1 COMMENT '租户ID',
-    asn_no        VARCHAR(32) NOT NULL COMMENT '送货单号',
-    supplier_id   BIGINT      NOT NULL COMMENT '供应商',
-    order_id      BIGINT      NOT NULL COMMENT '采购订单',
-    ship_date     DATE        NOT NULL COMMENT '发货日期',
-    expected_date DATE                 DEFAULT NULL COMMENT '预计到货日期',
-    carrier       VARCHAR(64)          DEFAULT NULL COMMENT '承运商',
-    tracking_no   VARCHAR(64)          DEFAULT NULL COMMENT '运单号',
-    status        VARCHAR(16) NOT NULL COMMENT '状态(字典 scm_asn_status) SUBMITTED待收货 RECEIVED已收货 CANCELLED已取消',
-    trade_doc_id  BIGINT               DEFAULT NULL COMMENT '收货生成的采购入库单',
-    received_time DATETIME             DEFAULT NULL COMMENT '收货时间',
-    remark        VARCHAR(255)         DEFAULT NULL COMMENT '备注',
-    create_by     BIGINT               DEFAULT NULL COMMENT '创建人',
-    create_time   DATETIME             DEFAULT NULL COMMENT '创建时间',
-    update_time   DATETIME             DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_asn_no (asn_no, tenant_id),
-    KEY idx_asn_supplier (supplier_id),
-    KEY idx_asn_order (order_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '送货通知';
-
-CREATE TABLE scm_asn_item (
-    id            BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id     BIGINT         NOT NULL DEFAULT 1 COMMENT '租户ID',
-    asn_id        BIGINT         NOT NULL COMMENT '送货通知',
-    order_item_id BIGINT         NOT NULL COMMENT '采购订单明细',
-    material_id   BIGINT         NOT NULL COMMENT '物料',
-    qty           DECIMAL(18, 4) NOT NULL COMMENT '送货数量',
-    batch_no      VARCHAR(64)             DEFAULT NULL COMMENT '批次号',
-    remark        VARCHAR(255)            DEFAULT NULL COMMENT '备注',
-    create_time   DATETIME                DEFAULT NULL COMMENT '创建时间',
-    update_time   DATETIME                DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id),
-    KEY idx_asn_item (asn_id),
-    KEY idx_asn_item_order (order_item_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '送货通知明细';
-
--- 供应商对账单：按期间汇总供应商的应付单，发送后供应商在门户确认或提出异议，并填写发票信息
+-- 供应商对账单：按期间汇总供应商的应付单，发送给供应商确认，登记确认结果或异议、发票信息
 CREATE TABLE fin_supplier_statement (
     id              BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
     tenant_id       BIGINT         NOT NULL DEFAULT 1 COMMENT '租户ID',
@@ -2794,53 +2300,6 @@ CREATE TABLE fin_consumable_use_item (
     KEY idx_consumable_use_material (material_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '低值易耗品领用明细';
 
--- 票据：应收票据（收到的承兑汇票）与应付票据（开出的承兑汇票）。收票、背书、开票通过收付款单核销往来，
--- 贴现、托收、拒付、兑付直接生成凭证；每次操作记录在 fin_note_log
-CREATE TABLE fin_note (
-    id            BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id     BIGINT         NOT NULL DEFAULT 1 COMMENT '租户ID',
-    kind          VARCHAR(16)    NOT NULL COMMENT '种类 RECEIVABLE应收票据 PAYABLE应付票据',
-    note_type     VARCHAR(16)    NOT NULL COMMENT '票据类型(字典 fin_note_type) BANK银行承兑 COMMERCIAL商业承兑',
-    note_no       VARCHAR(64)    NOT NULL COMMENT '票据号码',
-    electronic    TINYINT        NOT NULL DEFAULT 1 COMMENT '电子票据 1是 0纸质',
-    partner_id    BIGINT         NOT NULL COMMENT '收票时的客户 / 开票时的供应商',
-    amount        DECIMAL(18, 2) NOT NULL COMMENT '票面金额',
-    issue_date    DATE           NOT NULL COMMENT '出票日期',
-    due_date      DATE           NOT NULL COMMENT '到期日期',
-    drawer        VARCHAR(128)            DEFAULT NULL COMMENT '出票人',
-    acceptor      VARCHAR(128)            DEFAULT NULL COMMENT '承兑人（承兑银行或企业）',
-    status        VARCHAR(16)    NOT NULL COMMENT '状态(字典 fin_note_status)',
-    remark        VARCHAR(255)            DEFAULT NULL COMMENT '备注',
-    create_by     BIGINT                  DEFAULT NULL COMMENT '登记人',
-    create_time   DATETIME                DEFAULT NULL COMMENT '创建时间',
-    update_time   DATETIME                DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_note_no (kind, note_no, tenant_id),
-    KEY idx_note_due (status, due_date)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '票据';
-
-CREATE TABLE fin_note_log (
-    id            BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id     BIGINT         NOT NULL DEFAULT 1 COMMENT '租户ID',
-    note_id       BIGINT         NOT NULL COMMENT '票据',
-    action        VARCHAR(16)    NOT NULL COMMENT '操作(字典 fin_note_action) RECEIVE收票 ENDORSE背书 DISCOUNT贴现 COLLECT托收 DISHONOR拒付 ISSUE开票 PAY兑付',
-    action_date   DATE           NOT NULL COMMENT '操作日期',
-    partner_id    BIGINT                  DEFAULT NULL COMMENT '往来单位（收票客户、背书或开票的供应商）',
-    account_id    BIGINT                  DEFAULT NULL COMMENT '银行科目（贴现、托收、兑付）',
-    amount        DECIMAL(18, 2) NOT NULL COMMENT '金额',
-    interest      DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '贴现息',
-    settlement_id BIGINT                  DEFAULT NULL COMMENT '收付款单（收票、背书、开票）',
-    voucher_id    BIGINT                  DEFAULT NULL COMMENT '凭证（贴现、托收、拒付、兑付）',
-    bill_id       BIGINT                  DEFAULT NULL COMMENT '拒付时转回的应收单',
-    remark        VARCHAR(255)            DEFAULT NULL COMMENT '备注',
-    create_by     BIGINT                  DEFAULT NULL COMMENT '操作人',
-    create_time   DATETIME                DEFAULT NULL COMMENT '创建时间',
-    update_time   DATETIME                DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id),
-    KEY idx_note_log_note (note_id),
-    KEY idx_note_log_settlement (settlement_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '票据操作记录';
-
 -- 账户调拨：银行账户之间、银行与现金之间转账，生成凭证（借 转入账户、财务费用，贷 转出账户）
 CREATE TABLE fin_fund_transfer (
     id              BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
@@ -2864,7 +2323,7 @@ CREATE TABLE fin_fund_transfer (
     KEY idx_transfer_date (transfer_date)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '账户调拨';
 
--- 资金计划的手工计划项（预计的其他收入、支出），与应收应付、票据、报销一起汇总为资金计划
+-- 资金计划的手工计划项（预计的其他收入、支出），与应收应付、报销一起汇总为资金计划
 CREATE TABLE fin_fund_plan_item (
     id          BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
     tenant_id   BIGINT         NOT NULL DEFAULT 1 COMMENT '租户ID',
@@ -3103,57 +2562,6 @@ CREATE TABLE fin_budget (
     PRIMARY KEY (id),
     UNIQUE KEY uk_budget (budget_year, dept_id, account_id, tenant_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '预算';
-
-CREATE TABLE fin_commission_rule (
-    id                BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id         BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
-    name              VARCHAR(64)    NOT NULL COMMENT '规则名称',
-    basis             VARCHAR(16)    NOT NULL COMMENT '提成依据(字典 fin_commission_basis) SALES销售额（不含税） PROFIT毛利 RECEIPT回款',
-    salesman_id       BIGINT                  DEFAULT NULL COMMENT '适用业务员，为空适用全部',
-    material_category VARCHAR(32)             DEFAULT NULL COMMENT '适用物料分类编码(wms_material_category.code，含下级分类)，为空适用全部；回款不区分分类',
-    threshold         DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '业绩门槛：业务员当月该依据的业绩达到此金额时适用（阶梯提成）',
-    rate              DECIMAL(6, 3)  NOT NULL COMMENT '提成比例（%）',
-    status            TINYINT        NOT NULL DEFAULT 1 COMMENT '状态 1启用 0停用',
-    remark            VARCHAR(255)            DEFAULT NULL COMMENT '备注',
-    create_time       DATETIME                DEFAULT NULL COMMENT '创建时间',
-    update_time       DATETIME                DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '销售提成规则：同一业务员、分类、依据取最具体（指定业务员 > 指定分类）且门槛最高的已达成规则';
-
-CREATE TABLE fin_commission (
-    id           BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id    BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
-    period       INT            NOT NULL COMMENT '期间 yyyyMM',
-    status       VARCHAR(16)    NOT NULL DEFAULT 'DRAFT' COMMENT '状态 DRAFT草稿 CONFIRMED已确认（计入工资表）',
-    total_amount DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '提成合计（含调整）',
-    remark       VARCHAR(255)            DEFAULT NULL COMMENT '备注',
-    create_by    BIGINT                  DEFAULT NULL COMMENT '计算人',
-    confirm_by   BIGINT                  DEFAULT NULL COMMENT '确认人',
-    confirm_time DATETIME                DEFAULT NULL COMMENT '确认时间',
-    create_time  DATETIME                DEFAULT NULL COMMENT '创建时间',
-    update_time  DATETIME                DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_commission_period (period, tenant_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '销售提成表：按期间计算各业务员的业绩和提成';
-
-CREATE TABLE fin_commission_line (
-    id                BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
-    tenant_id         BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
-    commission_id     BIGINT         NOT NULL COMMENT '提成表',
-    salesman_id       BIGINT         NOT NULL COMMENT '业务员',
-    sales_amount      DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '销售额（不含税，扣除退货）',
-    profit_amount     DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '毛利（销售额 - 成本）',
-    receipt_amount    DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '回款',
-    commission_amount DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '按规则计算的提成',
-    adjust_amount     DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '手工调整',
-    final_amount      DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '应发提成 = 提成 + 调整',
-    detail            TEXT COMMENT '计算明细（JSON）：依据、分类、业绩、规则、比例、提成',
-    remark            VARCHAR(255)            DEFAULT NULL COMMENT '备注（调整原因）',
-    create_time       DATETIME                DEFAULT NULL COMMENT '创建时间',
-    update_time       DATETIME                DEFAULT NULL COMMENT '更新时间',
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_commission_line (commission_id, salesman_id, tenant_id)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '销售提成表明细：每个业务员一行';
 
 CREATE TABLE fin_account_rule (
     id          BIGINT      NOT NULL AUTO_INCREMENT COMMENT '主键',
@@ -3888,11 +3296,9 @@ INSERT INTO sys_dict_type (id, name, type, status, remark, create_time, update_t
 
 INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, create_time, update_time) VALUES
 ('wms_in_type', '采购入库', 'PURCHASE', 'blue', 1, 1, NOW(), NOW()),
-('wms_in_type', '生产入库', 'PRODUCTION', 'cyan', 2, 1, NOW(), NOW()),
 ('wms_in_type', '销售退货', 'SALES_RETURN', 'orange', 3, 1, NOW(), NOW()),
 ('wms_in_type', '其他入库', 'OTHER', 'default', 4, 1, NOW(), NOW()),
 ('wms_out_type', '销售出库', 'SALES', 'green', 1, 1, NOW(), NOW()),
-('wms_out_type', '生产领料', 'PRODUCTION', 'cyan', 2, 1, NOW(), NOW()),
 ('wms_out_type', '采购退货', 'PURCHASE_RETURN', 'orange', 3, 1, NOW(), NOW()),
 ('wms_out_type', '其他出库', 'OTHER', 'default', 4, 1, NOW(), NOW()),
 ('wms_doc_status', '草稿', 'DRAFT', 'orange', 1, 1, NOW(), NOW()),
@@ -3993,8 +3399,7 @@ INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, s
 ('scm_carrier', '中通快递', 'ZTO', 'default', 3, 1, NOW(), NOW()),
 ('scm_carrier', '德邦物流', 'DEPPON', 'default', 4, 1, NOW(), NOW()),
 ('scm_carrier', '自提 / 自送', 'SELF', 'default', 5, 1, NOW(), NOW()),
-('scm_order_source', '手工', 'MANUAL', 'default', 1, 1, NOW(), NOW()),
-('scm_order_source', 'MRP', 'MRP', 'purple', 2, 1, NOW(), NOW());
+('scm_order_source', '手工', 'MANUAL', 'default', 1, 1, NOW(), NOW());
 
 -- 普通用户：供应链各页面只读
 INSERT INTO sys_role_menu (role_id, menu_id) VALUES
@@ -4012,12 +3417,6 @@ INSERT INTO scm_customer (id, code, name, level, contact, phone, address, credit
 INSERT INTO scm_supplier_price (supplier_id, material_id, price, tax_rate, lead_days, min_qty, is_default, create_time, update_time) VALUES
 (1, 1, 120, 13, 3, 10, 1, NOW(), NOW()),
 (2, 2, 2.5, 13, 5, 500, 1, NOW(), NOW());
-
-INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, create_time, update_time) VALUES
-('wms_in_type', '生产退料', 'PRODUCTION_RETURN', 'purple', 5, 1, NOW(), NOW());
-
-INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, create_time, update_time) VALUES
-('scm_order_source', '生产缺料', 'KIT', 'orange', 4, 1, NOW(), NOW());
 
 -- ---------------------------------------------------------------- 财务管理：菜单、字典、会计科目
 
@@ -4162,27 +3561,17 @@ INSERT INTO fin_account (id, code, name, parent_id, category, direction, status,
 UPDATE fin_account SET aux_items = 'CUSTOMER' WHERE code IN ('1122', '2203');
 UPDATE fin_account SET aux_items = 'SUPPLIER' WHERE code IN ('1123', '2202');
 
--- ---------------------------------------------------------------- 模块联动：凭证来源、应收来源、出库类型、订单来源、流程分类、个税科目
-
-INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, remark, create_time, update_time) VALUES
-('fin_voucher_source', '工资', 'SALARY', 'magenta', 10, 1, NULL, NOW(), NOW()),
-('fin_bill_source', '项目开票', 'PROJECT', 'purple', 6, 1, NULL, NOW(), NOW()),
-('wms_out_type', '项目领料', 'PROJECT', 'purple', 5, 1, NULL, NOW(), NOW()),
-('scm_order_source', '商机', 'CRM', 'green', 3, 1, NULL, NOW(), NOW());
+-- ---------------------------------------------------------------- 会计科目补充：应交个人所得税
 
 INSERT INTO fin_account (id, code, name, parent_id, category, direction, status, create_time, update_time) VALUES
 (64, '222103', '应交个人所得税', 24, 'LIABILITY', 'CREDIT', 1, NOW(), NOW());
 
--- 账务修正：委托加工物资、合同履约成本科目；委外出入库类型；期初余额菜单
+-- 会计科目补充；期初余额菜单
 INSERT INTO fin_account (id, code, name, parent_id, category, direction, status, create_time, update_time) VALUES
 (65, '1408', '委托加工物资', 0, 'ASSET', 'DEBIT', 1, NOW(), NOW()),
 (66, '5401', '合同履约成本', 0, 'COST', 'DEBIT', 1, NOW(), NOW()),
 (67, '2205', '合同负债', 0, 'LIABILITY', 'CREDIT', 1, NOW(), NOW()),
 (68, '660205', '培训费', 56, 'PROFIT', 'DEBIT', 1, NOW(), NOW());
-
-INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, create_time, update_time) VALUES
-('wms_out_type', '委外发料', 'OUTSOURCE', 'magenta', 6, 1, NOW(), NOW()),
-('wms_in_type', '委外收回', 'OUTSOURCE_RETURN', 'magenta', 6, 1, NOW(), NOW());
 
 INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time) VALUES
 (192, 936, '期初余额', 'C', 'opening', 'fin/opening/index', 'fin:opening:list', 'FlagOutlined', 3, 1, 1, NOW(), NOW()),
@@ -4232,47 +3621,7 @@ INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, s
 ('wms_hold_status', '已退货', 'RETURNED', 'default', 4, 1, NOW(), NOW());
 
 INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, create_time, update_time) VALUES
-('fin_voucher_source', '项目', 'PROJECT', 'geekblue', 11, 1, NOW(), NOW());
-
-INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, create_time, update_time) VALUES
-('fin_bill_source', '运费', 'SHIPMENT', 'cyan', 7, 1, NOW(), NOW()),
 ('fin_voucher_source', '费用', 'EXPENSE', 'orange', 12, 1, NOW(), NOW());
-
-INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, create_time, update_time) VALUES
-('wms_out_type', '服务领用', 'SERVICE', 'gold', 7, 1, NOW(), NOW()),
-('fin_bill_source', '服务收费', 'TICKET', 'gold', 8, 1, NOW(), NOW());
-
-INSERT INTO sys_dict_type (id, name, type, status, remark, create_time, update_time) VALUES
-(104, '请购单状态', 'scm_requisition_status', 1, '请购单的状态', NOW(), NOW()),
-(105, '询价单状态', 'scm_inquiry_status', 1, '询价单的状态', NOW(), NOW()),
-(106, '报价单状态', 'scm_quotation_status', 1, '销售报价单的状态', NOW(), NOW());
-
-INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, create_time, update_time) VALUES
-('scm_requisition_status', '草稿', 'DRAFT', 'default', 1, 1, NOW(), NOW()),
-('scm_requisition_status', '审批中', 'APPROVING', 'processing', 2, 1, NOW(), NOW()),
-('scm_requisition_status', '已批准', 'APPROVED', 'blue', 3, 1, NOW(), NOW()),
-('scm_requisition_status', '已下单', 'ORDERED', 'green', 4, 1, NOW(), NOW()),
-('scm_requisition_status', '已关闭', 'CLOSED', 'default', 5, 1, NOW(), NOW()),
-('scm_inquiry_status', '询价中', 'QUOTING', 'processing', 1, 1, NOW(), NOW()),
-('scm_inquiry_status', '已定标', 'FINISHED', 'green', 2, 1, NOW(), NOW()),
-('scm_inquiry_status', '已关闭', 'CLOSED', 'default', 3, 1, NOW(), NOW()),
-('scm_quotation_status', '草稿', 'DRAFT', 'default', 1, 1, NOW(), NOW()),
-('scm_quotation_status', '审批中', 'APPROVING', 'processing', 2, 1, NOW(), NOW()),
-('scm_quotation_status', '已批准', 'APPROVED', 'blue', 3, 1, NOW(), NOW()),
-('scm_quotation_status', '已成交', 'ORDERED', 'green', 4, 1, NOW(), NOW()),
-('scm_quotation_status', '已失效', 'LOST', 'red', 5, 1, NOW(), NOW()),
-('scm_order_source', '请购单', 'REQUISITION', 'cyan', 5, 1, NOW(), NOW()),
-('scm_order_source', '询价单', 'INQUIRY', 'geekblue', 6, 1, NOW(), NOW()),
-('scm_order_source', '销售报价', 'QUOTATION', 'magenta', 7, 1, NOW(), NOW());
-
-INSERT INTO sys_dict_type (id, name, type, status, remark, create_time, update_time) VALUES
-(107, '发货通知状态', 'scm_delivery_status', 1, '发货通知单的状态', NOW(), NOW());
-
-INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, create_time, update_time) VALUES
-('scm_delivery_status', '待拣货', 'PENDING', 'orange', 1, 1, NOW(), NOW()),
-('scm_delivery_status', '已拣货', 'PICKED', 'blue', 2, 1, NOW(), NOW()),
-('scm_delivery_status', '已出库', 'SHIPPED', 'green', 3, 1, NOW(), NOW()),
-('scm_delivery_status', '已取消', 'CANCELLED', 'default', 4, 1, NOW(), NOW());
 
 INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time) VALUES
 (1304, 130, '入库冲销', 'F', NULL, NULL, 'wms:in:reverse', NULL, 5, 1, 1, NOW(), NOW()),
@@ -4295,9 +3644,6 @@ INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, s
 INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time) VALUES
 (274, 901, '补货建议', 'C', 'reorder', 'scm/reorder/index', 'scm:reorder:list', 'AlertOutlined', 6, 1, 1, NOW(), NOW());
 INSERT INTO sys_role_menu (role_id, menu_id) VALUES (2, 274);
-
-INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, create_time, update_time) VALUES
-('wms_in_type', '报废入库', 'SCRAP_IN', 'red', 8, 1, NOW(), NOW());
 
 INSERT INTO fin_account (id, code, name, parent_id, category, direction, status, create_time, update_time) VALUES
 (69, '222104', '未交增值税', 24, 'LIABILITY', 'CREDIT', 1, NOW(), NOW()),
@@ -4469,40 +3815,13 @@ INSERT INTO wf_model (model_key, name, category, icon, sort, status, design_json
 ('oa_goods', '物品领用', 'ADMIN', 'ShoppingOutlined', 23, 1, '{"form": [{"field": "goods", "label": "物品名称", "type": "INPUT", "required": true, "placeholder": "如：笔记本电脑、显示器"}, {"field": "qty", "label": "数量", "type": "NUMBER", "required": true, "placeholder": ""}, {"field": "useDate", "label": "领用日期", "type": "DATE", "required": false, "placeholder": ""}, {"field": "purpose", "label": "用途", "type": "TEXTAREA", "required": false, "placeholder": ""}], "flow": {"id": "start", "type": "START", "name": "发起人", "next": {"id": "leader", "type": "APPROVER", "name": "部门主管审批", "assignee": {"type": "DEPT_LEADER", "ids": [], "names": [], "level": 1}, "approveMode": "OR", "emptyAction": "TO_ADMIN", "next": {"id": "cc_wh", "type": "CC", "name": "抄送仓库管理员", "assignee": {"type": "ROLE", "ids": [6], "names": ["仓库管理员"]}, "next": null}}}}', '内置流程：部门主管 → 抄送仓库管理员。可在「发起申请」中直接发起', NOW(), NOW()),
 ('oa_general', '通用审批', 'OTHER', 'FileTextOutlined', 24, 1, '{"form": [{"field": "title", "label": "审批事项", "type": "INPUT", "required": true, "placeholder": ""}, {"field": "content", "label": "详细说明", "type": "TEXTAREA", "required": true, "placeholder": ""}, {"field": "amount", "label": "涉及金额（元）", "type": "NUMBER", "required": false, "placeholder": ""}], "flow": {"id": "start", "type": "START", "name": "发起人", "next": {"id": "leader", "type": "APPROVER", "name": "部门主管审批", "assignee": {"type": "DEPT_LEADER", "ids": [], "names": [], "level": 1}, "approveMode": "OR", "emptyAction": "TO_ADMIN", "next": {"id": "leader2", "type": "APPROVER", "name": "上级主管审批", "assignee": {"type": "DEPT_LEADER", "ids": [], "names": [], "level": 2}, "approveMode": "OR", "emptyAction": "TO_ADMIN", "next": null}}}}', '内置流程：部门主管 → 上级主管（依次审批）。可在「发起申请」中直接发起', NOW(), NOW());
 
--- ---------------------------------------------------------------- 资金管理：票据、账户调拨、资金计划
+-- ---------------------------------------------------------------- 资金管理：账户调拨、资金计划（应收票据、应付票据科目用于资产负债表）
 INSERT INTO fin_account (code, name, parent_id, category, direction, status, create_time, update_time) VALUES
 ('1121', '应收票据', 0, 'ASSET', 'DEBIT', 1, NOW(), NOW()),
 ('2201', '应付票据', 0, 'LIABILITY', 'CREDIT', 1, NOW(), NOW());
 
-INSERT INTO sys_dict_type (id, name, type, status, remark, create_time, update_time) VALUES
-(119, '票据类型', 'fin_note_type', 1, '承兑汇票的类型', NOW(), NOW()),
-(120, '票据状态', 'fin_note_status', 1, '应收票据、应付票据的状态', NOW(), NOW()),
-(121, '票据操作', 'fin_note_action', 1, '票据的操作记录', NOW(), NOW());
-
 INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, create_time, update_time) VALUES
-('fin_settle_method', '票据', 'NOTE', 'purple', 3, 1, NOW(), NOW()),
-('fin_voucher_source', '票据', 'NOTE', 'purple', 20, 1, NOW(), NOW()),
-('fin_voucher_source', '账户调拨', 'TRANSFER', 'cyan', 21, 1, NOW(), NOW()),
-('fin_bill_source', '票据拒付', 'NOTE', 'red', 10, 1, NOW(), NOW()),
-('fin_note_type', '银行承兑汇票', 'BANK', 'blue', 1, 1, NOW(), NOW()),
-('fin_note_type', '商业承兑汇票', 'COMMERCIAL', 'orange', 2, 1, NOW(), NOW()),
-('fin_note_status', '持有', 'HELD', 'blue', 1, 1, NOW(), NOW()),
-('fin_note_status', '背书审批中', 'ENDORSING', 'gold', 2, 1, NOW(), NOW()),
-('fin_note_status', '已背书', 'ENDORSED', 'default', 3, 1, NOW(), NOW()),
-('fin_note_status', '已贴现', 'DISCOUNTED', 'default', 4, 1, NOW(), NOW()),
-('fin_note_status', '已托收', 'COLLECTED', 'green', 5, 1, NOW(), NOW()),
-('fin_note_status', '已拒付', 'DISHONORED', 'red', 6, 1, NOW(), NOW()),
-('fin_note_status', '开票审批中', 'ISSUING', 'gold', 7, 1, NOW(), NOW()),
-('fin_note_status', '未兑付', 'ISSUED', 'blue', 8, 1, NOW(), NOW()),
-('fin_note_status', '已兑付', 'PAID', 'green', 9, 1, NOW(), NOW()),
-('fin_note_status', '已作废', 'CANCELLED', 'default', 10, 1, NOW(), NOW()),
-('fin_note_action', '收票', 'RECEIVE', 'blue', 1, 1, NOW(), NOW()),
-('fin_note_action', '背书转让', 'ENDORSE', 'purple', 2, 1, NOW(), NOW()),
-('fin_note_action', '贴现', 'DISCOUNT', 'orange', 3, 1, NOW(), NOW()),
-('fin_note_action', '托收', 'COLLECT', 'green', 4, 1, NOW(), NOW()),
-('fin_note_action', '拒付', 'DISHONOR', 'red', 5, 1, NOW(), NOW()),
-('fin_note_action', '开票', 'ISSUE', 'blue', 6, 1, NOW(), NOW()),
-('fin_note_action', '兑付', 'PAY', 'green', 7, 1, NOW(), NOW());
+('fin_voucher_source', '账户调拨', 'TRANSFER', 'cyan', 21, 1, NOW(), NOW());
 
 INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time) VALUES
 (194, 933, '账户调拨', 'C', 'transfer', 'fin/transfer/index', 'fin:transfer:list', 'SwapOutlined', 5, 1, 1, NOW(), NOW()),
@@ -4517,18 +3836,10 @@ INSERT INTO sys_role_menu (role_id, menu_id) VALUES
 (10, 194), (10, 195), (10, 1940), (10, 1950),
 (3, 195);
 
-INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, create_time, update_time) VALUES
-('fin_bill_source', '质量索赔', 'QUALITY_CLAIM', 'red', 11, 1, NOW(), NOW());
-
--- 质量管理排在生产制造之后
-UPDATE sys_menu SET sort = sort + 1 WHERE parent_id = 0 AND sort >= 4;
-
--- ===================== 采购合同、招标与供应商协同（SRM） =====================
+-- ===================== 采购合同、供应商对账 =====================
 INSERT INTO sys_dict_type (id, name, type, status, remark, create_time, update_time) VALUES
 (130, '采购合同类型', 'scm_contract_type', 1, '框架协议或固定数量合同', NOW(), NOW()),
 (131, '采购合同状态', 'scm_contract_status', 1, '采购合同的状态', NOW(), NOW()),
-(132, '招标状态', 'scm_tender_status', 1, '招标的状态', NOW(), NOW()),
-(133, '送货通知状态', 'scm_asn_status', 1, '供应商送货通知的状态', NOW(), NOW()),
 (134, '供应商确认', 'scm_supplier_confirm', 1, '供应商对采购订单的确认结果', NOW(), NOW()),
 (135, '对账单状态', 'fin_statement_status', 1, '供应商对账单的状态', NOW(), NOW());
 INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, create_time, update_time) VALUES
@@ -4538,23 +3849,14 @@ INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, s
 ('scm_contract_status', '审批中', 'APPROVING', 'processing', 2, 1, NOW(), NOW()),
 ('scm_contract_status', '生效', 'ACTIVE', 'green', 3, 1, NOW(), NOW()),
 ('scm_contract_status', '已关闭', 'CLOSED', 'default', 4, 1, NOW(), NOW()),
-('scm_tender_status', '草稿', 'DRAFT', 'default', 1, 1, NOW(), NOW()),
-('scm_tender_status', '投标中', 'BIDDING', 'processing', 2, 1, NOW(), NOW()),
-('scm_tender_status', '已开标', 'OPENED', 'orange', 3, 1, NOW(), NOW()),
-('scm_tender_status', '已定标', 'AWARDED', 'green', 4, 1, NOW(), NOW()),
-('scm_tender_status', '已取消', 'CANCELLED', 'default', 5, 1, NOW(), NOW()),
-('scm_asn_status', '待收货', 'SUBMITTED', 'blue', 1, 1, NOW(), NOW()),
-('scm_asn_status', '已收货', 'RECEIVED', 'green', 2, 1, NOW(), NOW()),
-('scm_asn_status', '已取消', 'CANCELLED', 'default', 3, 1, NOW(), NOW()),
 ('scm_supplier_confirm', '已接受', 'ACCEPTED', 'green', 1, 1, NOW(), NOW()),
 ('scm_supplier_confirm', '已拒绝', 'REJECTED', 'red', 2, 1, NOW(), NOW()),
 ('fin_statement_status', '草稿', 'DRAFT', 'default', 1, 1, NOW(), NOW()),
 ('fin_statement_status', '待确认', 'SENT', 'blue', 2, 1, NOW(), NOW()),
 ('fin_statement_status', '已确认', 'CONFIRMED', 'green', 3, 1, NOW(), NOW()),
-('fin_statement_status', '有异议', 'DISPUTED', 'red', 4, 1, NOW(), NOW()),
-('scm_order_source', '招标', 'TENDER', 'gold', 9, 1, NOW(), NOW());
+('fin_statement_status', '有异议', 'DISPUTED', 'red', 4, 1, NOW(), NOW());
 
--- 供应链新增「采购寻源」分组（询价比价移入），采购下新增送货通知；应收应付下新增供应商对账；顶部导航最后为供应商门户（只对供应商账号显示）
+-- 应收应付下新增供应商对账
 UPDATE sys_menu SET sort = 3 WHERE id = 902;
 UPDATE sys_menu SET sort = 4 WHERE id = 903;
 UPDATE sys_menu SET sort = sort + 1 WHERE parent_id = 901 AND sort >= 4;
@@ -4564,10 +3866,9 @@ INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, s
 (2991, 299, '对账单发送', 'F', NULL, NULL, 'fin:statement:edit', NULL, 2, 1, 1, NOW(), NOW()),
 (2992, 299, '对账单删除', 'F', NULL, NULL, 'fin:statement:remove', NULL, 3, 1, 1, NOW(), NOW());
 
--- 普通用户只读；采购员：招标、合同、门户账号；仓库：送货收货；会计：供应商对账；总经理查看
+-- 普通用户只读；会计：供应商对账；总经理查看
 INSERT INTO sys_role_menu (role_id, menu_id) VALUES
 (2, 299),
-
 (9, 299), (9, 2990), (9, 2991), (9, 2992),
 (3, 299);
 
@@ -4614,47 +3915,29 @@ INSERT INTO sys_role_menu (role_id, menu_id) VALUES
 (3, 307), (3, 308);
 
 INSERT INTO sys_dict_type (id, name, type, status, remark, create_time, update_time) VALUES
-(149, '促销类型', 'scm_promo_type', 1, '促销活动的类型', NOW(), NOW()),
-(150, '返利状态', 'scm_rebate_status', 1, '返利协议的状态', NOW(), NOW()),
-(151, '返利兑付方式', 'scm_rebate_settle', 1, '返利结算后的兑付方式', NOW(), NOW());
+(149, '促销类型', 'scm_promo_type', 1, '促销活动的类型', NOW(), NOW());
 INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, create_time, update_time) VALUES
 ('scm_promo_type', '折扣', 'DISCOUNT', 'blue', 1, 1, NOW(), NOW()),
 ('scm_promo_type', '满减', 'REDUCE', 'orange', 2, 1, NOW(), NOW()),
-('scm_promo_type', '买赠', 'GIFT', 'magenta', 3, 1, NOW(), NOW()),
-('scm_rebate_status', '执行中', 'ACTIVE', 'processing', 1, 1, NOW(), NOW()),
-('scm_rebate_status', '已结算', 'SETTLED', 'green', 2, 1, NOW(), NOW()),
-('scm_rebate_settle', '红字应收', 'CREDIT_NOTE', 'red', 1, 1, NOW(), NOW()),
-('scm_rebate_settle', '下次订单抵扣', 'NEXT_ORDER', 'blue', 2, 1, NOW(), NOW()),
-('fin_bill_source', '返利', 'REBATE', 'volcano', 12, 1, NOW(), NOW());
-
--- 销售：价目表之后为促销活动、销售返利
-UPDATE sys_menu SET sort = sort + 2 WHERE parent_id = 902 AND sort >= 3;
+('scm_promo_type', '买赠', 'GIFT', 'magenta', 3, 1, NOW(), NOW());
 
 INSERT INTO sys_dict_type (id, name, type, status, remark, create_time, update_time) VALUES
-(152, '销售渠道', 'scm_channel', 1, '客户的销售渠道：经销商可开通经销商门户', NOW(), NOW());
+(152, '销售渠道', 'scm_channel', 1, '客户的销售渠道：直销、经销商', NOW(), NOW());
 INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, create_time, update_time) VALUES
 ('scm_channel', '直销', 'DIRECT', 'default', 1, 1, NOW(), NOW()),
 ('scm_channel', '经销商', 'DEALER', 'purple', 2, 1, NOW(), NOW()),
-('scm_order_source', '经销商订货', 'DEALER', 'purple', 8, 1, NOW(), NOW()),
 ('scm_order_source', '外部导入', 'IMPORT', 'lime', 9, 1, NOW(), NOW()),
 ('scm_order_source', '直接开单', 'DIRECT', 'blue', 10, 1, NOW(), NOW());
 
--- ---------------------------------------------------------------- 仓储作业：库位类型与区域、上架策略、波次拣货
+-- ---------------------------------------------------------------- 仓储作业：库位类型与区域、上架策略
 INSERT INTO sys_dict_type (id, name, type, status, remark, create_time, update_time) VALUES
-(153, '库位类型', 'wms_location_type', 1, '存储位、拣货位、收发货暂存位、不良品位', NOW(), NOW()),
-(154, '波次状态', 'scm_wave_status', 1, '拣货波次的状态', NOW(), NOW());
+(153, '库位类型', 'wms_location_type', 1, '存储位、拣货位、收发货暂存位、不良品位', NOW(), NOW());
 INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, create_time, update_time) VALUES
 ('wms_location_type', '存储位', 'STORAGE', 'blue', 1, 1, NOW(), NOW()),
 ('wms_location_type', '拣货位', 'PICK', 'green', 2, 1, NOW(), NOW()),
 ('wms_location_type', '收货暂存', 'RECEIVE', 'cyan', 3, 1, NOW(), NOW()),
 ('wms_location_type', '发货暂存', 'SHIP', 'purple', 4, 1, NOW(), NOW()),
-('wms_location_type', '不良品位', 'DEFECT', 'red', 5, 1, NOW(), NOW()),
-('scm_wave_status', '拣货中', 'PICKING', 'processing', 1, 1, NOW(), NOW()),
-('scm_wave_status', '已完成', 'DONE', 'green', 2, 1, NOW(), NOW()),
-('scm_wave_status', '已取消', 'CANCELLED', 'default', 3, 1, NOW(), NOW());
-
--- 销售：发货通知之后为波次拣货
-UPDATE sys_menu SET sort = sort + 1 WHERE parent_id = 902 AND sort >= 8;
+('wms_location_type', '不良品位', 'DEFECT', 'red', 5, 1, NOW(), NOW());
 
 -- 移动作业（手机 / PDA）：独立的移动端布局，页面权限沿用对应的业务操作权限
 INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time) VALUES
@@ -4711,13 +3994,6 @@ INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, s
 ('wms_assembly_kind', '拆卸', 'DISASSEMBLE', 'orange', 2, 1, NOW(), NOW()),
 ('wms_in_type', '组装拆卸', 'ASSEMBLY', 'cyan', 11, 1, NOW(), NOW()),
 ('wms_out_type', '组装拆卸', 'ASSEMBLY', 'cyan', 11, 1, NOW(), NOW());
-
-INSERT INTO sys_dict_type (id, name, type, status, remark, create_time, update_time) VALUES
-(157, '提成依据', 'fin_commission_basis', 1, '销售提成的计算依据', NOW(), NOW());
-INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, create_time, update_time) VALUES
-('fin_commission_basis', '销售额', 'SALES', 'blue', 1, 1, NOW(), NOW()),
-('fin_commission_basis', '毛利', 'PROFIT', 'green', 2, 1, NOW(), NOW()),
-('fin_commission_basis', '回款', 'RECEIPT', 'gold', 3, 1, NOW(), NOW());
 
 -- 价格控制方式
 INSERT INTO sys_dict_type (id, name, type, status, remark, create_time, update_time) VALUES
@@ -4923,7 +4199,7 @@ SELECT g.role_id, g.menu_id FROM (
 WHERE EXISTS (SELECT 1 FROM sys_role r WHERE r.id = g.role_id)
   AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = g.role_id AND x.menu_id = g.menu_id);
 
--- 客户区域（业务字典，每个租户一份）：客户、CRM 客户和线索的地区下拉选择，进销存报表按区域汇总
+-- 客户区域（业务字典，每个租户一份）：客户的地区下拉选择，进销存报表按区域汇总
 INSERT INTO sys_dict_type (id, name, type, kind, status, remark, create_time, update_time) VALUES
 (187, '客户区域', 'scm_region', 'BUSINESS', 1, '客户的销售区域（经销商为授权区域），CRM 客户、线索的地区也用此字典，进销存报表按区域汇总', NOW(), NOW());
 INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, create_time, update_time) VALUES
@@ -4945,7 +4221,7 @@ INSERT INTO sys_role_menu (role_id, menu_id)
 SELECT r.id, m.menu_id FROM sys_role r JOIN (SELECT 5 AS menu_id UNION ALL SELECT 902 UNION ALL SELECT 368) m ON 1 = 1
 WHERE r.id IN (2, 3, 4, 5, 6) AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r.id AND x.menu_id = m.menu_id);
 
--- 通知公告：系统管理下维护、发布（超级管理员、租户管理员、人事专员；普通用户只读），员工在工作台和「全部公告」中查看发给自己的公告
+-- 通知公告：系统管理下维护、发布（超级管理员、租户管理员；普通用户只读），员工在工作台和「全部公告」中查看发给自己的公告
 INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time) VALUES
 (353, 1, '通知公告', 'C', 'notice', 'system/notice/index', 'sys:notice:list', 'NotificationOutlined', 14, 1, 1, NOW(), NOW()),
 (3530, 353, '公告新增', 'F', NULL, NULL, 'sys:notice:add', NULL, 1, 1, 1, NOW(), NOW()),
@@ -4981,24 +4257,20 @@ INSERT INTO fin_account (code, name, parent_id, category, direction, status, cre
 ('660207', '水电费', 56, 'PROFIT', 'DEBIT', 1, NOW(), NOW()),
 ('660208', '租赁费', 56, 'PROFIT', 'DEBIT', 1, NOW(), NOW()),
 ('660209', '快递费', 56, 'PROFIT', 'DEBIT', 1, NOW(), NOW());
-INSERT INTO fin_io_category (name, direction, account_id, sort, status, create_time, update_time)
-SELECT g.name, g.direction, a.id, g.sort, 1, NOW(), NOW()
-FROM (
-    SELECT '废料销售' AS name, 'IN' AS direction, '6051' AS code, 1 AS sort
-    UNION ALL SELECT '佣金收入', 'IN', '6051', 2
-    UNION ALL SELECT '房租收入', 'IN', '6051', 3
-    UNION ALL SELECT '其他收入', 'IN', '6301', 9
-    UNION ALL SELECT '差旅费', 'OUT', '660204', 1
-    UNION ALL SELECT '业务招待费', 'OUT', '660206', 2
-    UNION ALL SELECT '办公费', 'OUT', '660202', 3
-    UNION ALL SELECT '房租', 'OUT', '660208', 4
-    UNION ALL SELECT '水电费', 'OUT', '660207', 5
-    UNION ALL SELECT '快递费', 'OUT', '660209', 6
-    UNION ALL SELECT '工资', 'OUT', '660201', 7
-    UNION ALL SELECT '银行手续费', 'OUT', '6603', 8
-    UNION ALL SELECT '其他支出', 'OUT', '6711', 9
-) g
-LEFT JOIN fin_account a ON a.code = g.code AND a.tenant_id = 1;
+INSERT INTO fin_io_category (name, direction, account_id, sort, status, create_time, update_time) VALUES
+('废料销售', 'IN', (SELECT a.id FROM fin_account a WHERE a.code = '6051' AND a.tenant_id = 1), 1, 1, NOW(), NOW()),
+('佣金收入', 'IN', (SELECT a.id FROM fin_account a WHERE a.code = '6051' AND a.tenant_id = 1), 2, 1, NOW(), NOW()),
+('房租收入', 'IN', (SELECT a.id FROM fin_account a WHERE a.code = '6051' AND a.tenant_id = 1), 3, 1, NOW(), NOW()),
+('其他收入', 'IN', (SELECT a.id FROM fin_account a WHERE a.code = '6301' AND a.tenant_id = 1), 9, 1, NOW(), NOW()),
+('差旅费', 'OUT', (SELECT a.id FROM fin_account a WHERE a.code = '660204' AND a.tenant_id = 1), 1, 1, NOW(), NOW()),
+('业务招待费', 'OUT', (SELECT a.id FROM fin_account a WHERE a.code = '660206' AND a.tenant_id = 1), 2, 1, NOW(), NOW()),
+('办公费', 'OUT', (SELECT a.id FROM fin_account a WHERE a.code = '660202' AND a.tenant_id = 1), 3, 1, NOW(), NOW()),
+('房租', 'OUT', (SELECT a.id FROM fin_account a WHERE a.code = '660208' AND a.tenant_id = 1), 4, 1, NOW(), NOW()),
+('水电费', 'OUT', (SELECT a.id FROM fin_account a WHERE a.code = '660207' AND a.tenant_id = 1), 5, 1, NOW(), NOW()),
+('快递费', 'OUT', (SELECT a.id FROM fin_account a WHERE a.code = '660209' AND a.tenant_id = 1), 6, 1, NOW(), NOW()),
+('工资', 'OUT', (SELECT a.id FROM fin_account a WHERE a.code = '660201' AND a.tenant_id = 1), 7, 1, NOW(), NOW()),
+('银行手续费', 'OUT', (SELECT a.id FROM fin_account a WHERE a.code = '6603' AND a.tenant_id = 1), 8, 1, NOW(), NOW()),
+('其他支出', 'OUT', (SELECT a.id FROM fin_account a WHERE a.code = '6711' AND a.tenant_id = 1), 9, 1, NOW(), NOW());
 INSERT INTO sys_dict_type (id, name, type, kind, status, remark, create_time, update_time) VALUES
 (201, '收支方向', 'fin_fund_direction', 'SYSTEM', 1, '收支类别、其他收支单的方向：收入、支出', NOW(), NOW()),
 (202, '收支单状态', 'fin_io_status', 'SYSTEM', 1, '其他收入单、费用支出单的状态', NOW(), NOW()),
@@ -5032,16 +4304,7 @@ SELECT g.role_id, g.menu_id FROM (
 WHERE EXISTS (SELECT 1 FROM sys_role r WHERE r.id = g.role_id)
   AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = g.role_id AND x.menu_id = g.menu_id);
 
--- 返利：返利协议分为销售返利（给客户）和采购返利（供应商给我方，结算生成红字应付单冲减应付）；计算方式增加「按项目填写金额」
-INSERT INTO sys_dict_type (id, name, type, kind, status, remark, create_time, update_time) VALUES
-(205, '返利种类', 'scm_rebate_kind', 'SYSTEM', 1, '销售返利（给客户）、采购返利（供应商给我方）', NOW(), NOW()),
-(206, '返利计算方式', 'scm_rebate_calc', 'SYSTEM', 1, '阶梯比例或按项目填写金额', NOW(), NOW());
-INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, create_time, update_time) VALUES
-('scm_rebate_kind', '销售返利', 'SALES', 'volcano', 1, 1, NOW(), NOW()),
-('scm_rebate_kind', '采购返利', 'PURCHASE', 'cyan', 2, 1, NOW(), NOW()),
-('scm_rebate_calc', '阶梯比例', 'TIER', 'blue', 1, 1, NOW(), NOW()),
-('scm_rebate_calc', '按项目填写金额', 'ITEM', 'purple', 2, 1, NOW(), NOW());
--- 普通用户查看；采购员维护协议；总经理、会计结算（与销售返利对称）
+-- 会计可查看供应链的采购单据
 INSERT INTO sys_role_menu (role_id, menu_id)
 SELECT g.role_id, g.menu_id FROM (
     SELECT 9 AS role_id, 5 AS menu_id UNION ALL SELECT 9, 901
@@ -5096,13 +4359,9 @@ INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, s
 ('fin_bill_source', '销售运费', 'SALES_FREIGHT', 'cyan', 16, 1, NOW(), NOW()),
 ('fin_bill_source', '销售退货运费', 'SALES_RETURN_FREIGHT', 'cyan', 17, 1, NOW(), NOW()),
 ('fin_bill_source', '采购退货运费', 'PURCHASE_RETURN_FREIGHT', 'cyan', 18, 1, NOW(), NOW());
-INSERT INTO fin_io_category (name, code, direction, account_id, sort, status, remark, create_time, update_time)
-SELECT g.name, g.code, 'OUT', a.id, g.sort, 1, g.remark, NOW(), NOW()
-FROM (
-    SELECT '销售运费' AS name, 'SALES_FREIGHT' AS code, '6601' AS acct, 10 AS sort, '销售出库本公司承担、现付的运费' AS remark
-    UNION ALL SELECT '代垫运费', 'FREIGHT_ADVANCE', '1221', 11, '销售出库、采购退货替往来单位垫付、现付的运费'
-) g
-LEFT JOIN fin_account a ON a.code = g.acct AND a.tenant_id = 1;
+INSERT INTO fin_io_category (name, code, direction, account_id, sort, status, remark, create_time, update_time) VALUES
+('销售运费', 'SALES_FREIGHT', 'OUT', (SELECT a.id FROM fin_account a WHERE a.code = '6601' AND a.tenant_id = 1), 10, 1, '销售出库本公司承担、现付的运费', NOW(), NOW()),
+('代垫运费', 'FREIGHT_ADVANCE', 'OUT', (SELECT a.id FROM fin_account a WHERE a.code = '1221' AND a.tenant_id = 1), 11, 1, '销售出库、采购退货替往来单位垫付、现付的运费', NOW(), NOW());
 
 -- 物料分类（多级）：在物料管理页左侧的分类树中维护（按钮「物料分类维护」wms:material:category，授权给有物料修改权限的角色）。
 -- 新租户由仓库模块的 WmsTenantInitializer 复制平台的分类；原材料、半成品、成品、低值易耗品为内置分类（凭证科目、低值易耗品领用按编码使用）
@@ -5119,7 +4378,7 @@ INSERT INTO sys_role_menu (role_id, menu_id)
 SELECT DISTINCT rm.role_id, 1374 FROM sys_role_menu rm
 WHERE rm.menu_id = 1371 AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = rm.role_id AND x.menu_id = 1374);
 
--- 发票类型（开票类型，业务字典，每个租户一份，issue #82）：订单、报价单、直接开单的出入库表头选择后明细税率按它统一调整，
+-- 发票类型（开票类型，业务字典，每个租户一份，issue #82）：订单、直接开单的出入库表头选择后明细税率按它统一调整，
 -- 扩展值为税率（%），租户可自行增加；明细未填写税率时取发票类型的税率，没有时取业务参数「默认税率」
 INSERT INTO sys_dict_type (id, name, type, kind, status, remark, create_time, update_time) VALUES
 (208, '发票类型', 'scm_invoice_kind', 'BUSINESS', 1, '进销存单据表头的发票类型（开票类型），扩展值为税率（%）：选择后明细税率统一调整为该税率', NOW(), NOW());
@@ -5276,7 +4535,7 @@ INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, s
 ('ecom_replenish_level', '充足', 'OK', 'green', 1, 1, 1, NOW(), NOW()),
 ('ecom_replenish_level', '预警', 'WARN', 'orange', 2, 1, 1, NOW(), NOW()),
 ('ecom_replenish_level', '紧急', 'URGENT', 'red', 3, 1, 1, NOW(), NOW()),
--- 业务字典：每个租户一份，可自行增加
+-- 业务字典：每个租户一份，可自行增加,
 ('ecom_marketplace', '美国', 'US', 'default', 1, 1, 0, NOW(), NOW()),
 ('ecom_marketplace', '加拿大', 'CA', 'default', 2, 1, 0, NOW(), NOW()),
 ('ecom_marketplace', '墨西哥', 'MX', 'default', 3, 1, 0, NOW(), NOW()),
@@ -9264,3 +8523,397 @@ CREATE TABLE ecom_order_log (
 CREATE INDEX idx_flow_doc_material ON wms_stock_flow (doc_id, material_id);
 CREATE INDEX idx_bill_source_id ON fin_bill (source_id);
 CREATE INDEX idx_ecom_ad_stat_entity ON ecom_ad_stat (entity_id, stat_date);
+
+-- ===== 第五轮：AI 运营助手 =====
+-- 运营日报（程序汇总的结构化数据 + AI 要点与建议）、日报订阅（订阅人、店铺范围、推送渠道）、违禁词库（刊登合规检查）；
+-- 菜单在「运营管理」下的「智能运营」分组（985）
+
+CREATE TABLE ecom_ops_report (
+    id               BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id        BIGINT        NOT NULL DEFAULT 1 COMMENT '租户ID',
+    report_date      DATE          NOT NULL COMMENT '日报日期（统计的那一天，一般为昨天）',
+    scope_key        VARCHAR(64)   NOT NULL COMMENT '店铺范围标识：排序后的店铺 ID 的摘要，同一天同一范围一份（重新生成时覆盖）',
+    scope_name       VARCHAR(255)           DEFAULT NULL COMMENT '范围说明（全部店铺 / 店铺名称）',
+    store_count      INT           NOT NULL DEFAULT 0 COMMENT '范围内的店铺数（与 ecom_ops_report_store 的行数一致，列表据此判断是否全部可见）',
+    source           VARCHAR(16)   NOT NULL DEFAULT 'SCHEDULE' COMMENT '来源(字典 ecom_ops_report_source) SCHEDULE定时 MANUAL手动',
+    orders           INT           NOT NULL DEFAULT 0 COMMENT '订单数',
+    sales            DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '销售额（本位币）',
+    profit           DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '利润（本位币，已扣广告）',
+    sales_change     DECIMAL(12, 2)          DEFAULT NULL COMMENT '销售额环比（%，对比前一天）',
+    profit_change    DECIMAL(12, 2)          DEFAULT NULL COMMENT '利润环比（%）',
+    abnormal_count   INT           NOT NULL DEFAULT 0 COMMENT '异常 SKU 数',
+    bad_review_count INT           NOT NULL DEFAULT 0 COMMENT '新差评数',
+    stock_risk_count INT           NOT NULL DEFAULT 0 COMMENT '断货风险 SKU 数',
+    ad_alert_count   INT           NOT NULL DEFAULT 0 COMMENT '广告异常数',
+    todo_count       INT           NOT NULL DEFAULT 0 COMMENT '待处理事项合计',
+    summary          VARCHAR(500)           DEFAULT NULL COMMENT '要点摘要（程序生成，推送内容）',
+    content          MEDIUMTEXT COMMENT '结构化内容（JSON：核心指标、店铺、异常 SKU、差评、断货、广告、待办、要点）',
+    ai_status        VARCHAR(16)   NOT NULL DEFAULT 'NONE' COMMENT 'AI 建议状态(字典 ecom_ops_report_ai_status) NONE未生成 SUCCESS已生成 FAILED失败',
+    ai_advice        TEXT COMMENT 'AI 要点与建议',
+    ai_error         VARCHAR(500)           DEFAULT NULL COMMENT 'AI 生成失败的原因 / 未生成的说明',
+    ai_sample        TINYINT       NOT NULL DEFAULT 0 COMMENT 'AI 建议为示例文本（演示数据） 1是 0否',
+    push_count       INT           NOT NULL DEFAULT 0 COMMENT '已推送的订阅人数',
+    pushed_time      DATETIME               DEFAULT NULL COMMENT '最近推送时间',
+    create_by        BIGINT                 DEFAULT NULL COMMENT '生成人（定时生成为空）',
+    create_time      DATETIME               DEFAULT NULL COMMENT '创建时间',
+    update_time      DATETIME               DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_ops_report (report_date, scope_key, tenant_id),
+    KEY idx_ecom_ops_report_date (report_date)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '运营日报';
+
+CREATE TABLE ecom_ops_report_store (
+    id          BIGINT   NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id   BIGINT   NOT NULL DEFAULT 1 COMMENT '租户ID',
+    report_id   BIGINT   NOT NULL COMMENT '运营日报',
+    store_id    BIGINT   NOT NULL COMMENT '店铺（店铺数据权限按此过滤：日报的店铺全部可见时才能查看）',
+    create_time DATETIME          DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME          DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_ops_report_store_report (report_id),
+    KEY idx_ecom_ops_report_store_store (store_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '运营日报的店铺范围';
+
+CREATE TABLE ecom_ops_report_sub (
+    id             BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id      BIGINT        NOT NULL DEFAULT 1 COMMENT '租户ID',
+    user_id        BIGINT        NOT NULL COMMENT '订阅人',
+    store_ids      VARCHAR(1000)          DEFAULT NULL COMMENT '店铺范围（店铺 ID，逗号分隔），为空时为订阅人可见的全部店铺',
+    channels       VARCHAR(64)   NOT NULL DEFAULT 'SITE' COMMENT '推送渠道（逗号分隔，字典 ecom_ops_push_channel）SITE站内消息 DINGTALK钉钉 WECOM企业微信 FEISHU飞书',
+    status         TINYINT       NOT NULL DEFAULT 1 COMMENT '状态 1启用 0停用',
+    remark         VARCHAR(255)           DEFAULT NULL COMMENT '备注',
+    last_report_id BIGINT                 DEFAULT NULL COMMENT '最近推送的日报',
+    last_push_time DATETIME               DEFAULT NULL COMMENT '最近推送时间',
+    create_by      BIGINT                 DEFAULT NULL COMMENT '创建人',
+    create_time    DATETIME               DEFAULT NULL COMMENT '创建时间',
+    update_time    DATETIME               DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_ops_report_sub (user_id, tenant_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '运营日报订阅';
+
+CREATE TABLE ecom_banned_word (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id   BIGINT       NOT NULL DEFAULT 1 COMMENT '租户ID',
+    word        VARCHAR(128) NOT NULL COMMENT '词（不区分大小写）',
+    word_type   VARCHAR(32)  NOT NULL COMMENT '类型(业务字典 ecom_banned_word_type) PROHIBITED禁用词 TRADEMARK侵权品牌词 EXAGGERATION夸大宣传词 MEDICAL医疗功效词',
+    level       VARCHAR(16)  NOT NULL DEFAULT 'BLOCK' COMMENT '处理方式(字典 ecom_banned_word_level) BLOCK阻止发布 WARN只提醒',
+    match_mode  VARCHAR(16)  NOT NULL DEFAULT 'WORD' COMMENT '匹配方式(字典 ecom_banned_word_match) WORD整词 CONTAINS包含',
+    platform    VARCHAR(16)           DEFAULT NULL COMMENT '适用平台(字典 ecom_platform)，为空全部平台',
+    marketplace VARCHAR(16)           DEFAULT NULL COMMENT '适用站点(业务字典 ecom_marketplace)，为空全部站点',
+    suggestion  VARCHAR(255)          DEFAULT NULL COMMENT '替换建议 / 说明',
+    builtin     TINYINT      NOT NULL DEFAULT 0 COMMENT '内置词 1是 0否（新租户从平台复制）',
+    status      TINYINT      NOT NULL DEFAULT 1 COMMENT '状态 1启用 0停用',
+    remark      VARCHAR(255)          DEFAULT NULL COMMENT '备注',
+    create_by   BIGINT                DEFAULT NULL COMMENT '创建人',
+    create_time DATETIME              DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME              DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_banned_word_word (word)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '违禁词库：刊登时检查标题、五点、描述';
+
+-- 菜单：运营管理下的「智能运营」分组（运营日报、违禁词库），刊登中心的「AI 写 Listing」按钮
+INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time)
+SELECT 985, 23, '智能运营', 'M', NULL, NULL, NULL, NULL, 5, 1, 1, NOW(), NOW() FROM sys_menu WHERE id = 23 AND NOT EXISTS (SELECT 1 FROM sys_menu WHERE id = 985);
+INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time) VALUES
+(580, 985, '运营日报', 'C', '/ecom/ops-report', 'ecom/ops-report/index', 'ecom:opsReport:list', 'FileTextOutlined', 1, 1, 1, NOW(), NOW()),
+(581, 985, '违禁词库', 'C', '/ecom/banned-word', 'ecom/banned-word/index', 'ecom:bannedWord:list', 'StopOutlined', 2, 1, 1, NOW(), NOW()),
+(5800, 580, '生成日报', 'F', NULL, NULL, 'ecom:opsReport:generate', NULL, 1, 1, 1, NOW(), NOW()),
+(5801, 580, '删除日报', 'F', NULL, NULL, 'ecom:opsReport:remove', NULL, 2, 1, 1, NOW(), NOW()),
+(5802, 580, '订阅设置', 'F', NULL, NULL, 'ecom:opsReport:subscribe', NULL, 3, 1, 1, NOW(), NOW()),
+(5810, 581, '新增违禁词', 'F', NULL, NULL, 'ecom:bannedWord:add', NULL, 1, 1, 1, NOW(), NOW()),
+(5811, 581, '修改违禁词', 'F', NULL, NULL, 'ecom:bannedWord:edit', NULL, 2, 1, 1, NOW(), NOW()),
+(5812, 581, '删除违禁词', 'F', NULL, NULL, 'ecom:bannedWord:remove', NULL, 3, 1, 1, NOW(), NOW()),
+(5820, 500, 'AI 写 Listing', 'F', NULL, NULL, 'ecom:publish:ai', NULL, 20, 1, 1, NOW(), NOW());
+
+-- 字典：违禁词类型为业务字典（可扩展），其余为系统字典
+INSERT INTO sys_dict_type (id, name, type, kind, status, remark, create_time, update_time) VALUES
+(380, '日报来源', 'ecom_ops_report_source', 'SYSTEM', 1, '运营日报的生成方式', NOW(), NOW()),
+(381, '日报 AI 状态', 'ecom_ops_report_ai_status', 'SYSTEM', 1, '运营日报「要点与建议」的生成状态', NOW(), NOW()),
+(382, '推送渠道', 'ecom_ops_push_channel', 'SYSTEM', 1, '运营日报订阅的推送渠道', NOW(), NOW()),
+(383, '违禁词类型', 'ecom_banned_word_type', 'BUSINESS', 1, '违禁词库的分类', NOW(), NOW()),
+(384, '违禁词处理方式', 'ecom_banned_word_level', 'SYSTEM', 1, '刊登命中违禁词时阻止发布或只提醒', NOW(), NOW()),
+(385, '违禁词匹配方式', 'ecom_banned_word_match', 'SYSTEM', 1, '整词匹配或包含即命中', NOW(), NOW()),
+(386, '异常 SKU 类型', 'ecom_ops_abnormal_type', 'SYSTEM', 1, '运营日报识别的 SKU 异常', NOW(), NOW()),
+(387, '广告异常类型', 'ecom_ops_ad_alert_type', 'SYSTEM', 1, '运营日报识别的广告异常', NOW(), NOW());
+INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, builtin, create_time, update_time) VALUES
+('ecom_ops_report_source', '定时', 'SCHEDULE', 'blue', 1, 1, 1, NOW(), NOW()),
+('ecom_ops_report_source', '手动', 'MANUAL', 'purple', 2, 1, 1, NOW(), NOW()),
+('ecom_ops_report_ai_status', '未生成', 'NONE', 'default', 1, 1, 1, NOW(), NOW()),
+('ecom_ops_report_ai_status', '已生成', 'SUCCESS', 'green', 2, 1, 1, NOW(), NOW()),
+('ecom_ops_report_ai_status', '失败', 'FAILED', 'red', 3, 1, 1, NOW(), NOW()),
+('ecom_ops_push_channel', '站内消息', 'SITE', 'blue', 1, 1, 1, NOW(), NOW()),
+('ecom_ops_push_channel', '钉钉', 'DINGTALK', 'cyan', 2, 1, 1, NOW(), NOW()),
+('ecom_ops_push_channel', '企业微信', 'WECOM', 'green', 3, 1, 1, NOW(), NOW()),
+('ecom_ops_push_channel', '飞书', 'FEISHU', 'geekblue', 4, 1, 1, NOW(), NOW()),
+('ecom_banned_word_type', '禁用词', 'PROHIBITED', 'red', 1, 1, 1, NOW(), NOW()),
+('ecom_banned_word_type', '侵权品牌词', 'TRADEMARK', 'volcano', 2, 1, 1, NOW(), NOW()),
+('ecom_banned_word_type', '夸大宣传词', 'EXAGGERATION', 'orange', 3, 1, 1, NOW(), NOW()),
+('ecom_banned_word_type', '医疗功效词', 'MEDICAL', 'magenta', 4, 1, 1, NOW(), NOW()),
+('ecom_banned_word_level', '阻止发布', 'BLOCK', 'red', 1, 1, 1, NOW(), NOW()),
+('ecom_banned_word_level', '只提醒', 'WARN', 'orange', 2, 1, 1, NOW(), NOW()),
+('ecom_banned_word_match', '整词', 'WORD', 'blue', 1, 1, 1, NOW(), NOW()),
+('ecom_banned_word_match', '包含', 'CONTAINS', 'purple', 2, 1, 1, NOW(), NOW()),
+('ecom_ops_abnormal_type', '销量骤降', 'SALES_DROP', 'orange', 1, 1, 1, NOW(), NOW()),
+('ecom_ops_abnormal_type', '利润下滑', 'PROFIT_DROP', 'red', 2, 1, 1, NOW(), NOW()),
+('ecom_ops_abnormal_type', '退货率升高', 'RETURN_RATE_UP', 'magenta', 3, 1, 1, NOW(), NOW()),
+('ecom_ops_ad_alert_type', '超预算', 'OVER_BUDGET', 'red', 1, 1, 1, NOW(), NOW()),
+('ecom_ops_ad_alert_type', 'ACOS 偏高', 'ACOS_HIGH', 'orange', 2, 1, 1, NOW(), NOW()),
+('ecom_ops_ad_alert_type', '花费无转化', 'NO_ORDER', 'volcano', 3, 1, 1, NOW(), NOW());
+
+-- 内置违禁词（平台租户，新租户由 EcomBannedWordTenantInitializer 复制）
+INSERT INTO ecom_banned_word (word, word_type, level, match_mode, platform, marketplace, suggestion, builtin, status, create_time, update_time) VALUES
+('FDA approved', 'MEDICAL', 'BLOCK', 'WORD', NULL, NULL, '未经 FDA 批准不得声称；可改为描述材质与检测报告', 1, 1, NOW(), NOW()),
+('FDA certified', 'MEDICAL', 'BLOCK', 'WORD', NULL, NULL, 'FDA 不对产品做认证，删除该说法', 1, 1, NOW(), NOW()),
+('cure', 'MEDICAL', 'BLOCK', 'WORD', NULL, NULL, '普通商品不能宣称治疗功效', 1, 1, NOW(), NOW()),
+('treat', 'MEDICAL', 'WARN', 'WORD', NULL, NULL, '涉及疾病时属于医疗声明，确认上下文', 1, 1, NOW(), NOW()),
+('anti-inflammatory', 'MEDICAL', 'BLOCK', 'WORD', NULL, NULL, '医疗功效声明，删除', 1, 1, NOW(), NOW()),
+('pain relief', 'MEDICAL', 'WARN', 'WORD', NULL, NULL, '医疗功效声明，非医疗器械慎用', 1, 1, NOW(), NOW()),
+('antibacterial', 'PROHIBITED', 'BLOCK', 'WORD', 'AMAZON', NULL, '杀菌类宣称需 EPA 注册（亚马逊农药政策），删除或改为 easy to clean', 1, 1, NOW(), NOW()),
+('antimicrobial', 'PROHIBITED', 'BLOCK', 'WORD', 'AMAZON', NULL, '杀菌类宣称需 EPA 注册（亚马逊农药政策）', 1, 1, NOW(), NOW()),
+('antiviral', 'PROHIBITED', 'BLOCK', 'WORD', NULL, NULL, '抗病毒宣称属于受限声明', 1, 1, NOW(), NOW()),
+('kills 99.9%', 'PROHIBITED', 'BLOCK', 'CONTAINS', NULL, NULL, '杀菌率宣称需注册与检测，删除', 1, 1, NOW(), NOW()),
+('pesticide', 'PROHIBITED', 'BLOCK', 'WORD', NULL, NULL, '农药类商品受限', 1, 1, NOW(), NOW()),
+('non-toxic', 'PROHIBITED', 'WARN', 'WORD', 'AMAZON', NULL, '亚马逊限制 non-toxic 宣称，可改为 BPA free 等具体说明', 1, 1, NOW(), NOW()),
+('eco-friendly', 'EXAGGERATION', 'WARN', 'WORD', 'AMAZON', NULL, '环保宣称需有依据（如认证），否则删除', 1, 1, NOW(), NOW()),
+('COVID', 'PROHIBITED', 'BLOCK', 'CONTAINS', NULL, NULL, '与疫情相关的宣称被平台禁止', 1, 1, NOW(), NOW()),
+('coronavirus', 'PROHIBITED', 'BLOCK', 'CONTAINS', NULL, NULL, '与疫情相关的宣称被平台禁止', 1, 1, NOW(), NOW()),
+('CBD', 'PROHIBITED', 'BLOCK', 'WORD', NULL, NULL, '大麻二酚类商品禁售', 1, 1, NOW(), NOW()),
+('replica', 'PROHIBITED', 'BLOCK', 'WORD', NULL, NULL, '仿品描述，禁止使用', 1, 1, NOW(), NOW()),
+('counterfeit', 'PROHIBITED', 'BLOCK', 'WORD', NULL, NULL, '仿品描述，禁止使用', 1, 1, NOW(), NOW()),
+('knockoff', 'PROHIBITED', 'BLOCK', 'WORD', NULL, NULL, '仿品描述，禁止使用', 1, 1, NOW(), NOW()),
+('best seller', 'EXAGGERATION', 'WARN', 'WORD', NULL, NULL, '排名类说法不能写在标题 / 五点中', 1, 1, NOW(), NOW()),
+('best-selling', 'EXAGGERATION', 'WARN', 'WORD', NULL, NULL, '排名类说法不能写在标题 / 五点中', 1, 1, NOW(), NOW()),
+('#1', 'EXAGGERATION', 'WARN', 'CONTAINS', NULL, NULL, '排名类说法需有依据，建议删除', 1, 1, NOW(), NOW()),
+('No.1', 'EXAGGERATION', 'WARN', 'WORD', NULL, NULL, '排名类说法需有依据，建议删除', 1, 1, NOW(), NOW()),
+('number one', 'EXAGGERATION', 'WARN', 'WORD', NULL, NULL, '排名类说法需有依据，建议删除', 1, 1, NOW(), NOW()),
+('top rated', 'EXAGGERATION', 'WARN', 'WORD', NULL, NULL, '评价类说法不能写在商品文案中', 1, 1, NOW(), NOW()),
+('100% guaranteed', 'EXAGGERATION', 'WARN', 'CONTAINS', NULL, NULL, '绝对化承诺，改为具体的保修 / 售后说明', 1, 1, NOW(), NOW()),
+('guaranteed', 'EXAGGERATION', 'WARN', 'WORD', NULL, NULL, '绝对化承诺，改为具体的保修 / 售后说明', 1, 1, NOW(), NOW()),
+('miracle', 'EXAGGERATION', 'WARN', 'WORD', NULL, NULL, '夸大用语，删除', 1, 1, NOW(), NOW()),
+('perfect', 'EXAGGERATION', 'WARN', 'WORD', NULL, NULL, '主观夸大用语，建议换成具体卖点', 1, 1, NOW(), NOW()),
+('cheapest', 'EXAGGERATION', 'WARN', 'WORD', NULL, NULL, '比较价格的说法不能写在文案中', 1, 1, NOW(), NOW()),
+('lowest price', 'EXAGGERATION', 'WARN', 'WORD', NULL, NULL, '比较价格的说法不能写在文案中', 1, 1, NOW(), NOW()),
+('free shipping', 'EXAGGERATION', 'WARN', 'WORD', 'AMAZON', NULL, '亚马逊标题 / 五点不能写促销与运费信息', 1, 1, NOW(), NOW()),
+('hot sale', 'EXAGGERATION', 'WARN', 'WORD', NULL, NULL, '促销用语，标题中删除', 1, 1, NOW(), NOW()),
+('limited time', 'EXAGGERATION', 'WARN', 'WORD', NULL, NULL, '促销用语，标题中删除', 1, 1, NOW(), NOW()),
+('最安値', 'EXAGGERATION', 'WARN', 'CONTAINS', NULL, 'JP', '日本景品表示法：最安值说法需有依据', 1, 1, NOW(), NOW()),
+('日本一', 'EXAGGERATION', 'WARN', 'CONTAINS', NULL, 'JP', '日本景品表示法：第一类说法需有依据', 1, 1, NOW(), NOW()),
+('Testsieger', 'EXAGGERATION', 'WARN', 'WORD', NULL, 'DE', '德国：未获测评的「测试冠军」说法属于不正当竞争', 1, 1, NOW(), NOW()),
+('Apple', 'TRADEMARK', 'WARN', 'WORD', NULL, NULL, '只能以「compatible with」描述兼容性，不能作为品牌或系列名', 1, 1, NOW(), NOW()),
+('iPhone', 'TRADEMARK', 'WARN', 'WORD', NULL, NULL, '只能以「compatible with iPhone」描述兼容性', 1, 1, NOW(), NOW()),
+('AirPods', 'TRADEMARK', 'WARN', 'WORD', NULL, NULL, '只能以「compatible with」描述兼容性', 1, 1, NOW(), NOW()),
+('MagSafe', 'TRADEMARK', 'WARN', 'WORD', NULL, NULL, '未获 MFi / MagSafe 授权时改为 magnetic', 1, 1, NOW(), NOW()),
+('Samsung', 'TRADEMARK', 'WARN', 'WORD', NULL, NULL, '只能以「compatible with」描述兼容性', 1, 1, NOW(), NOW()),
+('Nike', 'TRADEMARK', 'BLOCK', 'WORD', NULL, NULL, '知名品牌，未授权禁止使用', 1, 1, NOW(), NOW()),
+('Adidas', 'TRADEMARK', 'BLOCK', 'WORD', NULL, NULL, '知名品牌，未授权禁止使用', 1, 1, NOW(), NOW()),
+('Disney', 'TRADEMARK', 'BLOCK', 'WORD', NULL, NULL, 'IP 授权商标，未授权禁止使用', 1, 1, NOW(), NOW()),
+('Marvel', 'TRADEMARK', 'BLOCK', 'WORD', NULL, NULL, 'IP 授权商标，未授权禁止使用', 1, 1, NOW(), NOW()),
+('Pokemon', 'TRADEMARK', 'BLOCK', 'WORD', NULL, NULL, 'IP 授权商标，未授权禁止使用', 1, 1, NOW(), NOW()),
+('Hello Kitty', 'TRADEMARK', 'BLOCK', 'WORD', NULL, NULL, 'IP 授权商标，未授权禁止使用', 1, 1, NOW(), NOW()),
+('LEGO', 'TRADEMARK', 'BLOCK', 'WORD', NULL, NULL, '知名品牌，可改为 building blocks', 1, 1, NOW(), NOW()),
+('Dyson', 'TRADEMARK', 'BLOCK', 'WORD', NULL, NULL, '知名品牌，未授权禁止使用', 1, 1, NOW(), NOW()),
+('YETI', 'TRADEMARK', 'BLOCK', 'WORD', NULL, NULL, '知名品牌（保温杯类目投诉高发）', 1, 1, NOW(), NOW()),
+('Stanley', 'TRADEMARK', 'BLOCK', 'WORD', NULL, NULL, '知名品牌（保温杯类目投诉高发）', 1, 1, NOW(), NOW()),
+('OtterBox', 'TRADEMARK', 'BLOCK', 'WORD', NULL, NULL, '知名品牌，未授权禁止使用', 1, 1, NOW(), NOW()),
+('GoPro', 'TRADEMARK', 'WARN', 'WORD', NULL, NULL, '只能以「compatible with」描述兼容性', 1, 1, NOW(), NOW()),
+('Rolex', 'TRADEMARK', 'BLOCK', 'WORD', NULL, NULL, '知名品牌，未授权禁止使用', 1, 1, NOW(), NOW()),
+('Gucci', 'TRADEMARK', 'BLOCK', 'WORD', NULL, NULL, '知名品牌，未授权禁止使用', 1, 1, NOW(), NOW()),
+('Louis Vuitton', 'TRADEMARK', 'BLOCK', 'WORD', NULL, NULL, '知名品牌，未授权禁止使用', 1, 1, NOW(), NOW()),
+('Chanel', 'TRADEMARK', 'BLOCK', 'WORD', NULL, NULL, '知名品牌，未授权禁止使用', 1, 1, NOW(), NOW());
+
+-- 内置角色：超级管理员、电商运营全部，总经理只读
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT r.id, m.id FROM sys_role r JOIN sys_menu m ON (m.id IN (23, 985, 500) OR m.id BETWEEN 580 AND 589 OR m.id BETWEEN 5800 AND 5899)
+WHERE r.id IN (1, 5) AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r.id AND x.menu_id = m.id);
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT r.id, m.id FROM sys_role r JOIN sys_menu m ON m.id IN (23, 985, 580, 581)
+WHERE r.id = 3 AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r.id AND x.menu_id = m.id);
+
+-- ===== 第五轮：自动化规则中心（auto） =====
+-- 「当…就…」自动化：规则（触发器 + 范围 + 条件 + 动作）、执行日志、规则创建的待办提醒。代码在 modules/ecom/automation
+DROP TABLE IF EXISTS ecom_auto_rule;
+CREATE TABLE ecom_auto_rule (
+    id                BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id         BIGINT       NOT NULL DEFAULT 1 COMMENT '租户ID',
+    name              VARCHAR(64)  NOT NULL COMMENT '规则名称',
+    trigger_code      VARCHAR(32)  NOT NULL COMMENT '触发器(字典 ecom_auto_trigger)',
+    status            TINYINT      NOT NULL DEFAULT 1 COMMENT '状态 1启用 0停用',
+    scope_json        VARCHAR(4000)         DEFAULT NULL COMMENT '对象范围 JSON：店铺、平台、站点、SKU、标签',
+    condition_json    TEXT                  DEFAULT NULL COMMENT '条件组 JSON：logic AND/OR、items 条件（字段 + 运算符 + 值）、groups 子组',
+    actions_json      TEXT                  DEFAULT NULL COMMENT '动作 JSON（按顺序执行，密钥加密）',
+    debounce_hours    INT          NOT NULL DEFAULT 24 COMMENT '防抖（小时）：同一对象在这段时间内只执行一次，0 不防抖',
+    daily_limit       INT          NOT NULL DEFAULT 0 COMMENT '每日执行上限，0 不限',
+    template_code     VARCHAR(32)           DEFAULT NULL COMMENT '来源模板',
+    trigger_count     INT          NOT NULL DEFAULT 0 COMMENT '执行次数（执行了动作）',
+    last_trigger_time DATETIME              DEFAULT NULL COMMENT '最近执行时间',
+    last_result       VARCHAR(16)           DEFAULT NULL COMMENT '最近执行结果(字典 ecom_auto_result)',
+    remark            VARCHAR(255)          DEFAULT NULL COMMENT '备注',
+    create_by         BIGINT                DEFAULT NULL COMMENT '创建人（动作以创建人的身份执行）',
+    create_time       DATETIME              DEFAULT NULL COMMENT '创建时间',
+    update_time       DATETIME              DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_auto_rule_trigger (trigger_code, status)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '自动化规则';
+
+DROP TABLE IF EXISTS ecom_auto_log;
+CREATE TABLE ecom_auto_log (
+    id           BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id    BIGINT       NOT NULL DEFAULT 1 COMMENT '租户ID',
+    rule_id      BIGINT       NOT NULL COMMENT '规则',
+    rule_name    VARCHAR(64)  NOT NULL COMMENT '规则名称（规则删除后仍可查看）',
+    trigger_code VARCHAR(32)  NOT NULL COMMENT '触发器(字典 ecom_auto_trigger)',
+    object_key   VARCHAR(64)  NOT NULL COMMENT '对象标识（防抖按规则 + 对象判断），如 ORDER:123',
+    object_label VARCHAR(128)          DEFAULT NULL COMMENT '对象名称（订单号、SKU、活动名称等）',
+    store_id     BIGINT                DEFAULT NULL COMMENT '店铺',
+    result       VARCHAR(16)  NOT NULL COMMENT '结果(字典 ecom_auto_result) SUCCESS成功 PARTIAL部分成功 FAILED失败 NOT_MATCHED条件不满足 DEBOUNCED防抖跳过 LIMITED达到上限',
+    match_detail VARCHAR(1000)         DEFAULT NULL COMMENT '条件判断说明',
+    cost_ms      INT          NOT NULL DEFAULT 0 COMMENT '耗时（毫秒）',
+    error_msg    VARCHAR(500)          DEFAULT NULL COMMENT '第一个失败动作的原因',
+    retry_count  INT          NOT NULL DEFAULT 0 COMMENT '重试次数',
+    event_json   TEXT                  DEFAULT NULL COMMENT '事件 JSON（字段值、关联对象，重试与试运行使用）',
+    actions_json TEXT                  DEFAULT NULL COMMENT '动作结果 JSON（类型、结果、说明、耗时）',
+    create_time  DATETIME              DEFAULT NULL COMMENT '执行时间',
+    update_time  DATETIME              DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_auto_log_rule (rule_id, object_key, create_time),
+    KEY idx_ecom_auto_log_time (create_time),
+    KEY idx_ecom_auto_log_trigger (trigger_code, id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '自动化执行日志';
+
+DROP TABLE IF EXISTS ecom_auto_todo;
+CREATE TABLE ecom_auto_todo (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id   BIGINT       NOT NULL DEFAULT 1 COMMENT '租户ID',
+    rule_id     BIGINT       NOT NULL COMMENT '创建的规则',
+    assignee_id BIGINT       NOT NULL COMMENT '处理人',
+    store_id    BIGINT                DEFAULT NULL COMMENT '店铺',
+    title       VARCHAR(128) NOT NULL COMMENT '标题',
+    content     VARCHAR(500)          DEFAULT NULL COMMENT '内容',
+    link        VARCHAR(255)          DEFAULT NULL COMMENT '点击跳转的页面',
+    object_key  VARCHAR(64)           DEFAULT NULL COMMENT '对象标识（同一规则同一对象未完成的不重复创建）',
+    due_date    DATE                  DEFAULT NULL COMMENT '期限',
+    status      VARCHAR(16)  NOT NULL DEFAULT 'OPEN' COMMENT '状态(字典 ecom_auto_todo_status) OPEN待处理 DONE已完成',
+    done_by     BIGINT                DEFAULT NULL COMMENT '完成人',
+    done_time   DATETIME              DEFAULT NULL COMMENT '完成时间',
+    create_time DATETIME              DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME              DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_auto_todo_assignee (assignee_id, status),
+    KEY idx_ecom_auto_todo_rule (rule_id, object_key)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '自动化待办提醒';
+
+-- 菜单：运营管理 → 智能运营（分组 985，与 AI 运营助手共用，先建的一方建立）→ 自动化规则、执行日志、待办提醒
+INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time)
+SELECT 985, 23, '智能运营', 'M', NULL, NULL, NULL, NULL, 5, 1, 1, NOW(), NOW()
+WHERE NOT EXISTS (SELECT 1 FROM sys_menu WHERE id = 985);
+INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time) VALUES
+(590, 985, '自动化规则', 'C', '/ecom/automation', 'ecom/automation/index', 'ecom:automation:list', 'ThunderboltOutlined', 20, 1, 1, NOW(), NOW()),
+(591, 985, '执行日志', 'C', '/ecom/automation-log', 'ecom/automation-log/index', 'ecom:automationLog:list', 'FileSearchOutlined', 21, 1, 1, NOW(), NOW()),
+(592, 985, '待办提醒', 'C', '/ecom/automation-todo', 'ecom/automation-todo/index', 'ecom:automationTodo:list', 'BellOutlined', 22, 1, 1, NOW(), NOW()),
+(5900, 590, '新增规则', 'F', NULL, NULL, 'ecom:automation:add', NULL, 1, 1, 1, NOW(), NOW()),
+(5901, 590, '修改规则', 'F', NULL, NULL, 'ecom:automation:edit', NULL, 2, 1, 1, NOW(), NOW()),
+(5902, 590, '删除规则', 'F', NULL, NULL, 'ecom:automation:remove', NULL, 3, 1, 1, NOW(), NOW()),
+(5903, 590, '试运行', 'F', NULL, NULL, 'ecom:automation:test', NULL, 4, 1, 1, NOW(), NOW()),
+(5910, 591, '重试', 'F', NULL, NULL, 'ecom:automationLog:retry', NULL, 1, 1, 1, NOW(), NOW());
+
+-- 授权：超级管理员、电商运营全部，总经理只读（页面）；连带分组 985 和模块 23
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT r.id, m.id FROM sys_role r JOIN sys_menu m ON m.id IN (985, 590, 591, 592, 5900, 5901, 5902, 5903, 5910)
+WHERE r.id IN (1, 5) AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r.id AND x.menu_id = m.id);
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT r.id, m.id FROM sys_role r JOIN sys_menu m ON m.id IN (985, 590, 591, 592)
+WHERE r.id = 3 AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r.id AND x.menu_id = m.id);
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT r.id, 23 FROM sys_role r
+WHERE r.id IN (1, 3, 5) AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r.id AND x.menu_id = 23);
+
+-- 字典（系统字典）：触发器、动作、执行结果、动作结果、待办状态、触发器分类；改价来源增加「自动化规则」
+INSERT INTO sys_dict_type (id, name, type, kind, status, remark, create_time, update_time) VALUES
+(390, '自动化触发器', 'ecom_auto_trigger', 'SYSTEM', 1, '自动化规则的触发器', NOW(), NOW()),
+(391, '自动化动作', 'ecom_auto_action', 'SYSTEM', 1, '自动化规则的动作类型', NOW(), NOW()),
+(392, '自动化执行结果', 'ecom_auto_result', 'SYSTEM', 1, '一次规则执行的结果', NOW(), NOW()),
+(393, '自动化动作结果', 'ecom_auto_action_status', 'SYSTEM', 1, '单个动作的执行结果', NOW(), NOW()),
+(394, '自动化待办状态', 'ecom_auto_todo_status', 'SYSTEM', 1, '自动化规则创建的待办提醒的状态', NOW(), NOW()),
+(395, '自动化触发器分类', 'ecom_auto_category', 'SYSTEM', 1, '触发器的业务分类', NOW(), NOW());
+INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, builtin, create_time, update_time) VALUES
+('ecom_auto_trigger', '新订单', 'ORDER_NEW', 'blue', 1, 1, 1, NOW(), NOW()),
+('ecom_auto_trigger', '订单异常', 'ORDER_EXCEPTION', 'red', 2, 1, 1, NOW(), NOW()),
+('ecom_auto_trigger', '订单预估亏损', 'ORDER_LOSS', 'volcano', 3, 1, 1, NOW(), NOW()),
+('ecom_auto_trigger', '断货风险', 'STOCKOUT_RISK', 'orange', 4, 1, 1, NOW(), NOW()),
+('ecom_auto_trigger', '低于安全库存', 'STOCK_LOW', 'gold', 5, 1, 1, NOW(), NOW()),
+('ecom_auto_trigger', '新差评', 'REVIEW_NEGATIVE', 'magenta', 6, 1, 1, NOW(), NOW()),
+('ecom_auto_trigger', '买家消息超时未回复', 'MESSAGE_TIMEOUT', 'purple', 7, 1, 1, NOW(), NOW()),
+('ecom_auto_trigger', '商品被跟卖', 'LISTING_HIJACKED', 'red', 8, 1, 1, NOW(), NOW()),
+('ecom_auto_trigger', '排名大跌', 'LISTING_RANK_DROP', 'volcano', 9, 1, 1, NOW(), NOW()),
+('ecom_auto_trigger', '商品被下架', 'LISTING_DELISTED', 'red', 10, 1, 1, NOW(), NOW()),
+('ecom_auto_trigger', '店铺授权失效', 'STORE_AUTH_INVALID', 'red', 11, 1, 1, NOW(), NOW()),
+('ecom_auto_trigger', '渠道同步失败', 'SYNC_FAILED', 'orange', 12, 1, 1, NOW(), NOW()),
+('ecom_auto_trigger', '头程货件签收', 'INBOUND_RECEIVED', 'green', 13, 1, 1, NOW(), NOW()),
+('ecom_auto_trigger', '头程货件超期', 'INBOUND_OVERDUE', 'orange', 14, 1, 1, NOW(), NOW()),
+('ecom_auto_trigger', '广告 ACOS 过高', 'AD_ACOS_HIGH', 'volcano', 15, 1, 1, NOW(), NOW()),
+('ecom_auto_trigger', '广告预算耗尽', 'AD_BUDGET_EXHAUSTED', 'gold', 16, 1, 1, NOW(), NOW()),
+('ecom_auto_trigger', 'FBA 索赔临近截止', 'FBA_CLAIM_DEADLINE', 'purple', 17, 1, 1, NOW(), NOW()),
+('ecom_auto_trigger', '退货率异常', 'RETURN_RATE_HIGH', 'magenta', 18, 1, 1, NOW(), NOW()),
+('ecom_auto_trigger', '价格被竞品低于', 'COMPETITOR_PRICE_LOWER', 'cyan', 19, 1, 1, NOW(), NOW()),
+('ecom_auto_action', '发送通知', 'NOTIFY', 'blue', 1, 1, 1, NOW(), NOW()),
+('ecom_auto_action', '群机器人', 'IM_ROBOT', 'cyan', 2, 1, 1, NOW(), NOW()),
+('ecom_auto_action', 'Webhook', 'WEBHOOK', 'geekblue', 3, 1, 1, NOW(), NOW()),
+('ecom_auto_action', '创建待办', 'TODO', 'purple', 4, 1, 1, NOW(), NOW()),
+('ecom_auto_action', '挂起订单', 'ORDER_HOLD', 'orange', 5, 1, 1, NOW(), NOW()),
+('ecom_auto_action', '订单打标签', 'ORDER_TAG', 'gold', 6, 1, 1, NOW(), NOW()),
+('ecom_auto_action', '指定仓库 / 物流', 'ORDER_ASSIGN', 'lime', 7, 1, 1, NOW(), NOW()),
+('ecom_auto_action', '在线商品调价', 'LISTING_REPRICE', 'volcano', 8, 1, 1, NOW(), NOW()),
+('ecom_auto_action', '生成采购计划', 'PURCHASE_PLAN', 'green', 9, 1, 1, NOW(), NOW()),
+('ecom_auto_action', '建售后工单', 'CS_TICKET', 'magenta', 10, 1, 1, NOW(), NOW()),
+('ecom_auto_action', '暂停广告活动', 'AD_PAUSE', 'red', 11, 1, 1, NOW(), NOW()),
+('ecom_auto_action', '调整竞价 / 预算', 'AD_ADJUST', 'orange', 12, 1, 1, NOW(), NOW()),
+('ecom_auto_result', '成功', 'SUCCESS', 'green', 1, 1, 1, NOW(), NOW()),
+('ecom_auto_result', '部分成功', 'PARTIAL', 'orange', 2, 1, 1, NOW(), NOW()),
+('ecom_auto_result', '失败', 'FAILED', 'red', 3, 1, 1, NOW(), NOW()),
+('ecom_auto_result', '条件不满足', 'NOT_MATCHED', 'default', 4, 1, 1, NOW(), NOW()),
+('ecom_auto_result', '防抖跳过', 'DEBOUNCED', 'cyan', 5, 1, 1, NOW(), NOW()),
+('ecom_auto_result', '达到上限', 'LIMITED', 'purple', 6, 1, 1, NOW(), NOW()),
+('ecom_auto_action_status', '成功', 'SUCCESS', 'green', 1, 1, 1, NOW(), NOW()),
+('ecom_auto_action_status', '失败', 'FAILED', 'red', 2, 1, 1, NOW(), NOW()),
+('ecom_auto_action_status', '跳过', 'SKIPPED', 'default', 3, 1, 1, NOW(), NOW()),
+('ecom_auto_action_status', '仅建议', 'SUGGESTED', 'blue', 4, 1, 1, NOW(), NOW()),
+('ecom_auto_todo_status', '待处理', 'OPEN', 'orange', 1, 1, 1, NOW(), NOW()),
+('ecom_auto_todo_status', '已完成', 'DONE', 'green', 2, 1, 1, NOW(), NOW()),
+('ecom_auto_category', '订单', 'ORDER', 'blue', 1, 1, 1, NOW(), NOW()),
+('ecom_auto_category', '库存与补货', 'STOCK', 'orange', 2, 1, 1, NOW(), NOW()),
+('ecom_auto_category', '客服与评价', 'CS', 'magenta', 3, 1, 1, NOW(), NOW()),
+('ecom_auto_category', '商品监控', 'LISTING', 'red', 4, 1, 1, NOW(), NOW()),
+('ecom_auto_category', '店铺与渠道', 'STORE', 'purple', 5, 1, 1, NOW(), NOW()),
+('ecom_auto_category', '头程物流', 'LOGISTICS', 'cyan', 6, 1, 1, NOW(), NOW()),
+('ecom_auto_category', '广告', 'ADS', 'volcano', 7, 1, 1, NOW(), NOW()),
+('ecom_auto_category', 'FBA', 'FBA', 'gold', 8, 1, 1, NOW(), NOW()),
+('ecom_auto_category', '价格', 'PRICE', 'green', 9, 1, 1, NOW(), NOW()),
+('ecom_price_change_source', '自动化规则', 'AUTOMATION', 'geekblue', 5, 1, 1, NOW(), NOW());
+-- 应收应付来源：电商平台费用（平台结算确认时按费用科目生成的红字应收，借 销售费用等 / 贷 应收账款）
+INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, create_time, update_time) VALUES
+('fin_bill_source', '电商平台费用', 'PLATFORM_FEE', 'orange', 30, 1, NOW(), NOW());
+
+-- ===== 第五轮修复：业务正确性与安全（fixa） =====
+-- 供应商对账改为内部登记供应商的确认结果（不再依赖供应商门户）：登记人
+ALTER TABLE fin_supplier_statement ADD COLUMN confirm_by BIGINT DEFAULT NULL COMMENT '登记供应商对账结果的内部人员';
+-- 内置行政流程：抄送节点原指向不存在的角色 11（人事专员），出差改为抄送会计、用印改为抄送总经理；
+-- 出差、用印、物品领用、通用审批 4 个流程由应用启动时发布（WfBuiltinPublisher），可直接在「发起申请」中发起
+UPDATE wf_model SET design_json = REPLACE(design_json, '{"id": "cc_hr", "type": "CC", "name": "抄送人事专员", "assignee": {"type": "ROLE", "ids": [11], "names": ["人事专员"]}',
+        '{"id": "cc_acct", "type": "CC", "name": "抄送会计", "assignee": {"type": "ROLE", "ids": [9], "names": ["会计"]}'),
+    remark = '内置流程（初始化即发布）：部门主管 → 出差 ≥ 5 天或费用 ≥ 1 万元时上级主管 → 抄送会计。可在「发起申请」中直接发起'
+WHERE model_key = 'oa_travel';
+UPDATE wf_model SET design_json = REPLACE(design_json, '{"id": "cc_hr", "type": "CC", "name": "抄送人事专员", "assignee": {"type": "ROLE", "ids": [11], "names": ["人事专员"]}',
+        '{"id": "cc_gm", "type": "CC", "name": "抄送总经理", "assignee": {"type": "ROLE", "ids": [3], "names": ["总经理"]}'),
+    remark = '内置流程（初始化即发布）：部门主管 → 公章、合同章时总经理审批，其他印章抄送总经理。可在「发起申请」中直接发起'
+WHERE model_key = 'oa_seal';
+UPDATE wf_model SET remark = '内置流程（初始化即发布）：部门主管 → 抄送仓库管理员。可在「发起申请」中直接发起' WHERE model_key = 'oa_goods';
+UPDATE wf_model SET remark = '内置流程（初始化即发布）：部门主管 → 上级主管（依次审批）。可在「发起申请」中直接发起' WHERE model_key = 'oa_general';
+-- 销售订单、订单变更的内置流程（与其他业务单据一样未发布；发布后订单「审核」/ 订单变更改为提交审批）
+INSERT INTO wf_model (model_key, name, category, sort, status, design_json, remark, create_time, update_time)
+SELECT 'scm_sales_order', '销售订单审批', 'SALES', 2, 1, '{"form": [], "flow": {"id": "start", "type": "START", "name": "发起人", "next": {"id": "leader", "type": "APPROVER", "name": "部门主管审批", "assignee": {"type": "DEPT_LEADER", "ids": [], "names": [], "level": 1}, "approveMode": "OR", "emptyAction": "TO_ADMIN", "next": {"id": "amount_check", "type": "CONDITION", "name": "按订单金额", "next": {"id": "cc_acct", "type": "CC", "name": "抄送会计", "assignee": {"type": "ROLE", "ids": [9], "names": ["会计"]}, "next": null}, "branches": [{"id": "amount_check_yes", "name": "金额 ≥ 10 万元", "defaultBranch": false, "conditions": [[{"field": "amount", "operator": "GE", "value": "100000"}]], "next": {"id": "gm", "type": "APPROVER", "name": "总经理审批", "assignee": {"type": "ROLE", "ids": [3], "names": ["总经理"]}, "approveMode": "OR", "emptyAction": "TO_ADMIN", "next": null}}, {"id": "amount_check_else", "name": "其他情况", "defaultBranch": true, "conditions": [], "next": null}]}}}}',
+       '内置流程（未发布）：部门主管 → 金额 ≥ 10 万元时总经理 → 抄送会计。发布后销售订单「审核」改为提交审批，审批通过后变为已审核；可在流程设计中调整审批人后发布', NOW(), NOW()
+FROM (SELECT 1 AS x) t WHERE NOT EXISTS (SELECT 1 FROM wf_model WHERE model_key = 'scm_sales_order');
+INSERT INTO wf_model (model_key, name, category, sort, status, design_json, remark, create_time, update_time)
+SELECT 'scm_order_change', '订单变更审批', 'PURCHASE', 3, 1, '{"form": [], "flow": {"id": "start", "type": "START", "name": "发起人", "next": {"id": "leader", "type": "APPROVER", "name": "部门主管审批", "assignee": {"type": "DEPT_LEADER", "ids": [], "names": [], "level": 1}, "approveMode": "OR", "emptyAction": "TO_ADMIN", "next": {"id": "delta_check", "type": "CONDITION", "name": "按变更金额", "next": null, "branches": [{"id": "delta_check_yes", "name": "金额增加 ≥ 1 万元", "defaultBranch": false, "conditions": [[{"field": "amountDelta", "operator": "GE", "value": "10000"}]], "next": {"id": "gm", "type": "APPROVER", "name": "总经理审批", "assignee": {"type": "ROLE", "ids": [3], "names": ["总经理"]}, "approveMode": "OR", "emptyAction": "TO_ADMIN", "next": null}}, {"id": "delta_check_else", "name": "其他情况", "defaultBranch": true, "conditions": [], "next": null}]}}}}',
+       '内置流程（未发布）：部门主管 → 变更后金额增加 ≥ 1 万元时总经理。发布后已审核的采购 / 销售订单变更改为提交审批，审批通过后生效；可在流程设计中调整审批人后发布', NOW(), NOW()
+FROM (SELECT 1 AS x) t WHERE NOT EXISTS (SELECT 1 FROM wf_model WHERE model_key = 'scm_order_change');

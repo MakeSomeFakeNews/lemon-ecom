@@ -108,8 +108,6 @@ public class EcomJxcAnalysisService {
         b.setApBalance(Decimals.money(b.getApBalance()));
         b.setAdvanceReceived(Decimals.money(b.getAdvanceReceived()));
         b.setAdvancePaid(Decimals.money(b.getAdvancePaid()));
-        b.setNotesReceivable(Decimals.money(b.getNotesReceivable()));
-        b.setNotesPayable(Decimals.money(b.getNotesPayable()));
         JxcViews.Unvouchered unvouchered = jxcMapper.selectUnvouchered(date);
         if (unvouchered == null) {
             unvouchered = new JxcViews.Unvouchered();
@@ -118,8 +116,8 @@ public class EcomJxcAnalysisService {
         unvouchered.setReceipt(Decimals.money(unvouchered.getReceipt()));
         unvouchered.setPayment(Decimals.money(unvouchered.getPayment()));
 
-        BigDecimal net = cash.add(bank).add(inventoryAmount).add(b.getArBalance()).add(b.getNotesReceivable()).add(b.getAdvancePaid())
-                .subtract(b.getApBalance()).subtract(b.getNotesPayable()).subtract(b.getAdvanceReceived());
+        BigDecimal net = cash.add(bank).add(inventoryAmount).add(b.getArBalance()).add(b.getAdvancePaid())
+                .subtract(b.getApBalance()).subtract(b.getAdvanceReceived());
         return new JxcViews.Assets(date, date.equals(today), cash, bank, funds, inventoryAmount, estimated, warehouses, categories, b,
                 jxcMapper.selectTopBalances("AR", date, TOP_BALANCES), jxcMapper.selectTopBalances("AP", date, TOP_BALANCES),
                 unvouchered, net);

@@ -74,12 +74,12 @@
           <div v-if="age.result" class="age-summary">
             <div v-for="(b, i) in age.result.buckets" :key="i" class="age-card" :class="{ old: i >= age.result.buckets.length - 2 }">
               <div class="sub-text">{{ b.label }}</div>
-              <b>¥{{ formatMoney(age.result.total.ages[i].amount) }}</b>
+              <b>{{ symMoney(age.result.total.ages[i].amount) }}</b>
               <div class="sub-text">{{ percent(age.result.total.ages[i].amount, age.result.total.amount) }}</div>
             </div>
             <div class="age-card total">
               <div class="sub-text">{{ $t('common.field.total') }}</div>
-              <b>¥{{ formatMoney(age.result.total.amount) }}</b>
+              <b>{{ symMoney(age.result.total.amount) }}</b>
               <div class="sub-text">{{ $t('fin.analysis.nMaterials', { n: age.result.rows.length }) }}</div>
             </div>
           </div>
@@ -126,6 +126,7 @@ import { useDict } from '@/composables/useDict'
 import { formatQty, today } from '@/components/wms/wms'
 import { currentPeriod, formatMoney } from '@/components/fin/fin'
 import { useI18n } from 'vue-i18n'
+import { symMoney } from '@/utils/number'
 
 const { t } = useI18n()
 const tab = ref('margin')

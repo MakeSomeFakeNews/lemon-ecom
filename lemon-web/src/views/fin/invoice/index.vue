@@ -9,7 +9,7 @@
                 <template #icon><SafetyCertificateOutlined /></template>{{ $t('fin.invoice.certifyN', { n: certifiable.length }) }}
               </a-button>
             </template>
-            <a-dropdown v-perm="'fin:invoice:edit'">
+            <a-dropdown v-if="userStore.hasPerm('fin:invoice:edit')">
               <a-button><template #icon><ImportOutlined /></template>{{ $t('common.action.import') }}</a-button>
               <template #overlay>
                 <a-menu>
@@ -33,8 +33,8 @@
           </div>
           <TableToolbar v-model:size="size" v-model:checked="checked" :columns="baseColumns" class="stats-bar" @refresh="load">
             <div class="stats">
-              <span>{{ $t('fin.invoice.pageTotal') }} <b>¥{{ formatMoney(pageTotal.amount) }}</b></span>
-              <span>{{ $t('fin.invoice.taxAmount') }} ¥{{ formatMoney(pageTotal.tax) }}</span>
+              <span>{{ $t('fin.invoice.pageTotal') }} <b>{{ symMoney(pageTotal.amount) }}</b></span>
+              <span>{{ $t('fin.invoice.taxAmount') }} {{ symMoney(pageTotal.tax) }}</span>
               <span class="sub-text">{{ $t('fin.invoice.voidExcluded') }}</span>
             </div>
           </TableToolbar>
@@ -55,7 +55,7 @@
               </template>
               <template v-else-if="column.key === 'invoiceType'"><DictTag type="fin_invoice_type" :value="record.invoiceType" /></template>
               <template v-else-if="column.key === 'amount'">
-                <span :class="{ neg: Number(record.amount) < 0, void: record.status === InvoiceStatus.VOID }">¥{{ formatMoney(record.amount) }}</span>
+                <span :class="{ neg: Number(record.amount) < 0, void: record.status === InvoiceStatus.VOID }">{{ symMoney(record.amount) }}</span>
               </template>
               <template v-else-if="column.key === 'taxAmount'">
                 <span :class="{ void: record.status === InvoiceStatus.VOID }">{{ formatMoney(record.taxAmount) }}</span>
@@ -129,6 +129,11 @@ import InvoiceReportTab from './InvoiceReportTab.vue'
 import InvoiceXmlImport from './InvoiceXmlImport.vue'
 import { KINDS, SPECIAL_TYPES, STATUS_OPTIONS, unmatchedAmount } from './invoice'
 import { InvoiceKind, InvoiceStatus } from '@/constants/enums'
+import { symMoney } from '@/utils/number'
+import { useUserStore } from '@/store/user'
+
+/** a-dropdown 的根不是元素，v-perm 不生效，改用 v-if 判断权限 */
+const userStore = useUserStore()
 
 const { t } = useI18n()
 const tab = ref(InvoiceKind.OUTPUT)

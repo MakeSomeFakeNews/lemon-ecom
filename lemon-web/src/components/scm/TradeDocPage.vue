@@ -65,9 +65,9 @@
               </template>
               <template v-else-if="column.key === 'totalQty'">{{ formatQty(record.totalQty) }}</template>
               <template v-else-if="column.key === 'totalAmount'">
-                ¥{{ formatMoney(record.totalAmount) }}
-                <div v-if="Number(record.discountAmount)" class="sub-text">{{ $t('scm.wholeDiscount.value', { amount: '¥' + formatMoney(record.discountAmount) }) }}</div>
-                <div v-if="Number(record.freight)" class="sub-text">{{ $t('scm.freight.value', { amount: '¥' + formatMoney(record.freight) }) }}</div>
+                {{ symMoney(record.totalAmount) }}
+                <div v-if="Number(record.discountAmount)" class="sub-text">{{ $t('scm.wholeDiscount.value', { amount: symMoney(record.discountAmount) }) }}</div>
+                <div v-if="Number(record.freight)" class="sub-text">{{ $t('scm.freight.value', { amount: symMoney(record.freight) }) }}</div>
               </template>
               <template v-else-if="column.key === 'action'">
                 <TableActions :actions="[{ type: 'view', onClick: () => openDetail(record) }]" />
@@ -121,6 +121,7 @@ import { formatQty, warehouseText } from '@/components/wms/wms'
 import { ORDER_KINDS, TRADE_KINDS, formatMoney } from './scm'
 import { useI18n } from 'vue-i18n'
 import { OrderSource } from '@/constants/enums'
+import { symMoney } from '@/utils/number'
 
 /**
  * 采购入库 / 采购退货 / 销售出库 / 销售退货列表页，四个页面共用。

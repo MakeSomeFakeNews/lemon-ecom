@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.assistant.mapper.EcomAssistantQueryMapper">
+
+    <sql id="storeIn">
+        <if test="storeIds != null">
+            <choose>
+                <when test="storeIds.size() > 0">
+                    AND ${alias}.store_id IN <foreach collection="storeIds" item="i" open="(" separator="," close=")">#{i}</foreach>
+                </when>
+                <otherwise>AND 1 = 0</otherwise>
+            </choose>
+        </if>
+    </sql>
+
+    <!-- 未发出的处理状态（与看板「逾期」口径一致） -->
+    <sql id="unshipped">('PENDING', 'ON_HOLD', 'EXCEPTION', 'OUT_OF_STOCK', 'AUDITED', 'LABELED', 'OUTBOUND', 'PARTIAL')</sql>
+
+    <select id="selectAdTotals" resultType="com.lemon.erp.modules.ecom.assistant.dto.AssistantRows$AdTotal">
+        SELECT d.store_id, s.currency, SUM(d.impressions) AS impressions, SUM(d.clicks) AS clicks, SUM(d.spend) AS spend,
+               SUM(d.ad_sales) AS sales, SUM(d.ad_orders) AS orders
+        FROM ecom_ad_daily d
+        JOIN ecom_store s ON s.id = d.store_id
+        WHERE d.ad_date &gt;= #{begin} AND d.ad_date &lt;= #{end}
+        <include refid="storeIn"><property name="alias" value="d"/></include>
+        GROUP BY d.store_id, s.currency
+    </select>
+
+    <select id="selectReturnCounts" resultType="map">
+        SELECT r.store_id AS "storeId", COUNT(*) AS "returns"
+        FROM ecom_return r
+        WHERE r.create_time &gt;= #{begin} AND r.create_time &lt; #{end}
+        <include refid="storeIn"><property name="alias" value="r"/></include>
+        GROUP BY r.store_id
+    </select>
+
+    <select id="selectSkuReturns" resultType="com.lemon.erp.modules.ecom.assistant.dto.AssistantRows$SkuReturn">
+        SELECT r.store_id, ri.seller_sku, SUM(ri.qty) AS qty, SUM(ri.refund_amount * r.exchange_rate) AS refund_base,
+               COUNT(DISTINCT r.id) AS returns
+        FROM ecom_return_item ri
+        JOIN ecom_return r ON r.id = ri.return_id
+        WHERE r.create_time &gt;= #{begin} AND r.create_time &lt; #{end} AND ri.seller_sku IS NOT NULL
+        <include refid="storeIn"><property name="alias" value="r"/></include>
+        GROUP BY r.store_id, ri.seller_sku
+    </select>
+
+    <select id="selectReturnReasons" resultType="com.lemon.erp.modules.ecom.assistant.dto.AssistantRows$ReasonRow">
+        SELECT COALESCE(r.reason, '') AS reason, COUNT(*) AS returns,
+               COALESCE(SUM((SELECT SUM(ri.qty) FROM ecom_return_item ri WHERE ri.return_id = r.id)), 0) AS qty,
+               COALESCE(SUM(r.refund_amount * r.exchange_rate), 0) AS refund_base
+        FROM ecom_return r
+        WHERE r.create_time &gt;= #{begin} AND r.create_time &lt; #{end}
+        <include refid="storeIn"><property name="alias" value="r"/></include>
+        GROUP BY COALESCE(r.reason, '')
+        ORDER BY COUNT(*) DESC
+    </select>
+
+    <select id="selectSkuReturnReasons" resultType="com.lemon.erp.modules.ecom.assistant.dto.AssistantRows$SkuReasonRow">
+        SELECT r.store_id, s.name AS store_name, ri.seller_sku, COALESCE(r.reason, '') AS reason, COUNT(DISTINCT r.id) AS returns,
+               SUM(ri.qty) AS qty, SUM(ri.refund_amount * r.exchange_rate) AS refund_base
+        FROM ecom_return_item ri
+        JOIN ecom_return r ON r.id = ri.return_id
+        JOIN ecom_store s ON s.id = r.store_id
+        WHERE r.create_time &gt;= #{begin} AND r.create_time &lt; #{end} AND ri.seller_sku IS NOT NULL
+        <include refid="storeIn"><property name="alias" value="r"/></include>
+        <if test="keyword != null and keyword != ''">AND ri.seller_sku LIKE CONCAT('%', #{keyword}, '%')</if>
+        GROUP BY r.store_id, s.name, ri.seller_sku, COALESCE(r.reason, '')
+        ORDER BY SUM(ri.qty) DESC
+    </select>
+
+    <select id="selectReviews" resultType="com.lemon.erp.modules.ecom.assistant.dto.AssistantRows$ReviewRow">
+        SELECT v.id, v.store_id, s.name AS store_name, v.platform, v.seller_sku, v.platform_item_id, v.rating, v.title, v.content,
+               v.review_date, v.replied, v.handle_status
+        FROM ecom_review v
+        JOIN ecom_store s ON s.id = v.store_id
+        WHERE v.review_date &gt;= #{begin} AND v.review_date &lt;= #{end}
+        <if test="maxRating != null">AND v.rating &lt;= #{maxRating}</if>
+        <include refid="storeIn"><property name="alias" value="v"/></include>
+        <if test="keyword != null and keyword != ''">AND (v.seller_sku LIKE CONCAT('%', #{keyword}, '%') OR v.platform_item_id = #{keyword})</if>
+        ORDER BY v.review_date DESC, v.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectReviewSkus" resultType="com.lemon.erp.modules.ecom.assistant.dto.AssistantRows$ReviewSkuRow">
+        SELECT v.store_id, s.name AS store_name, COALESCE(v.seller_sku, '') AS seller_sku, COUNT(*) AS reviews, AVG(v.rating) AS avg_rating,
+               SUM(CASE WHEN v.rating &lt;= 2 THEN 1 ELSE 0 END) AS bad_reviews
+        FROM ecom_review v
+        JOIN ecom_store s ON s.id = v.store_id
+        WHERE v.review_date &gt;= #{begin} AND v.review_date &lt;= #{end}
+        <include refid="storeIn"><property name="alias" value="v"/></include>
+        <if test="keyword != null and keyword != ''">AND v.seller_sku LIKE CONCAT('%', #{keyword}, '%')</if>
+        GROUP BY v.store_id, s.name, COALESCE(v.seller_sku, '')
+        ORDER BY SUM(CASE WHEN v.rating &lt;= 2 THEN 1 ELSE 0 END) DESC, COUNT(*) DESC
+    </select>
+
+    <select id="selectTodoCounts" resultType="map">
+        SELECT
+            (SELECT COUNT(*) FROM ecom_order o WHERE o.status &lt;&gt; 'CANCELLED' AND o.local_status = 'PENDING'
+                <include refid="storeIn"><property name="alias" value="o"/></include>) AS "orderPending",
+            (SELECT COUNT(*) FROM ecom_order o WHERE o.status &lt;&gt; 'CANCELLED' AND o.local_status IN ('EXCEPTION', 'ON_HOLD', 'OUT_OF_STOCK')
+                <include refid="storeIn"><property name="alias" value="o"/></include>) AS "orderException",
+            (SELECT COUNT(*) FROM ecom_order o WHERE o.status &lt;&gt; 'CANCELLED' AND o.ship_by &lt; #{now} AND o.local_status IN <include refid="unshipped"/>
+                <include refid="storeIn"><property name="alias" value="o"/></include>) AS "orderOverdue",
+            (SELECT COUNT(*) FROM ecom_return r WHERE r.status = 'PENDING'
+                <include refid="storeIn"><property name="alias" value="r"/></include>) AS "returnPending",
+            (SELECT COUNT(*) FROM ecom_review v WHERE v.handle_status = 'PENDING'
+                <include refid="storeIn"><property name="alias" value="v"/></include>) AS "reviewPending",
+            (SELECT COUNT(*) FROM ecom_fba_claim c WHERE c.status = 'PENDING' AND c.deadline IS NOT NULL AND c.deadline &lt;= #{claimDeadline}
+                <include refid="storeIn"><property name="alias" value="c"/></include>) AS "claimExpiring"
+    </select>
+
+    <select id="selectOrderIssues" resultType="com.lemon.erp.modules.ecom.assistant.dto.AssistantRows$OrderIssue">
+        SELECT o.id, o.store_id, s.name AS store_name, o.platform_order_no, o.order_time, o.ship_by, o.local_status, o.fulfillment, o.exception,
+               o.total_amount, o.currency
+        FROM ecom_order o
+        JOIN ecom_store s ON s.id = o.store_id
+        WHERE o.status &lt;&gt; 'CANCELLED'
+        <include refid="storeIn"><property name="alias" value="o"/></include>
+        <choose>
+            <when test="kind == 'EXCEPTION'">AND o.local_status IN ('EXCEPTION', 'ON_HOLD', 'OUT_OF_STOCK')</when>
+            <when test="kind == 'OVERDUE'">AND o.ship_by &lt; #{now} AND o.local_status IN <include refid="unshipped"/></when>
+            <otherwise>AND o.ship_by &gt;= #{now} AND o.ship_by &lt; #{dueBefore} AND o.local_status IN <include refid="unshipped"/></otherwise>
+        </choose>
+        ORDER BY o.ship_by, o.order_time
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectOrderIssueSummary" resultType="com.lemon.erp.modules.ecom.assistant.dto.AssistantRows$OrderIssueSummary">
+        SELECT o.store_id, s.name AS store_name,
+               SUM(CASE WHEN o.local_status IN ('EXCEPTION', 'ON_HOLD', 'OUT_OF_STOCK') THEN 1 ELSE 0 END) AS exceptions,
+               SUM(CASE WHEN o.ship_by &lt; #{now} AND o.local_status IN <include refid="unshipped"/> THEN 1 ELSE 0 END) AS overdue,
+               SUM(CASE WHEN o.ship_by &gt;= #{now} AND o.ship_by &lt; #{dueBefore} AND o.local_status IN <include refid="unshipped"/> THEN 1 ELSE 0 END) AS due_soon,
+               SUM(CASE WHEN o.local_status = 'PENDING' THEN 1 ELSE 0 END) AS pending
+        FROM ecom_order o
+        JOIN ecom_store s ON s.id = o.store_id
+        WHERE o.status &lt;&gt; 'CANCELLED' AND o.local_status IN <include refid="unshipped"/>
+        <include refid="storeIn"><property name="alias" value="o"/></include>
+        GROUP BY o.store_id, s.name
+        ORDER BY s.name
+    </select>
+
+    <select id="selectCampaigns" resultType="com.lemon.erp.modules.ecom.assistant.dto.AssistantRows$CampaignInfo">
+        SELECT c.id, c.store_id, s.name AS store_name, s.currency, c.name, c.status, c.daily_budget
+        FROM ecom_ad_campaign c
+        JOIN ecom_store s ON s.id = c.store_id
+        WHERE 1 = 1
+        <include refid="storeIn"><property name="alias" value="c"/></include>
+    </select>
+
+    <!-- 投放了这些物料的广告：广告日报中带 SKU 的行所在的广告组（没有广告组时按活动） -->
+    <sql id="advertisedMaterial">
+        FROM ecom_ad_daily d
+        JOIN ecom_listing l ON l.store_id = d.store_id AND l.seller_sku = d.seller_sku
+        JOIN wms_material m ON m.id = l.material_id
+        WHERE d.seller_sku &lt;&gt; ''
+          AND (m.id = #{materialId} OR m.template_id = #{materialId}
+               OR (m.template_id IS NOT NULL AND m.template_id = (SELECT x.template_id FROM wms_material x WHERE x.id = #{materialId}))
+               <if test="sameCategory">
+               OR (m.category IS NOT NULL AND m.category = (SELECT y.category FROM wms_material y WHERE y.id = #{materialId}))
+               </if>)
+    </sql>
+
+    <select id="selectKeywordSuggestions" resultType="com.lemon.erp.modules.ecom.assistant.dto.AssistantRows$KeywordRow">
+        SELECT t.search_term, SUM(t.impressions) AS impressions, SUM(t.clicks) AS clicks, SUM(t.orders) AS orders,
+               SUM(t.spend) AS spend, SUM(t.sales) AS sales
+        FROM ecom_ad_search_term t
+        WHERE t.stat_date &gt;= #{begin}
+          AND (t.ad_group_id IN (SELECT d.ad_group_id <include refid="advertisedMaterial"/> AND d.ad_group_id IS NOT NULL)
+               OR t.campaign_id IN (SELECT d.campaign_id <include refid="advertisedMaterial"/> AND d.ad_group_id IS NULL AND d.campaign_id IS NOT NULL))
+        <if test="marketplace != null and marketplace != ''">
+          AND t.store_id IN (SELECT s.id FROM ecom_store s WHERE s.marketplace = #{marketplace})
+        </if>
+        GROUP BY t.search_term
+        HAVING SUM(t.orders) &gt; 0
+        ORDER BY SUM(t.orders) DESC, SUM(t.clicks)
+        LIMIT #{limit}
+    </select>
+</mapper>

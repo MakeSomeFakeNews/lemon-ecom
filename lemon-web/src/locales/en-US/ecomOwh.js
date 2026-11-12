@@ -393,6 +393,7 @@ export default {
   },
   section: {
     basic: 'Basic Info',
+    api: 'API & Sync',
     logistics: 'Logistics',
     progress: 'Receiving Progress',
     quality: 'Inspection Result',

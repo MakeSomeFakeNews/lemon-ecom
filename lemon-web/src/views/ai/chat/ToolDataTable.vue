@@ -5,7 +5,7 @@
       <a-table
         :columns="columns"
         :data-source="rows"
-        :row-key="(_, i) => i"
+        :row-key="seqKey"
         size="small"
         :pagination="rows.length > PAGE_SIZE ? { pageSize: PAGE_SIZE, size: 'small', showSizeChanger: false } : false"
         :scroll="{ x: 'max-content' }"
@@ -31,6 +31,10 @@
 import { computed } from 'vue'
 import { tt } from '@/locales'
 import { num } from '@/utils/number'
+import { seqRowKey } from '@/utils/rowKey'
+
+/** 行没有唯一字段，按行对象分配序号 */
+const seqKey = seqRowKey()
 
 /**
  * 工具返回数据的表格：对象数组按字段生成列，单个对象显示为键值对，其他直接显示 JSON。

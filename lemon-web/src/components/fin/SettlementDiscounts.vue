@@ -31,7 +31,7 @@
           <div class="sub-text"><DictTag type="fin_bill_source" :value="record.sourceType" /> {{ record.sourceNo || '' }}</div>
         </template>
         <template v-else-if="column.key === 'discount'">
-          ¥{{ formatMoney(record.discount) }}
+          {{ symMoney(record.discount) }}
           <div v-if="isForeign(record.currency)" class="sub-text">{{ record.currency }} {{ formatMoney(record.discountFc) }}</div>
         </template>
       </template>
@@ -50,6 +50,7 @@ import { useTable } from '@/composables/useTable'
 import { formatMoney } from './fin'
 import { isForeign } from './currency'
 import { t } from '@/locales'
+import { symMoney } from '@/utils/number'
 
 /** kind = receipt | payment，conf 为页面按收付款区分的文字；点击单号触发 open(收付款单 ID) */
 const props = defineProps({

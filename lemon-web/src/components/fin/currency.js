@@ -3,6 +3,7 @@ import { currencies, rateOf } from '@/api/fin'
 import { cached } from '@/utils/cache'
 import { formatMoney } from '@/components/scm/scm'
 import { STATUS_DISABLED } from '@/utils/constants'
+import { symMoney } from '@/utils/number'
 
 /** 本位币 */
 export const BASE_CURRENCY = 'CNY'
@@ -27,7 +28,7 @@ export const currencySymbol = (code) => {
 }
 
 /** 带币种符号的金额：$1,234.00 */
-export const moneyWith = (code, n) => `${currencySymbol(code)}${formatMoney(n)}`
+export const moneyWith = (code, n) => `${symMoney(n, currencySymbol(code))}`
 
 /** 原币描述：USD 100.00 @7.0 */
 export const fcText = (code, amount, rate) => `${code} ${formatMoney(amount)}${rate != null ? ` @${Number(rate)}` : ''}`

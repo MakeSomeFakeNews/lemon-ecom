@@ -10,7 +10,7 @@
           <DictTag type="ecom_platform" :value="record.platform" /> {{ record.marketplace || '' }}
         </template>
         <template v-else-if="column.key === 'salePrice'">{{ record.currency }} {{ money(record.salePrice) }}</template>
-        <template v-else-if="column.key === 'profit'">¥ {{ money(record.profit) }}</template>
+        <template v-else-if="column.key === 'profit'">{{ symMoney(record.profit) }}</template>
         <template v-else-if="column.key === 'margin'">
           <span :class="['margin', marginClass(record.margin)]">{{ record.margin != null ? `${Number(record.margin)}%` : '-' }}</span>
         </template>
@@ -33,7 +33,7 @@ import TableActions from '@/components/common/TableActions.vue'
 import { deleteProfitScheme, getProfitScheme, pageProfitScheme } from '@/api/ecom/dev'
 import { useTable } from '@/composables/useTable'
 import { useUserStore } from '@/store/user'
-import { money } from '@/utils/number'
+import { money, symMoney } from '@/utils/number'
 import { marginClass } from '@/views/ecom/dev-project/dev'
 
 /**

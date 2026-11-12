@@ -65,6 +65,7 @@
             <a-tag v-if="record.redOf" color="red" :bordered="false" class="doc-tag">{{ $t('wms.common.red') }}</a-tag>
             <a-tag v-if="record.reversed === 1" :bordered="false" class="doc-tag">{{ $t('wms.common.reversed') }}</a-tag>
             <div v-if="record.sourceNo" class="sub-text">{{ $t('wms.doc.sourceN', { no: record.sourceNo }) }}</div>
+            <div v-if="record.receiveOwner" class="sub-text">{{ $t('ecomFixa.transfer.receiveAt', { source: record.receiveOwner }) }}</div>
             <div v-if="record.redOf" class="sub-text">{{ $t('wms.doc.reverseOfN', { no: record.redOfNo || record.redOf }) }}</div>
           </template>
           <template v-else-if="column.key === 'bizType'">
@@ -258,7 +259,7 @@ const rowActions = (record) => {
       slot: 'receive',
       label: t('wms.common.receive'),
       icon: InboxOutlined,
-      show: props.kind === 'transfer' && record.status === DocStatus.TRANSIT,
+      show: props.kind === 'transfer' && record.status === DocStatus.TRANSIT && !record.receiveOwner,
       perm: 'wms:transfer:receive'
     },
     {

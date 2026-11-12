@@ -21,7 +21,7 @@
         <a-descriptions-item :label="$t('fin.io.type')"><DictTag type="fin_fund_direction" :value="detail.direction" /></a-descriptions-item>
         <a-descriptions-item :label="$t('fin.io.date')">{{ detail.docDate }}</a-descriptions-item>
         <a-descriptions-item :label="$t('common.field.status')"><DictTag type="fin_io_status" :value="detail.status" /></a-descriptions-item>
-        <a-descriptions-item :label="$t('fin.io.amount')"><b>¥{{ formatMoney(detail.amount) }}</b></a-descriptions-item>
+        <a-descriptions-item :label="$t('fin.io.amount')"><b>{{ symMoney(detail.amount) }}</b></a-descriptions-item>
         <a-descriptions-item :label="$t('fin.io.account')">{{ detail.accountName }}</a-descriptions-item>
         <a-descriptions-item :label="$t('fin.io.settleMethod')"><DictTag v-if="detail.settleMethod" type="fin_settle_method" :value="detail.settleMethod" /><span v-else>-</span></a-descriptions-item>
         <a-descriptions-item :label="$t('fin.io.partner')">
@@ -68,6 +68,7 @@ import { formatMoney } from '@/components/fin/fin'
 import { useDict } from '@/composables/useDict'
 import { FundDirection, IoStatus, VoucherStatus } from '@/constants/enums'
 import { useIoActions } from './useIoActions'
+import { symMoney } from '@/utils/number'
 
 /** 收支单详情：待确认时可修改、确认、删除（由业务单据生成的只能确认）；已确认、凭证未记账时可取消确认 */
 const emit = defineEmits(['edit', 'changed'])

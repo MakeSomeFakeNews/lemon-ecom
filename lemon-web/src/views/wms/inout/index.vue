@@ -88,11 +88,9 @@ const COLUMNS = [
   { title: t('common.field.unit'), dataIndex: 'unit', width: 60 },
   q(t('wms.inout.openQty'), 'openQty', { bold: true }),
   q(t('wms.inout.purchaseIn'), 'purchaseIn'),
-  q(t('wms.inout.productionIn'), 'productionIn'),
   q(t('wms.inout.salesReturn'), 'salesReturn'),
   q(t('wms.inout.otherIn'), 'otherIn'),
   q(t('wms.inout.salesOut'), 'salesOut'),
-  q(t('wms.inout.productionOut'), 'productionOut'),
   q(t('wms.inout.purchaseReturn'), 'purchaseReturn'),
   q(t('wms.inout.otherOut'), 'otherOut'),
   q(t('wms.inout.closeQty'), 'closeQty', { bold: true, fixed: 'right' })

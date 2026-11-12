@@ -86,7 +86,7 @@
             <div v-if="record.carrierName" class="sub-text">{{ record.carrierName }}</div>
           </template>
           <template v-else-if="column.key === 'totalQty'">{{ qty(record.totalQty) }}</template>
-          <template v-else-if="column.key === 'feeBase'">{{ record.feeBase != null ? `¥${money(record.feeBase)}` : '-' }}</template>
+          <template v-else-if="column.key === 'feeBase'">{{ record.feeBase != null ? `${symMoney(record.feeBase)}` : '-' }}</template>
           <template v-else-if="column.key === 'action'">
             <TableActions :actions="tab === PENDING ? pendingActions(record) : rowActions(record)" />
           </template>
@@ -122,7 +122,7 @@ import { useRouteOpen } from '@/composables/useRouteOpen'
 import { useTable } from '@/composables/useTable'
 import { OwhOutboundStatus } from '@/constants/enums'
 import { findDict } from '@/utils/dict'
-import { money, qty } from '@/utils/number'
+import { money, qty, symMoney } from '@/utils/number'
 import { showBatchResult } from '../order/order'
 import { OWH_RESULT_KEYS, canCancelOutbound, canRepush, canSyncOutbound } from './owh'
 

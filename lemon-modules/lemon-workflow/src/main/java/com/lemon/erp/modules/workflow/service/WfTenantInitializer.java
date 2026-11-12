@@ -21,7 +21,7 @@ import java.util.Map;
 /**
  * 新租户复制平台的流程模型（未发布的草稿），审批角色换成新租户中复制出的同名岗位角色；
  * 指定成员、平台自建角色在新租户中不存在，清空后由租户管理员在设计器中重新选择再发布。
- * 业务流程未发布前，对应业务不走审批
+ * 业务流程未发布前，对应业务不走审批；内置行政流程（{@link WfBuiltinPublisher#PUBLISHED_KEYS}）复制后直接发布
  */
 @Component
 @RequiredArgsConstructor
@@ -29,6 +29,7 @@ public class WfTenantInitializer implements TenantInitializer {
 
     private final WfModelMapper modelMapper;
     private final ObjectMapper objectMapper;
+    private final WfBuiltinPublisher builtinPublisher;
 
     @Override
     public void initialize(Context context) {
@@ -46,6 +47,8 @@ public class WfTenantInitializer implements TenantInitializer {
             }
             modelMapper.insert(model);
         }
+        // 内置行政流程（出差、用印等）与平台一样直接发布
+        builtinPublisher.publish();
     }
 
     private static FlowNode remap(FlowNode node, Map<Long, Long> roleIdMap) {

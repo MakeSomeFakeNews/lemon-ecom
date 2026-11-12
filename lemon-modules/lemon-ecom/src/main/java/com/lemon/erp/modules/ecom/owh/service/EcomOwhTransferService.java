@@ -390,7 +390,7 @@ public class EcomOwhTransferService {
         if (t.getShipTime() != null && d.isBefore(t.getShipTime().toLocalDate())) {
             d = t.getShipTime().toLocalDate();
         }
-        stockDocService.receive(t.getTransferDocId(), d);
+        stockDocService.receiveBySource(t.getTransferDocId(), d);
         if (actual != null && !actual.isEmpty()) {
             List<EcomOwhDiffService.Line> lines = new ArrayList<>();
             for (EcomOwhTransferItem it : itemMapper.selectByTransfer(id)) {

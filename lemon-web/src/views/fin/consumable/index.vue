@@ -33,7 +33,7 @@
                 <div v-if="record.userName" class="sub-text">{{ record.userName }}</div>
               </template>
               <template v-else-if="column.key === 'qty'">{{ formatQty(record.totalQty) }}</template>
-              <template v-else-if="column.key === 'amount'">¥{{ formatMoney(record.refAmount) }}</template>
+              <template v-else-if="column.key === 'amount'">{{ symMoney(record.refAmount) }}</template>
               <template v-else-if="column.key === 'status'">
                 <DictTag type="fin_consumable_status" :value="record.status" />
                 <div v-if="record.wmsDocNo" class="sub-text">{{ $t('fin.consumable.outbound', { no: record.wmsDocNo }) }}</div>
@@ -57,12 +57,12 @@
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'material'">{{ record.materialCode }} {{ record.materialName }}</template>
               <template v-else-if="column.key === 'qty'">{{ formatQty(record.qty) }} {{ record.unit }}</template>
-              <template v-else-if="column.key === 'amount'">¥{{ formatMoney(record.refAmount) }}</template>
+              <template v-else-if="column.key === 'amount'">{{ symMoney(record.refAmount) }}</template>
             </template>
             <template #summary>
               <a-table-summary-row v-if="ledger.length">
                 <a-table-summary-cell :index="0" :col-span="3">{{ $t('common.field.total') }}</a-table-summary-cell>
-                <a-table-summary-cell :index="3" align="right">¥{{ formatMoney(ledgerTotal) }}</a-table-summary-cell>
+                <a-table-summary-cell :index="3" align="right">{{ symMoney(ledgerTotal) }}</a-table-summary-cell>
               </a-table-summary-row>
             </template>
           </a-table>
@@ -166,7 +166,7 @@
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'material'">{{ record.materialCode }} {{ record.materialName }}<div class="sub-text">{{ record.spec }}</div></template>
             <template v-else-if="column.key === 'qty'">{{ formatQty(record.qty) }} {{ record.unit }}</template>
-            <template v-else-if="column.key === 'amount'">¥{{ formatMoney(Number(record.qty) * Number(record.refUnitCost || 0)) }}</template>
+            <template v-else-if="column.key === 'amount'">{{ symMoney(Number(record.qty) * Number(record.refUnitCost || 0)) }}</template>
           </template>
         </a-table>
         <div class="sub-text total">{{ $t('fin.consumable.refTotal', { amount: formatMoney(detail.refAmount) }) }}</div>
@@ -203,6 +203,7 @@ import { toOptions } from '@/utils/dict'
 import { useI18n } from 'vue-i18n'
 
 import { ConsumableStatus } from '@/constants/enums'
+import { symMoney } from '@/utils/number'
 /** 低值易耗品领用：按部门领用出库，月末成本核算按实际成本一次计入领用部门的费用 */
 const { t } = useI18n()
 const dict = useDict('fin_consumable_status')

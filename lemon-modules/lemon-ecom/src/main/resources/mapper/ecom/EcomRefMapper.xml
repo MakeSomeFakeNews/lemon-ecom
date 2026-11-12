@@ -18,6 +18,16 @@
             UNION ALL SELECT 'ecom.label.inbound', 2 FROM ecom_inbound WHERE from_warehouse_id = #{id} OR to_warehouse_id = #{id}
             UNION ALL SELECT 'ecom.label.platformOrder', 3 FROM ecom_order WHERE warehouse_id = #{id}
             UNION ALL SELECT 'ecom.label.returnDoc', 4 FROM ecom_return WHERE warehouse_id = #{id}
+            UNION ALL SELECT 'ecom.label.fixa.owhMapping', 5 FROM ecom_owh_warehouse WHERE warehouse_id = #{id} OR defect_warehouse_id = #{id}
+            UNION ALL SELECT 'ecom.label.fixa.orderRule', 6 FROM ecom_order_rule WHERE warehouse_id = #{id}
+            UNION ALL SELECT 'ecom.label.fixa.package', 7 FROM ecom_package WHERE warehouse_id = #{id}
+            UNION ALL SELECT 'ecom.label.owh.inbound', 8 FROM ecom_owh_inbound WHERE warehouse_id = #{id}
+            UNION ALL SELECT 'ecom.label.owh.outbound', 9 FROM ecom_owh_outbound WHERE warehouse_id = #{id}
+            UNION ALL SELECT 'ecom.label.owh.transfer', 10 FROM ecom_owh_transfer WHERE from_warehouse_id = #{id} OR to_warehouse_id = #{id}
+            UNION ALL SELECT 'ecom.label.owh.return', 11 FROM ecom_owh_return WHERE warehouse_id = #{id}
+            UNION ALL SELECT 'ecom.label.fba.removal', 12 FROM ecom_fba_removal WHERE warehouse_id = #{id} OR defective_warehouse_id = #{id}
+            UNION ALL SELECT 'ecom.label.fixa.purchasePlan', 13 FROM ecom_purchase_plan WHERE warehouse_id = #{id}
+            UNION ALL SELECT 'ecom.label.fixa.shipmentPlan', 14 FROM ecom_shipment_plan WHERE from_warehouse_id = #{id} OR to_warehouse_id = #{id}
         ) t ORDER BY t.ord LIMIT 1
     </select>
 

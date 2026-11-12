@@ -3,13 +3,14 @@
 <mapper namespace="com.lemon.erp.modules.fin.mapper.FinSupplierStatementMapper">
 
     <sql id="columns">
-        st.*, s.code AS supplier_code, s.name AS supplier_name, u.nickname AS create_by_name
+        st.*, s.code AS supplier_code, s.name AS supplier_name, u.nickname AS create_by_name, cu.nickname AS confirm_by_name
     </sql>
 
     <sql id="joins">
         FROM fin_supplier_statement st
         LEFT JOIN scm_supplier s ON s.id = st.supplier_id
         LEFT JOIN sys_user u ON u.id = st.create_by
+        LEFT JOIN sys_user cu ON cu.id = st.confirm_by
     </sql>
 
     <select id="selectPageList" resultType="com.lemon.erp.modules.fin.entity.FinSupplierStatement">
@@ -17,7 +18,6 @@
         <include refid="joins"/>
         <where>
             <if test="supplierId != null">st.supplier_id = #{supplierId}</if>
-            <if test="portal">AND st.status &lt;&gt; 'DRAFT'</if>
             <if test="status != null">AND st.status = #{status}</if>
             <if test="keyword != null and keyword != ''">
                 AND (st.statement_no LIKE CONCAT('%', #{keyword}, '%') OR s.name LIKE CONCAT('%', #{keyword}, '%'))

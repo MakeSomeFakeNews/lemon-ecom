@@ -108,7 +108,7 @@
           </div>
           <template v-if="revalueResult">
             <div class="result-head">
-              <span>{{ $t('fin.currencyPage.resultHead', { period: periodText(revaluePeriod) }) }} <b :class="{ neg: revalueTotal < 0 }">¥{{ formatMoney(revalueTotal) }}</b></span>
+              <span>{{ $t('fin.currencyPage.resultHead', { period: periodText(revaluePeriod) }) }} <b :class="{ neg: revalueTotal < 0 }">{{ symMoney(revalueTotal) }}</b></span>
               <a-space>
                 <span v-if="revalueResult.voucherId">
                   {{ $t('fin.currencyPage.revalueVoucher') }} <a @click="openVoucher(revalueResult.voucherId)">#{{ revalueResult.voucherId }}</a>
@@ -123,6 +123,7 @@
               row-key="key"
               size="middle"
               :columns="revalueColumns"
+              :scroll="{ x: 980 }"
               :data-source="revalueLines"
               :pagination="false"
               :locale="{ emptyText: $t('fin.currencyPage.noOpenItems') }"
@@ -133,7 +134,7 @@
                 </template>
                 <template v-else-if="column.key === 'rate'">{{ Number(record.rate) }}</template>
                 <template v-else-if="column.key === 'remainingFc'">{{ record.currency }} {{ formatMoney(record.remainingFc) }}</template>
-                <template v-else-if="['bookBase', 'newBase'].includes(column.key)">¥{{ formatMoney(record[column.key]) }}</template>
+                <template v-else-if="['bookBase', 'newBase'].includes(column.key)">{{ symMoney(record[column.key]) }}</template>
                 <template v-else-if="column.key === 'diff'">
                   <span :class="{ neg: Number(record.diff) < 0 }">{{ formatMoney(record.diff) }}</span>
                 </template>
@@ -199,6 +200,7 @@ import { useI18n } from 'vue-i18n'
 
 import { BillKind } from '@/constants/enums'
 import { STATUS_DISABLED, STATUS_ENABLED } from '@/utils/constants'
+import { symMoney } from '@/utils/number'
 /** 币种与汇率：币种维护、按月汇率、期末调汇 */
 const userStore = useUserStore()
 const { t } = useI18n()

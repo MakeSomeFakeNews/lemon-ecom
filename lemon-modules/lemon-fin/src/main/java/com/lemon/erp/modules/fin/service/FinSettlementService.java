@@ -1,5 +1,6 @@
 package com.lemon.erp.modules.fin.service;
 
+import com.lemon.erp.modules.fin.event.FinSettlementDeletedEvent;
 import com.lemon.erp.modules.fin.model.AccountRole;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -16,7 +17,6 @@ import com.lemon.erp.modules.fin.dto.PartnerAmountRow;
 import com.lemon.erp.modules.fin.dto.SettlementDiscountRow;
 import com.lemon.erp.modules.fin.dto.SettlementItemRequest;
 import com.lemon.erp.modules.fin.dto.SettlementRequest;
-import com.lemon.erp.modules.fin.model.SettleMethods;
 import com.lemon.erp.modules.fin.model.BillKind;
 import com.lemon.erp.modules.fin.model.FinConstants;
 import com.lemon.erp.modules.fin.model.SettleKind;
@@ -39,6 +39,7 @@ import com.lemon.erp.modules.fin.model.VoucherLine;
 import com.lemon.erp.modules.fin.model.VoucherSource;
 import com.lemon.erp.modules.wms.service.DocNoService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -86,6 +87,7 @@ public class FinSettlementService {
     private final FinAdvanceApplyMapper applyMapper;
     private final FinSettlementAdvanceMapper settlementAdvanceMapper;
     private final BizRules bizRules;
+    private final ApplicationEventPublisher eventPublisher;
 
     /** @param discountOnly 只查有折让的（折让记录） */
     public PageResult<FinSettlement> page(long current, long size, SettleKind kind, Long partnerId, String keyword, boolean discountOnly) {
@@ -132,10 +134,6 @@ public class FinSettlementService {
      */
     @Transactional
     public Long create(SettlementRequest req) {
-        // 票据结算的收付款单由票据业务生成（只能在票据管理中删除），手工收付款不能选择
-        if (SettleMethods.NOTE.equals(req.method())) {
-            throw new BizException("fin.error.noteSettleMethodNotManual");
-        }
         accountService.requireCashAccount(req.accountId());
         FinSettlement s = save(null, req);
         if (confirmOnSave(req)) {
@@ -156,9 +154,6 @@ public class FinSettlementService {
         }
         if (old.getStatus() != ApproveStatus.DRAFT && old.getStatus() != ApproveStatus.REJECTED) {
             throw new BizException("fin.error.settlementNotEditable", old.getSettleNo());
-        }
-        if (SettleMethods.NOTE.equals(old.getMethod()) || SettleMethods.NOTE.equals(req.method())) {
-            throw new BizException("fin.error.noteSettleMethodNotManual");
         }
         accountService.requireCashAccount(req.accountId());
         periodGuard.checkOpen(old.getSettleDate(), "fin.label.receiptPayment");
@@ -602,7 +597,7 @@ public class FinSettlementService {
         return item.getDiscountFc() == null || (item.getDiscountFc().signum() == 0 && discount.signum() != 0) ? discount : item.getDiscountFc();
     }
 
-    /** 删除（未生成凭证的），恢复单据的核销金额；票据结算的收付款单须在票据管理中删除 */
+    /** 删除（未生成凭证的），恢复单据的核销金额 */
     @Transactional
     public void delete(List<Long> ids) {
         doDelete(ids);
@@ -613,9 +608,6 @@ public class FinSettlementService {
             FinSettlement s = settlementMapper.selectById(id);
             if (s == null) {
                 continue;
-            }
-            if (SettleMethods.NOTE.equals(s.getMethod())) {
-                throw new BizException("fin.error.generatedNoteTransactionDeleteNoteNotes", s.getSettleNo());
             }
             if (s.getVoucherId() != null) {
                 throw new BizException("fin.error.alreadyHasVoucherDeleteVoucherFirst", s.getSettleNo());
@@ -648,7 +640,17 @@ public class FinSettlementService {
             itemMapper.delete(Wrappers.<FinSettlementItem>lambdaQuery().eq(FinSettlementItem::getSettlementId, id));
             settlementAdvanceMapper.delete(Wrappers.<FinSettlementAdvance>lambdaQuery().eq(FinSettlementAdvance::getSettlementId, id));
             settlementMapper.deleteById(id);
+            // 其他模块生成的收付款单（如电商平台结算的收款）：通知来源单据解除关联
+            eventPublisher.publishEvent(new FinSettlementDeletedEvent(id, s.getSettleNo()));
         }
+    }
+
+    /** 日期范围内已生效、还没有生成凭证的收付款 ID，按日期先后，供批量生成凭证（如演示数据） */
+    public List<Long> unvoucheredIds(LocalDate begin, LocalDate end) {
+        return settlementMapper.selectList(Wrappers.<FinSettlement>lambdaQuery().select(FinSettlement::getId)
+                        .between(FinSettlement::getSettleDate, begin, end).isNull(FinSettlement::getVoucherId)
+                        .eq(FinSettlement::getStatus, ApproveStatus.APPROVED).orderByAsc(FinSettlement::getSettleDate).orderByAsc(FinSettlement::getId))
+                .stream().map(FinSettlement::getId).toList();
     }
 
     /** @return 生成的凭证数 */

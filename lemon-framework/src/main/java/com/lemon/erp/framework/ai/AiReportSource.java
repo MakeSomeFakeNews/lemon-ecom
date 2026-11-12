@@ -29,7 +29,7 @@ public interface AiReportSource {
     String permission();
 
     /**
-     * 是否只对有「全部数据」权限的用户开放：汇总全公司数据、底层查询不按数据权限过滤的来源（如财务、库存、人事）返回 true，
+     * 是否只对有「全部数据」权限的用户开放：汇总全公司数据、底层查询不按数据权限过滤的来源（如财务、库存）返回 true，
      * 与驾驶舱的规则一致；底层查询按数据权限自动过滤的来源返回 false（报告中注明数据范围）
      */
     default boolean requiresAllData() {

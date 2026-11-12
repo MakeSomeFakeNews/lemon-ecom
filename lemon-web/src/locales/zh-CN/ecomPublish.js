@@ -70,6 +70,7 @@ export default {
     saveMaster: '只保存主内容',
     saveAndApply: '保存并应用到店铺',
     applied: '已应用到 {n} 个店铺',
+    applyFields: '应用字段',
     field: {
       title: '标题',
       bullets: '五点描述',
@@ -265,6 +266,10 @@ export default {
     keywordPh: '规则名称',
     add: '新建规则',
     edit: '编辑规则',
+    sectionScope: '适用范围',
+    sectionStrategy: '调价策略',
+    sectionLimit: '价格限制',
+    sectionRun: '执行设置',
     tip: '定时任务每 15 分钟执行到期的规则；亚马逊店铺先经 Product Pricing API 拉取购物车价与最低价，其他平台使用手工录入 / 导入的竞品价格；「仅建议」的规则只生成建议，在日志中应用后才推送',
     name: '规则名称',
     scope: '适用范围',

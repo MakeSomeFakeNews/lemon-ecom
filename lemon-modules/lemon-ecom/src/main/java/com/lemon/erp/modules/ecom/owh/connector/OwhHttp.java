@@ -1,6 +1,7 @@
 package com.lemon.erp.modules.ecom.owh.connector;
 
 import com.lemon.erp.common.exception.BizException;
+import com.lemon.erp.modules.ecom.connector.HttpJson;
 import org.springframework.util.StringUtils;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -120,11 +121,9 @@ public final class OwhHttp {
         return t == null ? null : t.toLocalDate();
     }
 
+    /** 前 300 个字符，令牌、密钥等敏感值遮盖为 ***（规则同 HttpJson） */
     public static String abbreviate(String s) {
-        if (s == null) {
-            return "";
-        }
-        return s.length() <= 300 ? s : s.substring(0, 300) + "...";
+        return HttpJson.abbreviate(s);
     }
 
     private static URI uri(String url, String provider) {
@@ -146,10 +145,10 @@ public final class OwhHttp {
             }
             return resp.body();
         } catch (IOException e) {
-            throw new BizException("ecom.error.owh.ioError", provider, e.getMessage());
+            throw new BizException("ecom.error.owh.ioError", provider, HttpJson.abbreviate(e.getMessage()));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new BizException("ecom.error.owh.ioError", provider, e.getMessage());
+            throw new BizException("ecom.error.owh.ioError", provider, HttpJson.abbreviate(e.getMessage()));
         }
     }
 

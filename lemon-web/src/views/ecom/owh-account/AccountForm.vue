@@ -1,39 +1,43 @@
 <template>
-  <FormDrawer :drawer="drawer" :create-title="$t('ecomOwh.account.add')" :edit-title="$t('ecomOwh.account.edit')" width="min(720px, 100vw)">
+  <FormDrawer page :drawer="drawer" :create-title="$t('ecomOwh.account.add')" :edit-title="$t('ecomOwh.account.edit')">
     <a-form ref="formRef" :model="form" :rules="rules" layout="vertical">
       <div class="section-title">{{ $t('ecomOwh.section.basic') }}</div>
       <a-row :gutter="16">
-        <a-col :xs="24" :sm="12">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('ecomOwh.account.code')" name="code">
             <a-input v-model:value="form.code" :maxlength="32" />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="12">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('ecomOwh.account.name')" name="name">
             <a-input v-model:value="form.name" :maxlength="64" />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="12">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('ecomOwh.common.provider')" name="provider">
             <a-select v-model:value="form.provider" :options="providers.map((p) => ({ value: p.provider, label: p.name }))" />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="12">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('ecomOwh.account.currency')" name="currency" :extra="$t('ecomOwh.account.currencyExtra')">
             <a-input v-model:value="form.currency" :maxlength="8" placeholder="USD" />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="12">
+      </a-row>
+
+      <div class="section-title">{{ $t('ecomOwh.section.api') }}</div>
+      <a-row :gutter="16">
+        <a-col :xs="12" :sm="6" :lg="4">
           <a-form-item :label="$t('ecomOwh.account.sandbox')" name="sandbox">
             <a-switch :checked="form.sandbox === 1" @change="(v) => (form.sandbox = v ? 1 : 0)" />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="12">
+        <a-col :xs="12" :sm="6" :lg="6">
           <a-form-item :label="$t('ecomOwh.account.autoSync')" name="autoSync" :extra="$t('ecomOwh.account.autoSyncExtra')">
             <a-switch :checked="form.autoSync !== 0" @change="(v) => (form.autoSync = v ? 1 : 0)" />
           </a-form-item>
         </a-col>
-        <a-col :span="24">
+        <a-col :xs="24" :lg="14">
           <a-form-item :label="$t('ecomOwh.account.apiUrl')" name="apiBaseUrl" :extra="info ? $t('ecomOwh.account.endpoints', { prod: info.productionUrl, test: info.sandboxUrl }) : ''">
             <a-input v-model:value="form.apiBaseUrl" :maxlength="255" :placeholder="$t('ecomOwh.account.apiUrlPh')" />
           </a-form-item>
@@ -52,7 +56,7 @@
           <a v-if="info.docUrl" :href="info.docUrl" target="_blank" rel="noopener" class="doc-link">{{ $t('ecomOwh.account.doc') }}</a>
         </div>
         <a-row :gutter="16">
-          <a-col v-for="f in info.fields" :key="f.key" :xs="24" :sm="12">
+          <a-col v-for="f in info.fields" :key="f.key" :xs="24" :sm="12" :lg="8">
             <a-form-item :label="f.label" :required="f.required && !form.hasCredentials">
               <a-input-password v-if="f.secret" v-model:value="form.auth[f.key]" autocomplete="new-password" :placeholder="form.hasCredentials ? $t('ecomOwh.account.keep') : ''" />
               <a-input v-else v-model:value="form.auth[f.key]" :placeholder="form.hasCredentials ? $t('ecomOwh.account.keep') : ''" />
@@ -129,11 +133,11 @@ defineExpose({ openCreate: drawer.openCreate, openEdit: drawer.openEdit })
   margin: 4px 0 12px;
 }
 .section-title {
-  margin-bottom: 12px;
   font-weight: 600;
+  margin: 4px 0 12px;
 }
 .cred-head .section-title {
-  margin-bottom: 0;
+  margin: 0;
 }
 .doc-link {
   margin-left: auto;

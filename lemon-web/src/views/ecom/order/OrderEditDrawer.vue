@@ -1,34 +1,34 @@
 <template>
-  <FormDrawer :drawer="drawer" :edit-title="$t('ecomOrder.order.editTitle')" :create-title="$t('ecomOrder.order.editTitle')">
+  <FormDrawer page :drawer="drawer" :edit-title="form.platformOrderNo ? $t('ecomOrdUi.edit.title', { no: form.platformOrderNo }) : $t('ecomOrder.order.editTitle')" :create-title="$t('ecomOrder.order.editTitle')">
     <a-form ref="formRef" :model="form" :rules="rules" layout="vertical">
       <div class="form-section">{{ $t('ecomOrdUi.detail.buyer') }}</div>
       <a-row :gutter="16">
-        <a-col :span="12">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('ecomOrder.order.shipName')" name="shipName">
             <a-input v-model:value="form.shipName" :maxlength="64" />
           </a-form-item>
         </a-col>
-        <a-col :span="12">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('ecomOrder.order.shipPhone')" name="shipPhone">
             <a-input v-model:value="form.shipPhone" :maxlength="32" />
           </a-form-item>
         </a-col>
-        <a-col :span="12">
+        <a-col :xs="12" :sm="6" :lg="3">
           <a-form-item :label="$t('ecomOrder.order.shipCountry')" name="shipCountry">
             <a-input v-model:value="form.shipCountry" :maxlength="8" :placeholder="$t('ecomOrder.order.countryPh')" />
           </a-form-item>
         </a-col>
-        <a-col :span="12">
+        <a-col :xs="12" :sm="6" :lg="3">
           <a-form-item :label="$t('ecomOrder.order.shipState')" name="shipState">
             <a-input v-model:value="form.shipState" :maxlength="64" />
           </a-form-item>
         </a-col>
-        <a-col :span="12">
+        <a-col :xs="12" :sm="6" :lg="3">
           <a-form-item :label="$t('ecomOrder.order.shipCity')" name="shipCity">
             <a-input v-model:value="form.shipCity" :maxlength="64" />
           </a-form-item>
         </a-col>
-        <a-col :span="12">
+        <a-col :xs="12" :sm="6" :lg="3">
           <a-form-item :label="$t('ecomOrder.order.shipPostcode')" name="shipPostcode">
             <a-input v-model:value="form.shipPostcode" :maxlength="16" />
           </a-form-item>
@@ -41,17 +41,17 @@
       </a-row>
       <div class="form-section">{{ $t('ecomOrdUi.edit.shipping') }}</div>
       <a-row :gutter="16">
-        <a-col :span="12">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('ecomOrder.order.fulfillment')" name="fulfillment">
             <a-select v-model:value="form.fulfillment" :options="toOptions(dict.ecom_fulfillment)" />
           </a-form-item>
         </a-col>
-        <a-col :span="12">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('ecomOrder.ops.weight')" name="weight">
             <a-input-number v-model:value="form.weight" :min="0" :precision="3" :addon-after="$t('ecomOrder.common.kg')" class="full" />
           </a-form-item>
         </a-col>
-        <a-col :span="24">
+        <a-col :xs="24" :lg="12">
           <a-form-item :label="$t('common.field.remark')" name="remark">
             <a-textarea v-model:value="form.remark" :maxlength="255" :auto-size="{ minRows: 2, maxRows: 4 }" />
           </a-form-item>
@@ -69,7 +69,7 @@ import { useDict } from '@/composables/useDict'
 import { useFormDrawer } from '@/composables/useFormDrawer'
 import { toOptions } from '@/utils/dict'
 
-/** 修改平台订单的收件信息、配送方式、预估重量、备注（未打单、未发货时，PUT /ecom/order/{id}）；ref 调用 open(order) */
+/** 修改平台订单的收件信息、配送方式、预估重量、备注（子页，未打单、未发货时，PUT /ecom/order/{id}）；ref 调用 open(order)，保存后触发 success（页面刷新列表和订单详情） */
 const emit = defineEmits(['success'])
 const { t } = useI18n()
 const dict = useDict('ecom_fulfillment')

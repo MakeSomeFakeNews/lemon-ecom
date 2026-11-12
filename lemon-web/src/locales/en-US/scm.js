@@ -402,7 +402,7 @@ export default {
     qtyGte: 'Qty ≥',
     addTier: 'Add Tier',
     tierTip: 'The tier price applies when the purchase quantity reaches the tier quantity; up to 10 tiers',
-    setDefault: 'Set as the default supplier for this material (MRP generates purchase orders for the default supplier)',
+    setDefault: 'Set as the default supplier for this material (reorder suggestions generate purchase orders for the default supplier)',
     thisSupplier: 'This Supplier',
     allSuppliers: 'All Suppliers',
     noHistory: 'No purchase receipt records',
@@ -419,8 +419,8 @@ export default {
     supplierTitle: 'Merge Supplier Records',
     tip: 'Merge duplicate records into the record to keep. This cannot be undone',
     ruleKeep: 'The kept record keeps its name, credit limit, payment terms, price level, owner and other attributes; merged records are disabled and marked "Merged" (traceable in Records → Change history) and can be deleted once unreferenced',
-    ruleDocs: 'Orders, stock documents, drafts, receivables / payables, receipts / payments, advances, offsets, invoices, voucher auxiliary entries, CRM, projects and attachments all point to the kept record; amounts, currencies and settlements stay unchanged',
-    rulePriceCustomer: 'For the same material the kept customer price wins; price memory rows are combined (latest price by date, lowest / highest of all); the kept CRM profile wins',
+    ruleDocs: 'Orders, stock documents, drafts, receivables / payables, receipts / payments, advances, offsets, invoices, voucher auxiliary entries and attachments all point to the kept record; amounts, currencies and settlements stay unchanged',
+    rulePriceCustomer: 'For the same material the kept customer price wins; price memory rows are combined (latest price by date, lowest / highest of all)',
     rulePriceSupplier: 'For the same material the kept supply price wins (it becomes the default if the merged one was the default supplier); price memory rows are combined',
     ruleLink: 'Only one linked partner (the supplier linked customer) is allowed after merging; records linked to different partners cannot be merged',
     sources: 'Records to merge',
@@ -445,6 +445,11 @@ export default {
     mergedTo: 'Merged into {name}'
   },
   supplier: {
+    sectionBasic: 'Basic Info',
+    sectionContact: 'Contact',
+    sectionFinance: 'Settlement & Invoicing',
+    sectionBusiness: 'Business Settings',
+    sectionOther: 'Other',
     linkedCustomer: 'Linked customer',
     linkedCustomerExtra: 'Select when the same company is both a supplier and a customer (one customer per supplier): receivable queries can include its payables, and AR/AP netting is available',
     linkedCustomerOf: 'Linked customer {name}',
@@ -488,6 +493,11 @@ export default {
     nameRequired: 'Please enter the supplier name'
   },
   customer: {
+    sectionBasic: 'Basic Info',
+    sectionSales: 'Sales Settings',
+    sectionFinance: 'Settlement & Credit',
+    sectionContact: 'Contact',
+    sectionOther: 'Other',
     linkedSupplierOf: 'Linked supplier {name}',
     codeOrName: 'Code or name',
     level: 'Level',

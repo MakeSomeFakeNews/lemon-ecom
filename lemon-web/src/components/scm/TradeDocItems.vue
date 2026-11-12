@@ -42,7 +42,7 @@
         </template>
         <template v-else-if="column.key === 'limit'">
           <div>{{ formatQty(record.limit) }} {{ record.unit }}</div>
-          <div class="sub-text">¥{{ formatMoney(record.grossPrice ?? record.price) }} / {{ record.unit || $t('common.field.unit') }}</div>
+          <div class="sub-text">{{ symMoney(record.grossPrice ?? record.price) }} / {{ record.unit || $t('common.field.unit') }}</div>
         </template>
         <template v-else-if="column.key === 'warehouse'">
           <WarehouseSelect
@@ -108,7 +108,7 @@
           <a-input-number v-model:value="record.taxRate" :min="0" :max="100" :precision="2" addon-after="%" class="full" :disabled="record.gift" />
         </template>
         <template v-else-if="column.key === 'amount'">
-          <div class="amount">¥{{ formatMoney(lineAmount(record.qty, record.price)) }}</div>
+          <div class="amount">{{ symMoney(lineAmount(record.qty, record.price)) }}</div>
           <div class="sub-text">{{ $t('scm.trade.taxRateN', { rate: Number(record.taxRate || 0) }) }}</div>
         </template>
         <template v-else-if="column.key === 'serialNos'">
@@ -137,7 +137,7 @@
     <!-- 引用订单 / 原单：明细按优惠前单价显示（不改单价），订单优惠在合计处整单扣减（退货即扣回原单的优惠），金额以保存后的单据为准；
          采购入库可按供应商实际给的优惠修改本单的订单优惠 -->
     <div v-if="!direct && form.items.length && (refDiscount > 0 || discountEditable)" class="ref-discount">
-      <span>{{ $t('scm.wholeDiscount.total') }} <b>¥{{ formatMoney(totalAmount) }}</b></span>
+      <span>{{ $t('scm.wholeDiscount.total') }} <b>{{ symMoney(totalAmount) }}</b></span>
       <span class="discount-cell">
         <a-tooltip :title="discountHint">
           <span class="dashed">{{ conf.returns ? $t('scm.wholeDiscount.returnShare') : $t('scm.wholeDiscount.orderShare') }}</span>
@@ -157,7 +157,7 @@
         </template>
         <b v-else>−¥{{ formatMoney(refDiscount) }}</b>
       </span>
-      <span>{{ conf.returns ? $t('scm.wholeDiscount.refundAfter') : $t('scm.wholeDiscount.after') }} <b class="after">¥{{ formatMoney(afterAmount) }}</b></span>
+      <span>{{ conf.returns ? $t('scm.wholeDiscount.refundAfter') : $t('scm.wholeDiscount.after') }} <b class="after">{{ symMoney(afterAmount) }}</b></span>
     </div>
     <div v-if="discountChanged" class="discount-warn">{{ $t('scm.wholeDiscount.orderDiscountChanged', { amount: formatMoney(refDiscount) }) }}</div>
     <PriceReference ref="referenceRef" pickable @pick="pickPrice" />
@@ -183,7 +183,7 @@ import { defaultPrices } from '@/api/scm/pricing'
 import { useLineItems } from '@/composables/useLineItems'
 import { fillPutaway, formatQty } from '@/components/wms/wms'
 import { TRADE_KINDS, formatMoney, lineAmount, newTradeRow } from './scm'
-import { round2 } from '@/utils/number'
+import { round2, symMoney } from '@/utils/number'
 
 /**
  * 出入库单的明细：引用订单时按订单明细录入数量（可拆分库位、批次），采购入库可修改本单的订单优惠（form.orderDiscount）；

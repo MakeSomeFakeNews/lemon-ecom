@@ -28,7 +28,7 @@
       <div class="line base">
         <span class="line-label">{{ $t('ecomReport.settlement.netBase') }}</span>
         <span class="sub-text">× {{ qty(settlement.exchangeRate, 6) }}</span>
-        <span class="line-value">¥{{ money(settlement.netBase) }}</span>
+        <span class="line-value">{{ symMoney(settlement.netBase) }}</span>
       </div>
     </div>
   </div>
@@ -40,7 +40,7 @@ import { Empty } from 'ant-design-vue'
 import EChart from '@/components/charts/EChart.vue'
 import { percent, shortMoney } from '@/components/charts/charts'
 import { useAppStore } from '@/store/app'
-import { money, nz, qty } from '@/utils/number'
+import { money, nz, qty, symMoney } from '@/utils/number'
 import { t } from '@/locales'
 
 /**

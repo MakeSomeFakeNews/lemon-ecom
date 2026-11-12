@@ -116,7 +116,7 @@ const columns = [
   { title: t('ecomOwh.common.warehouse'), key: 'warehouse', width: 200, ellipsis: true, exportValue: (r) => `${r.warehouseName} ${r.owhCode || ''}` },
   { title: t('ecomOwh.ret.owhOrderNo'), dataIndex: 'owhOrderNo', width: 150, ellipsis: true },
   { title: t('ecomOwh.ret.trackingNo'), dataIndex: 'trackingNo', width: 190, ellipsis: true },
-  { title: t('ecomOwh.ret.resultCol'), key: 'result', width: 140, align: 'right', exportValue: (r) => `${r.goodQty}/${r.badQty}/${r.totalQty}` },
+  { title: t('ecomOwh.ret.resultCol'), key: 'result', width: 140, align: 'right', exportValue: (r) => `${qty(r.goodQty)}/${qty(r.badQty)}/${qty(r.totalQty)}` },
   { title: t('ecomOwh.ret.status'), key: 'status', dataIndex: 'status', width: 110, dict: 'ecom_owh_return_status' },
   { title: t('ecomOwh.ret.erp'), key: 'erpReceived', width: 100, exportValue: (r) => (r.erpReceived === 1 ? t('ecomOwh.ret.erpReceived') : t('ecomOwh.ret.erpPending')) },
   { title: t('ecomOwh.ret.receiveTime'), dataIndex: 'receiveTime', width: 160 },

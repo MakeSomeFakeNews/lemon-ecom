@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 自动化触发器取数（只读）。跨模块的表（sys_user、sys_role、wms_warehouse）只做只读 JOIN -->
+<mapper namespace="com.lemon.erp.modules.ecom.automation.mapper.EcomAutoScanMapper">
+
+    <!-- ============================================================ 订单 -->
+
+    <select id="selectOrder" resultType="java.util.Map">
+        SELECT o.id AS "id", o.platform_order_no AS "orderNo", o.store_id AS "storeId", s.name AS "storeName", s.platform AS "platform",
+               s.marketplace AS "site", o.status AS "status", o.local_status AS "localStatus", o.fulfillment AS "fulfillment",
+               o.order_type AS "orderType", o.ship_country AS "country", o.currency AS "currency", o.total_amount AS "totalAmount",
+               o.total_base AS "totalBase", o.weight AS "weight", o.exception AS "exception", o.hold_reason AS "holdReason",
+               o.est_profit AS "estProfit", o.est_profit_rate AS "estProfitRate", o.buyer_name AS "buyerName", o.order_time AS "orderTime",
+               o.remote_area AS "remoteArea", o.address_invalid AS "addressInvalid", o.blacklist_id AS "blacklistId",
+               (SELECT COALESCE(SUM(i.qty), 0) FROM ecom_order_item i WHERE i.order_id = o.id) AS "itemQty"
+        FROM ecom_order o
+        JOIN ecom_store s ON s.id = o.store_id
+        WHERE o.id = #{id}
+    </select>
+
+    <select id="selectRecentOrderIds" resultType="java.lang.Long">
+        SELECT o.id FROM ecom_order o
+        <where>
+            <if test="exception">AND o.local_status = 'EXCEPTION'</if>
+            <if test="loss">AND o.est_profit &lt; 0</if>
+        </where>
+        ORDER BY o.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectOrderSkus" resultType="java.lang.String">
+        SELECT DISTINCT i.seller_sku FROM ecom_order_item i WHERE i.order_id = #{orderId} AND i.seller_sku IS NOT NULL
+    </select>
+
+    <select id="selectOrderTags" resultType="java.lang.String">
+        SELECT t.name FROM ecom_order_tag_link l JOIN ecom_order_tag t ON t.id = l.tag_id WHERE l.order_id = #{orderId} ORDER BY t.sort, t.id
+    </select>
+
+    <!-- ============================================================ 评价、买家消息 -->
+
+    <select id="selectReviews" resultType="java.util.Map">
+        SELECT r.id AS "id", r.store_id AS "storeId", s.name AS "storeName", s.platform AS "platform", s.marketplace AS "site",
+               r.rating AS "rating", r.seller_sku AS "sku", r.platform_item_id AS "itemId", r.listing_id AS "listingId", r.title AS "title",
+               r.content AS "content", r.reviewer AS "reviewer", r.review_date AS "reviewDate", r.order_id AS "orderId",
+               r.platform_order_no AS "orderNo", r.replied AS "replied", l.material_id AS "materialId"
+        FROM ecom_review r
+        JOIN ecom_store s ON s.id = r.store_id
+        LEFT JOIN ecom_listing l ON l.id = r.listing_id
+        <where>
+            <if test="ids != null and !ids.isEmpty()">
+                AND r.id IN <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+            </if>
+            <if test="maxRating != null">AND r.rating &lt;= #{maxRating}</if>
+        </where>
+        ORDER BY r.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectOverdueThreads" resultType="java.util.Map">
+        SELECT t.id AS "id", t.store_id AS "storeId", s.name AS "storeName", s.platform AS "platform", s.marketplace AS "site",
+               t.buyer_name AS "buyerName", t.subject AS "subject", t.last_message AS "lastMessage", t.last_message_time AS "lastMessageTime",
+               t.reply_deadline AS "replyDeadline", t.order_id AS "orderId", t.platform_order_no AS "orderNo", t.owner_id AS "ownerId",
+               t.tags AS "tags", t.unread AS "unread"
+        FROM ecom_message_thread t
+        JOIN ecom_store s ON s.id = t.store_id
+        WHERE t.status = 'PENDING' AND t.reply_deadline &lt; #{now}
+        ORDER BY t.reply_deadline
+        LIMIT #{limit}
+    </select>
+
+    <!-- ============================================================ 商品监控 -->
+
+    <select id="selectAlerts" resultType="java.util.Map">
+        SELECT a.id AS "id", a.monitor_id AS "monitorId", a.alert_type AS "alertType", a.alert_date AS "alertDate", a.old_value AS "oldValue",
+               a.new_value AS "newValue", m.monitor_type AS "monitorType", m.platform AS "monitorPlatform", m.marketplace AS "marketplace",
+               m.item_id AS "itemId", m.title AS "title", m.seller_sku AS "sku", m.listing_id AS "listingId", m.store_id AS "storeId",
+               m.seller_count AS "sellerCount", m.rank_main AS "rankMain", m.rating AS "rating", m.price AS "price", m.brand AS "brand",
+               m.notify_user_id AS "notifyUserId", s.name AS "storeName", s.platform AS "platform", s.marketplace AS "site",
+               l.material_id AS "materialId"
+        FROM ecom_monitor_alert a
+        JOIN ecom_monitor m ON m.id = a.monitor_id
+        LEFT JOIN ecom_store s ON s.id = m.store_id
+        LEFT JOIN ecom_listing l ON l.id = m.listing_id
+        <where>
+            <if test="ids != null and !ids.isEmpty()">
+                AND a.id IN <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+            </if>
+            <if test="types != null and !types.isEmpty()">
+                AND a.alert_type IN <foreach collection="types" item="t" open="(" separator="," close=")">#{t}</foreach>
+            </if>
+        </where>
+        ORDER BY a.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- ============================================================ 店铺与同步 -->
+
+    <select id="selectFailedSyncLogs" resultType="java.util.Map">
+        SELECT g.id AS "id", g.store_id AS "storeId", g.sync_type AS "syncType", g.trigger_by AS "triggerBy", g.message AS "message",
+               g.start_time AS "startTime", s.name AS "storeName", s.platform AS "platform", s.marketplace AS "site", s.code AS "storeCode"
+        FROM ecom_sync_log g
+        JOIN ecom_store s ON s.id = g.store_id
+        WHERE g.success = 0
+        <choose>
+            <when test="id != null">AND g.id = #{id}</when>
+            <when test="auth">AND g.sync_type = 'AUTH'</when>
+            <otherwise>AND g.sync_type &lt;&gt; 'AUTH'</otherwise>
+        </choose>
+        ORDER BY g.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- ============================================================ 头程 -->
+
+    <select id="selectInbounds" resultType="java.util.Map">
+        SELECT i.id AS "id", i.doc_no AS "docNo", i.shipment_id AS "shipmentId", i.store_id AS "storeId", s.name AS "storeName",
+               s.platform AS "platform", s.marketplace AS "site", i.status AS "status", i.carrier AS "carrier", i.tracking_no AS "trackingNo",
+               i.ship_date AS "shipDate", i.eta_date AS "etaDate", i.receive_date AS "receiveDate", i.total_qty AS "totalQty",
+               i.box_count AS "boxCount", w.name AS "toWarehouse"
+        FROM ecom_inbound i
+        LEFT JOIN ecom_store s ON s.id = i.store_id
+        LEFT JOIN wms_warehouse w ON w.id = i.to_warehouse_id
+        <where>
+            <if test="ids != null and !ids.isEmpty()">
+                AND i.id IN <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+            </if>
+            <if test="overdueBefore != null">AND i.status = 'SHIPPED' AND i.eta_date &lt; #{overdueBefore}</if>
+            <if test="received">AND i.status = 'RECEIVED'</if>
+        </where>
+        ORDER BY i.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- ============================================================ 广告 -->
+
+    <!-- 启用的活动在区间内的合计（活动报告），有花费的才返回 -->
+    <select id="selectCampaignMetrics" resultType="java.util.Map">
+        SELECT c.id AS "id", c.name AS "name", c.store_id AS "storeId", c.ad_type AS "adType", c.daily_budget AS "dailyBudget", c.tags AS "tags",
+               s.name AS "storeName", s.platform AS "platform", s.marketplace AS "site", s.currency AS "currency",
+               SUM(t.spend) AS "spend", SUM(t.sales) AS "sales", SUM(t.orders) AS "orders", SUM(t.clicks) AS "clicks",
+               SUM(t.impressions) AS "impressions"
+        FROM ecom_ad_campaign c
+        JOIN ecom_store s ON s.id = c.store_id
+        JOIN ecom_ad_stat t ON t.campaign_id = c.id AND t.level = 'CAMPAIGN' AND t.stat_date &gt;= #{from} AND t.stat_date &lt;= #{to}
+        WHERE c.status = 'ENABLED'
+        GROUP BY c.id, c.name, c.store_id, c.ad_type, c.daily_budget, c.tags, s.name, s.platform, s.marketplace, s.currency
+        HAVING SUM(t.spend) &gt; 0
+    </select>
+
+    <!-- 启用、设置了日预算的活动最近一天（since 之后）的花费，花费达到预算的 minUsage% 才返回 -->
+    <select id="selectCampaignBudgets" resultType="java.util.Map">
+        SELECT c.id AS "id", c.name AS "name", c.store_id AS "storeId", c.ad_type AS "adType", c.daily_budget AS "dailyBudget", c.tags AS "tags",
+               s.name AS "storeName", s.platform AS "platform", s.marketplace AS "site", s.currency AS "currency",
+               t.stat_date AS "statDate", t.spend AS "spend", t.sales AS "sales"
+        FROM ecom_ad_campaign c
+        JOIN ecom_store s ON s.id = c.store_id
+        JOIN ecom_ad_stat t ON t.campaign_id = c.id AND t.level = 'CAMPAIGN'
+        WHERE c.status = 'ENABLED' AND c.daily_budget &gt; 0 AND t.stat_date &gt;= #{since}
+          AND t.stat_date = (SELECT MAX(x.stat_date) FROM ecom_ad_stat x WHERE x.campaign_id = c.id AND x.level = 'CAMPAIGN')
+          AND t.spend * 100 &gt;= c.daily_budget * #{minUsage}
+    </select>
+
+    <!-- ============================================================ FBA、退货、竞品 -->
+
+    <select id="selectClaimsDue" resultType="java.util.Map">
+        SELECT c.id AS "id", c.claim_no AS "claimNo", c.claim_type AS "claimType", c.store_id AS "storeId", s.name AS "storeName",
+               s.platform AS "platform", s.marketplace AS "site", c.seller_sku AS "sku", c.fnsku AS "fnsku", c.qty AS "qty",
+               c.est_amount AS "estAmount", c.currency AS "currency", c.event_date AS "eventDate", c.deadline AS "deadline"
+        FROM ecom_fba_claim c
+        JOIN ecom_store s ON s.id = c.store_id
+        WHERE c.status = 'PENDING' AND c.deadline IS NOT NULL AND c.deadline &gt;= #{today} AND c.deadline &lt;= #{until}
+        ORDER BY c.deadline
+    </select>
+
+    <!-- 近期各店铺各 SKU 的下单件数（不含已取消） -->
+    <select id="selectSkuOrdered" resultType="java.util.Map">
+        SELECT o.store_id AS "storeId", i.seller_sku AS "sku", SUM(i.qty) AS "qty", COUNT(DISTINCT o.id) AS "orders"
+        FROM ecom_order o
+        JOIN ecom_order_item i ON i.order_id = o.id
+        WHERE o.order_time &gt;= #{since} AND o.status &lt;&gt; 'CANCELLED' AND i.seller_sku IS NOT NULL
+        GROUP BY o.store_id, i.seller_sku
+    </select>
+
+    <!-- 近期各店铺各 SKU 的退货退款件数（不含已关闭） -->
+    <select id="selectSkuReturned" resultType="java.util.Map">
+        SELECT r.store_id AS "storeId", ri.seller_sku AS "sku", SUM(ri.qty) AS "qty", COUNT(DISTINCT r.id) AS "returns",
+               MAX(ri.material_id) AS "materialId"
+        FROM ecom_return r
+        JOIN ecom_return_item ri ON ri.return_id = r.id
+        WHERE r.create_time &gt;= #{since} AND r.status &lt;&gt; 'CLOSED' AND ri.seller_sku IS NOT NULL
+        GROUP BY r.store_id, ri.seller_sku
+    </select>
+
+    <!-- 在售商品最新一条（since 之后的）竞品价格低于本店售价的 -->
+    <select id="selectCompetitorLower" resultType="java.util.Map">
+        SELECT l.id AS "listingId", l.store_id AS "storeId", l.seller_sku AS "sku", l.title AS "title", l.price AS "price",
+               COALESCE(l.currency, s.currency) AS "currency", l.material_id AS "materialId", l.platform_item_id AS "itemId",
+               s.name AS "storeName", s.platform AS "platform", s.marketplace AS "site",
+               c.lowest_price AS "competitorPrice", c.buybox_price AS "buyboxPrice", c.buybox_winner AS "buyboxWinner",
+               c.offer_count AS "offerCount", c.competitor AS "competitor", c.snapshot_time AS "snapshotTime"
+        FROM ecom_listing l
+        JOIN ecom_store s ON s.id = l.store_id
+        JOIN ecom_competitor_price c ON c.listing_id = l.id
+        WHERE l.status = 'ACTIVE' AND l.price &gt; 0 AND c.snapshot_time &gt;= #{since} AND c.lowest_price IS NOT NULL AND c.lowest_price &lt; l.price
+          AND c.id = (SELECT MAX(x.id) FROM ecom_competitor_price x WHERE x.listing_id = l.id)
+    </select>
+
+    <!-- ============================================================ 接收人 -->
+
+    <select id="selectRoleUsers" resultType="java.lang.Long">
+        SELECT DISTINCT u.id
+        FROM sys_user u
+        JOIN sys_user_role ur ON ur.user_id = u.id
+        JOIN sys_role r ON r.id = ur.role_id AND r.status = 1
+        WHERE u.status = 1 AND u.supplier_id IS NULL AND u.customer_id IS NULL AND ur.role_id IN
+        <foreach collection="roleIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </select>
+
+    <select id="selectRoles" resultType="com.lemon.erp.modules.ecom.automation.dto.AutoViews$RoleOption">
+        SELECT r.id, r.name FROM sys_role r WHERE r.status = 1 ORDER BY r.sort, r.id
+    </select>
+
+    <select id="selectUserNames" resultType="java.util.Map">
+        SELECT u.id AS "id", u.nickname AS "nickname" FROM sys_user u WHERE u.id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </select>
+</mapper>

@@ -448,13 +448,18 @@ public class EcomInboundService {
             throw new BizException("ecom.error.inboundNotShipped", i.getDocNo());
         }
         LocalDate date = receiveDate == null ? LocalDate.now() : receiveDate;
-        stockDocService.receive(i.getTransferDocId(), date);
+        stockDocService.receiveBySource(i.getTransferDocId(), date);
         StatusTransitions.change(inboundMapper, EcomInbound::getId, id, EcomInbound::getStatus, InboundStatus.SHIPPED, InboundStatus.RECEIVED,
                 w -> w.set(EcomInbound::getReceiveDate, date), "ecom.error.inboundStatusChanged");
         for (EcomInboundItem it : itemMapper.selectByInboundId(id)) {
             it.setReceivedQty(it.getQty());
             itemMapper.updateById(it);
         }
+        eventPublisher.publishEvent(new InboundSignedEvent(id));
+    }
+
+    /** 头程货件已签收（自动化规则「头程货件签收」在提交后处理） */
+    public record InboundSignedEvent(Long inboundId) {
     }
 
     /** 取消：草稿直接取消，审批中的撤回流程 */

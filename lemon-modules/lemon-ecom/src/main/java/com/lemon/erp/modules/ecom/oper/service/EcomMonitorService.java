@@ -88,12 +88,14 @@ public class EcomMonitorService {
     private final UserLookup userLookup;
     private final MessageSender messageSender;
     private final TransactionTemplate transactionTemplate;
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
     private final Map<EcomPlatform, MonitorConnector> connectors = new EnumMap<>(EcomPlatform.class);
 
     public EcomMonitorService(EcomMonitorMapper monitorMapper, EcomMonitorSnapshotMapper snapshotMapper, EcomMonitorAlertMapper alertMapper,
                               EcomStoreService storeService, EcomListingService listingService, EcomSyncService syncService,
                               ConnectorRegistry channelRegistry, DictLookup dictLookup, UserLookup userLookup, MessageSender messageSender,
-                              TransactionTemplate transactionTemplate, List<MonitorConnector> monitorConnectors) {
+                              TransactionTemplate transactionTemplate, List<MonitorConnector> monitorConnectors,
+                              org.springframework.context.ApplicationEventPublisher eventPublisher) {
         this.monitorMapper = monitorMapper;
         this.snapshotMapper = snapshotMapper;
         this.alertMapper = alertMapper;
@@ -105,6 +107,7 @@ public class EcomMonitorService {
         this.userLookup = userLookup;
         this.messageSender = messageSender;
         this.transactionTemplate = transactionTemplate;
+        this.eventPublisher = eventPublisher;
         monitorConnectors.forEach(c -> connectors.put(c.platform(), c));
     }
 
@@ -395,6 +398,7 @@ public class EcomMonitorService {
             applyLatest(m, s);
             if (!created.isEmpty() && !s.getSnapshotDate().isBefore(LocalDate.now().minusDays(NOTIFY_DAYS))) {
                 notify(m, created);
+                eventPublisher.publishEvent(new AlertsCreatedEvent(created.stream().map(EcomMonitorAlert::getId).toList()));
             }
         }
         return created;
@@ -500,6 +504,10 @@ public class EcomMonitorService {
         } else {
             messageSender.sendToPermission(ALERT_PERM, message);
         }
+    }
+
+    /** 新生成的预警（最近几天的快照，自动化规则「被跟卖」「排名大跌」「被下架」在提交后处理） */
+    public record AlertsCreatedEvent(List<Long> alertIds) {
     }
 
     /** 预警类型的中文名（站内消息存库） */

@@ -42,21 +42,15 @@ export const AccountRole = Object.freeze({
   PAYABLE: 'PAYABLE',
   ADVANCE_RECEIVED: 'ADVANCE_RECEIVED',
   PREPAYMENT: 'PREPAYMENT',
-  NOTES_RECEIVABLE: 'NOTES_RECEIVABLE',
-  NOTES_PAYABLE: 'NOTES_PAYABLE',
   OTHER_RECEIVABLE: 'OTHER_RECEIVABLE',
   OTHER_PAYABLE: 'OTHER_PAYABLE',
   FREIGHT_ADVANCE: 'FREIGHT_ADVANCE', // 代垫运费
   INVENTORY: 'INVENTORY', // 默认
-  OUTSOURCE_MATERIAL: 'OUTSOURCE_MATERIAL',
-  CONTRACT_COST: 'CONTRACT_COST',
   PENDING_LOSS: 'PENDING_LOSS',
   OTHER_IN_OFFSET: 'OTHER_IN_OFFSET', // 其他入库
   OTHER_OUT_OFFSET: 'OTHER_OUT_OFFSET', // 其他出库、报废出库
   REVENUE: 'REVENUE',
   COST_OF_SALES: 'COST_OF_SALES',
-  OTHER_REVENUE: 'OTHER_REVENUE',
-  CONTRACT_LIABILITY: 'CONTRACT_LIABILITY',
   SELLING_EXPENSE: 'SELLING_EXPENSE',
   SALES_FREIGHT: 'SALES_FREIGHT', // 销售运费
   PURCHASE_FREIGHT: 'PURCHASE_FREIGHT', // 采购运费
@@ -67,7 +61,7 @@ export const AccountRole = Object.freeze({
   PAYMENT_DISCOUNT: 'PAYMENT_DISCOUNT', // 付款折让 / 抹零
   OFFSET_AR: 'OFFSET_AR', // 应收冲账
   OFFSET_AP: 'OFFSET_AP', // 应付冲账
-  PURCHASE_REBATE: 'PURCHASE_REBATE', // 采购返利
+  PLATFORM_FEE: 'PLATFORM_FEE', // 电商平台费用
   INPUT_VAT: 'INPUT_VAT',
   OUTPUT_VAT: 'OUTPUT_VAT',
   UNPAID_VAT: 'UNPAID_VAT',
@@ -75,7 +69,6 @@ export const AccountRole = Object.freeze({
   EDU_SURCHARGE: 'EDU_SURCHARGE',
   LOCAL_EDU_SURCHARGE: 'LOCAL_EDU_SURCHARGE',
   TAX_SURCHARGE: 'TAX_SURCHARGE',
-  INCOME_TAX: 'INCOME_TAX',
   FIXED_ASSET: 'FIXED_ASSET',
   DEPRECIATION: 'DEPRECIATION',
   ASSET_DISPOSAL: 'ASSET_DISPOSAL',
@@ -296,13 +289,157 @@ export const AuthType = Object.freeze({
   KEYS: 'KEYS', // 直接填写平台后台生成的密钥 / 令牌
 })
 
+/** com.lemon.erp.modules.ecom.automation.model.AutoActionStatus（字典 ecom_auto_action_status） */
+export const AutoActionStatus = Object.freeze({
+  SUCCESS: 'SUCCESS', // 成功
+  FAILED: 'FAILED', // 失败
+  SKIPPED: 'SKIPPED', // 跳过
+  SUGGESTED: 'SUGGESTED', // 仅建议
+})
+
+/** com.lemon.erp.modules.ecom.automation.model.AutoActionType（字典 ecom_auto_action） */
+export const AutoActionType = Object.freeze({
+  NOTIFY: 'NOTIFY', // 站内消息
+  IM_ROBOT: 'IM_ROBOT', // 钉钉 / 企业微信 / 飞书群机器人
+  WEBHOOK: 'WEBHOOK', // Webhook
+  TODO: 'TODO', // 创建待办提醒
+  ORDER_HOLD: 'ORDER_HOLD', // 订单挂起
+  ORDER_TAG: 'ORDER_TAG', // 订单打标签
+  ORDER_ASSIGN: 'ORDER_ASSIGN', // 指定发货仓 / 物流渠道
+  LISTING_REPRICE: 'LISTING_REPRICE', // 在线商品调价
+  PURCHASE_PLAN: 'PURCHASE_PLAN', // 生成采购计划草稿
+  CS_TICKET: 'CS_TICKET', // 建售后工单
+  AD_PAUSE: 'AD_PAUSE', // 暂停广告活动
+  AD_ADJUST: 'AD_ADJUST', // 调整广告竞价 / 预算
+})
+
+/** com.lemon.erp.modules.ecom.automation.model.AutoAdTarget */
+export const AutoAdTarget = Object.freeze({
+  BID: 'BID',
+  BUDGET: 'BUDGET',
+})
+
+/** com.lemon.erp.modules.ecom.automation.model.AutoCategory（字典 ecom_auto_category） */
+export const AutoCategory = Object.freeze({
+  ORDER: 'ORDER', // 订单
+  STOCK: 'STOCK', // 库存与补货
+  CS: 'CS', // 客服与评价
+  LISTING: 'LISTING', // 商品监控
+  STORE: 'STORE', // 店铺与渠道
+  LOGISTICS: 'LOGISTICS', // 头程物流
+  ADS: 'ADS', // 广告
+  FBA: 'FBA', // FBA
+  PRICE: 'PRICE', // 价格
+})
+
+/** com.lemon.erp.modules.ecom.automation.model.AutoFieldType */
+export const AutoFieldType = Object.freeze({
+  NUMBER: 'NUMBER', // 数字
+  TEXT: 'TEXT', // 文本
+  ENUM: 'ENUM', // 枚举
+  BOOLEAN: 'BOOLEAN', // 是 / 否
+})
+
+/** com.lemon.erp.modules.ecom.automation.model.AutoLogic */
+export const AutoLogic = Object.freeze({
+  AND: 'AND',
+  OR: 'OR',
+})
+
+/** com.lemon.erp.modules.ecom.automation.model.AutoOperator */
+export const AutoOperator = Object.freeze({
+  EQ: 'EQ',
+  NE: 'NE',
+  GT: 'GT',
+  GE: 'GE',
+  LT: 'LT',
+  LE: 'LE',
+  IN: 'IN', // 属于其中之一
+  NOT_IN: 'NOT_IN',
+  CONTAINS: 'CONTAINS', // 文本包含
+  NOT_CONTAINS: 'NOT_CONTAINS',
+  EMPTY: 'EMPTY', // 为空
+  NOT_EMPTY: 'NOT_EMPTY',
+})
+
+/** com.lemon.erp.modules.ecom.automation.model.AutoRef */
+export const AutoRef = Object.freeze({
+  ORDER: 'ORDER', // 平台订单
+  LISTING: 'LISTING', // 在线商品
+  MATERIAL: 'MATERIAL', // 本地物料
+  CAMPAIGN: 'CAMPAIGN', // 广告活动
+  REVIEW: 'REVIEW', // 商品评价
+  THREAD: 'THREAD', // 买家消息会话
+  STORE: 'STORE', // 店铺
+  INBOUND: 'INBOUND', // 头程货件
+  CLAIM: 'CLAIM', // FBA 索赔
+  MONITOR: 'MONITOR', // 商品监控
+})
+
+/** com.lemon.erp.modules.ecom.automation.model.AutoResult（字典 ecom_auto_result） */
+export const AutoResult = Object.freeze({
+  SUCCESS: 'SUCCESS', // 动作全部成功
+  PARTIAL: 'PARTIAL', // 部分动作失败
+  FAILED: 'FAILED', // 动作全部失败
+  NOT_MATCHED: 'NOT_MATCHED', // 条件不满足
+  DEBOUNCED: 'DEBOUNCED', // 防抖跳过
+  LIMITED: 'LIMITED', // 达到每日执行上限
+})
+
+/** com.lemon.erp.modules.ecom.automation.model.AutoScanMode */
+export const AutoScanMode = Object.freeze({
+  REALTIME: 'REALTIME',
+  FREQUENT: 'FREQUENT',
+  DAILY: 'DAILY',
+})
+
+/** com.lemon.erp.modules.ecom.automation.model.AutoTodoStatus（字典 ecom_auto_todo_status） */
+export const AutoTodoStatus = Object.freeze({
+  OPEN: 'OPEN', // 待处理
+  DONE: 'DONE', // 已完成
+})
+
+/** com.lemon.erp.modules.ecom.automation.model.AutoTrigger（字典 ecom_auto_trigger） */
+export const AutoTrigger = Object.freeze({
+  ORDER_NEW: 'ORDER_NEW', // 新订单
+  ORDER_EXCEPTION: 'ORDER_EXCEPTION', // 订单异常
+  ORDER_LOSS: 'ORDER_LOSS', // 订单预估亏损
+  STOCKOUT_RISK: 'STOCKOUT_RISK', // 断货风险
+  STOCK_LOW: 'STOCK_LOW', // 本地库存低于安全库存
+  REVIEW_NEGATIVE: 'REVIEW_NEGATIVE', // 新差评
+  MESSAGE_TIMEOUT: 'MESSAGE_TIMEOUT', // 买家消息超时未回复
+  LISTING_HIJACKED: 'LISTING_HIJACKED', // 商品被跟卖
+  LISTING_RANK_DROP: 'LISTING_RANK_DROP', // 排名大跌
+  LISTING_DELISTED: 'LISTING_DELISTED', // 商品被下架
+  STORE_AUTH_INVALID: 'STORE_AUTH_INVALID', // 店铺授权失效
+  SYNC_FAILED: 'SYNC_FAILED', // 渠道同步失败
+  INBOUND_RECEIVED: 'INBOUND_RECEIVED', // 头程货件签收
+  INBOUND_OVERDUE: 'INBOUND_OVERDUE', // 头程货件超期未签收
+  AD_ACOS_HIGH: 'AD_ACOS_HIGH', // 广告 ACOS 超过阈值
+  AD_BUDGET_EXHAUSTED: 'AD_BUDGET_EXHAUSTED', // 广告预算耗尽
+  FBA_CLAIM_DEADLINE: 'FBA_CLAIM_DEADLINE', // FBA 索赔临近截止
+  RETURN_RATE_HIGH: 'RETURN_RATE_HIGH', // 退货率异常
+  COMPETITOR_PRICE_LOWER: 'COMPETITOR_PRICE_LOWER', // 价格被竞品低于
+})
+
 /** com.lemon.erp.modules.fin.model.AuxItem */
 export const AuxItem = Object.freeze({
   DEPT: 'DEPT',
   CUSTOMER: 'CUSTOMER',
   SUPPLIER: 'SUPPLIER',
-  PROJECT: 'PROJECT',
   MATERIAL: 'MATERIAL',
+})
+
+/** com.lemon.erp.modules.ecom.assistant.model.BannedWordLevel（字典 ecom_banned_word_level） */
+export const BannedWordLevel = Object.freeze({
+  BLOCK: 'BLOCK', // 阻止发布
+  WARN: 'WARN', // 只提醒
+})
+
+/** com.lemon.erp.modules.ecom.assistant.model.BannedWordMatch（字典 ecom_banned_word_match） */
+export const BannedWordMatch = Object.freeze({
+  WORD: 'WORD', // 整词
+  CONTAINS: 'CONTAINS', // 包含即命中
 })
 
 /** com.lemon.erp.modules.fin.model.BillKind */
@@ -318,19 +455,14 @@ export const BillSource = Object.freeze({
   PURCHASE_IN: 'PURCHASE_IN', // 采购入库
   PURCHASE_RETURN: 'PURCHASE_RETURN', // 采购退货
   MANUAL: 'MANUAL', // 期初 / 手工
-  PROJECT: 'PROJECT', // 项目开票
-  SHIPMENT: 'SHIPMENT', // 运费
-  TICKET: 'TICKET', // 服务收费
   ASSET: 'ASSET', // 固定资产
-  NOTE: 'NOTE', // 票据拒付
-  QUALITY_CLAIM: 'QUALITY_CLAIM', // 质量索赔
-  REBATE: 'REBATE', // 销售返利
   OFFSET: 'OFFSET', // 冲账单
   ORDER_ADJUST: 'ORDER_ADJUST', // 订单尾差调整
   PURCHASE_FREIGHT: 'PURCHASE_FREIGHT', // 采购运费
   SALES_FREIGHT: 'SALES_FREIGHT', // 销售运费
   SALES_RETURN_FREIGHT: 'SALES_RETURN_FREIGHT', // 销售退货运费
   PURCHASE_RETURN_FREIGHT: 'PURCHASE_RETURN_FREIGHT', // 采购退货运费
+  PLATFORM_FEE: 'PLATFORM_FEE', // 电商平台费用
 })
 
 /** com.lemon.erp.modules.fin.model.BillStatus（字典 fin_bill_status） */
@@ -1054,8 +1186,6 @@ export const FundDirection = Object.freeze({
 export const FundSource = Object.freeze({
   AR: 'AR', // 未核销的应收单
   AP: 'AP', // 未核销的应付单
-  NOTE_IN: 'NOTE_IN', // 持有中的应收票据到期
-  NOTE_OUT: 'NOTE_OUT', // 未兑付的应付票据到期
   CLAIM: 'CLAIM', // 已审批待付款的报销
   PLAN: 'PLAN', // 手工计划项
 })
@@ -1073,6 +1203,13 @@ export const HoldStatus = Object.freeze({
   REJECTED: 'REJECTED', // 不合格
   RELEASED: 'RELEASED', // 已放行
   RETURNED: 'RETURNED', // 已退货
+})
+
+/** com.lemon.erp.framework.message.ImChannel */
+export const ImChannel = Object.freeze({
+  DINGTALK: 'DINGTALK', // 钉钉
+  WECOM: 'WECOM', // 企业微信
+  FEISHU: 'FEISHU', // 飞书
 })
 
 /** com.lemon.erp.modules.system.im.ImPlatform（字典 sys_im_platform） */
@@ -1280,6 +1417,51 @@ export const OperType = Object.freeze({
   IMPORT: 'IMPORT',
 })
 
+/** com.lemon.erp.modules.ecom.assistant.model.OpsAbnormalType（字典 ecom_ops_abnormal_type） */
+export const OpsAbnormalType = Object.freeze({
+  SALES_DROP: 'SALES_DROP', // 销量骤降
+  PROFIT_DROP: 'PROFIT_DROP', // 利润下滑
+  RETURN_RATE_UP: 'RETURN_RATE_UP', // 退货率升高
+})
+
+/** com.lemon.erp.modules.ecom.assistant.model.OpsAdAlertType（字典 ecom_ops_ad_alert_type） */
+export const OpsAdAlertType = Object.freeze({
+  OVER_BUDGET: 'OVER_BUDGET', // 当天花费达到或超过日预算
+  ACOS_HIGH: 'ACOS_HIGH', // ACOS 明显高于近 7 天
+  NO_ORDER: 'NO_ORDER', // 花费较多但没有订单
+})
+
+/** com.lemon.erp.modules.ecom.assistant.model.OpsPushChannel（字典 ecom_ops_push_channel） */
+export const OpsPushChannel = Object.freeze({
+  SITE: 'SITE',
+  DINGTALK: 'DINGTALK',
+  WECOM: 'WECOM',
+  FEISHU: 'FEISHU',
+})
+
+/** com.lemon.erp.modules.ecom.assistant.model.OpsReportAiStatus（字典 ecom_ops_report_ai_status） */
+export const OpsReportAiStatus = Object.freeze({
+  NONE: 'NONE', // 未生成
+  SUCCESS: 'SUCCESS', // 已生成
+  FAILED: 'FAILED', // 调用模型失败
+})
+
+/** com.lemon.erp.modules.ecom.assistant.model.OpsReportSource（字典 ecom_ops_report_source） */
+export const OpsReportSource = Object.freeze({
+  SCHEDULE: 'SCHEDULE', // 定时任务生成
+  MANUAL: 'MANUAL', // 手动「立即生成」
+})
+
+/** com.lemon.erp.modules.ecom.assistant.model.OpsTodoKind */
+export const OpsTodoKind = Object.freeze({
+  ORDER_OVERDUE: 'ORDER_OVERDUE',
+  ORDER_EXCEPTION: 'ORDER_EXCEPTION',
+  ORDER_PENDING: 'ORDER_PENDING',
+  RETURN_PENDING: 'RETURN_PENDING',
+  REVIEW_PENDING: 'REVIEW_PENDING',
+  CLAIM_EXPIRING: 'CLAIM_EXPIRING',
+})
+
 /** com.lemon.erp.modules.scm.model.OrderChangeAction */
 export const OrderChangeAction = Object.freeze({
   ADD: 'ADD', // 新增明细
@@ -1303,15 +1485,7 @@ export const OrderKind = Object.freeze({
 /** com.lemon.erp.modules.scm.model.OrderSource（字典 scm_order_source） */
 export const OrderSource = Object.freeze({
   MANUAL: 'MANUAL', // 手工
-  MRP: 'MRP', // MRP
-  KIT: 'KIT', // 生产缺料
-  CRM: 'CRM', // 商机
-  REQUISITION: 'REQUISITION', // 请购单
-  INQUIRY: 'INQUIRY', // 询价单
-  QUOTATION: 'QUOTATION', // 销售报价
   CONSIGN: 'CONSIGN', // 寄售结算
-  TENDER: 'TENDER', // 招标
-  DEALER: 'DEALER', // 经销商订货
   IMPORT: 'IMPORT', // 外部导入
   DIRECT: 'DIRECT', // 直接开单
   PURCHASE_PLAN: 'PURCHASE_PLAN', // 电商采购计划
@@ -1497,6 +1671,7 @@ export const PriceChangeSource = Object.freeze({
   BATCH: 'BATCH', // 批量修改
   REPRICER: 'REPRICER', // 自动调价
   PUBLISH: 'PUBLISH', // 刊登
+  AUTOMATION: 'AUTOMATION', // 自动化规则
 })
 
 /** com.lemon.erp.modules.ecom.publish.model.PriceChangeStatus（字典 ecom_price_change_status） */
@@ -1623,30 +1798,6 @@ export const QuickPrice = Object.freeze({
   WHOLESALE7: 'WHOLESALE7',
   WHOLESALE8: 'WHOLESALE8',
   NONE: 'NONE', // 不显示价格
-})
-
-/** com.lemon.erp.modules.scm.model.RebateCalcMode（字典 scm_rebate_calc） */
-export const RebateCalcMode = Object.freeze({
-  TIER: 'TIER',
-  ITEM: 'ITEM',
-})
-
-/** com.lemon.erp.modules.scm.model.RebateKind（字典 scm_rebate_kind） */
-export const RebateKind = Object.freeze({
-  SALES: 'SALES',
-  PURCHASE: 'PURCHASE',
-})
-
-/** com.lemon.erp.modules.scm.model.RebateSettle（字典 scm_rebate_settle） */
-export const RebateSettle = Object.freeze({
-  CREDIT_NOTE: 'CREDIT_NOTE',
-  NEXT_ORDER: 'NEXT_ORDER',
-})
-
-/** com.lemon.erp.modules.scm.model.RebateStatus（字典 scm_rebate_status） */
-export const RebateStatus = Object.freeze({
-  ACTIVE: 'ACTIVE',
-  SETTLED: 'SETTLED',
 })
 
 /** com.lemon.erp.framework.ref.RefType */
@@ -1853,12 +2004,8 @@ export const StockBizType = Object.freeze({
 /** com.lemon.erp.modules.wms.model.StockInType（字典 wms_in_type） */
 export const StockInType = Object.freeze({
   PURCHASE: 'PURCHASE', // 采购入库
-  PRODUCTION: 'PRODUCTION', // 生产入库
   SALES_RETURN: 'SALES_RETURN', // 销售退货
   OTHER: 'OTHER', // 其他入库
-  PRODUCTION_RETURN: 'PRODUCTION_RETURN', // 生产退料
-  OUTSOURCE_RETURN: 'OUTSOURCE_RETURN', // 委外收回
-  SCRAP_IN: 'SCRAP_IN', // 报废入库
   CONSIGN_IN: 'CONSIGN_IN', // 寄售入库
   OPENING: 'OPENING', // 期初入库
   ASSEMBLY: 'ASSEMBLY', // 组装拆卸
@@ -1867,12 +2014,8 @@ export const StockInType = Object.freeze({
 /** com.lemon.erp.modules.wms.model.StockOutType（字典 wms_out_type） */
 export const StockOutType = Object.freeze({
   SALES: 'SALES', // 销售出库
-  PRODUCTION: 'PRODUCTION', // 生产领料
   PURCHASE_RETURN: 'PURCHASE_RETURN', // 采购退货
   OTHER: 'OTHER', // 其他出库
-  PROJECT: 'PROJECT', // 项目领料
-  OUTSOURCE: 'OUTSOURCE', // 委外发料
-  SERVICE: 'SERVICE', // 服务领用
   SCRAP: 'SCRAP', // 报废出库
   CONSIGN: 'CONSIGN', // 寄售消耗
   CONSUME: 'CONSUME', // 部门领用
@@ -1951,8 +2094,6 @@ export const VoucherSource = Object.freeze({
   ASSET: 'ASSET', // 资产处置
   COST: 'COST', // 成本结转
   CLOSE: 'CLOSE', // 期末结转损益
-  SALARY: 'SALARY', // 工资计提、发放
-  PROJECT: 'PROJECT',
   EXPENSE: 'EXPENSE',
   ADVANCE: 'ADVANCE', // 预收预付及冲抵
   BAD_DEBT: 'BAD_DEBT', // 坏账核销
@@ -1961,7 +2102,6 @@ export const VoucherSource = Object.freeze({
   CLAIM: 'CLAIM', // 费用报销
   LOAN: 'LOAN', // 员工借款、还款
   FX: 'FX', // 期末调汇
-  NOTE: 'NOTE', // 票据贴现、托收、拒付、兑付
   TRANSFER: 'TRANSFER', // 账户调拨
   INCOME_EXPENSE: 'INCOME_EXPENSE', // 其他收支单
   NETTING: 'NETTING', // 应收应付对冲

@@ -43,7 +43,7 @@ public final class HttpJson {
     /** 遮盖响应 / 错误信息中的令牌与密钥（JSON 键值、查询串） */
     private static final Pattern SECRETS = Pattern.compile(
             "(?i)((?<![A-Za-z0-9_])\"?(?:access_token|refresh_token|accessToken|refreshToken|client_secret|clientSecret|app_secret|appSecret|partner_key|partnerKey"
-                    + "|api_key|apiKey|session|sign)\"?\\s*[:=]\\s*\"?)([^\"&,\\s}]+)");
+                    + "|api_key|apiKey|session|sign|token|app_token|appToken|api_token|apiToken|password|secret|secret_key|secretKey|access_key|accessKey)\"?\\s*[:=]\\s*\"?)([^\"&,\\s}]+)");
 
     /**
      * 429 / 503 的自动重试策略

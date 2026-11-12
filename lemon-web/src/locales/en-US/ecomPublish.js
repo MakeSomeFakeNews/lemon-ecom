@@ -70,6 +70,7 @@ export default {
     saveMaster: 'Save master only',
     saveAndApply: 'Save & apply to stores',
     applied: 'Applied to {n} store(s)',
+    applyFields: 'Fields to apply',
     field: {
       title: 'Title',
       bullets: 'Bullet points',
@@ -265,6 +266,10 @@ export default {
     keywordPh: 'Rule name',
     add: 'New rule',
     edit: 'Edit rule',
+    sectionScope: 'Scope',
+    sectionStrategy: 'Strategy',
+    sectionLimit: 'Price Limits',
+    sectionRun: 'Execution',
     tip: 'Due rules run every 15 minutes; Amazon stores fetch Buy Box and lowest prices via the Product Pricing API first, other platforms use manually entered / imported competitor prices; "suggest only" rules create suggestions that are pushed only when applied in the logs',
     name: 'Rule name',
     scope: 'Scope',

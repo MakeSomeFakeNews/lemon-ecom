@@ -20,7 +20,7 @@
       </div>
       <div class="stat">
         <div class="stat-label">{{ $t('ecomFba.audit.overchargeBase') }}</div>
-        <div class="stat-value neg">¥{{ money(result.overchargeBase ?? 0) }}</div>
+        <div class="stat-value neg">{{ symMoney(result.overchargeBase ?? 0) }}</div>
       </div>
     </div>
     <a-alert v-if="result.missingRates?.length" type="warning" show-icon class="rates-alert" :message="$t('ecomFba.common.missingRates', { list: result.missingRates.join(', ') })" />
@@ -79,7 +79,7 @@ import StoreSelect from '@/components/ecom/StoreSelect.vue'
 import { auditClaims, feeAudit } from '@/api/ecom/fba'
 import { useColumns } from '@/composables/useColumns'
 import { useTable } from '@/composables/useTable'
-import { money } from '@/utils/number'
+import { money, symMoney, qty } from '@/utils/number'
 import { EcomPlatform } from '@/constants/enums'
 import { t } from '@/locales'
 import { n0 } from '../fba-health/fba'
@@ -95,7 +95,7 @@ const columns = [
   { title: t('ecomFba.common.sku'), dataIndex: 'sellerSku', width: 160, fixed: 'left' },
   { title: t('ecomFba.common.material'), key: 'material', width: 160, exportColumns: [{ title: t('ecomFba.common.material'), dataIndex: 'materialCode' }, { title: t('common.field.name'), dataIndex: 'materialName' }] },
   { title: t('ecomFba.audit.orderCount'), dataIndex: 'orderCount', width: 80, align: 'right' },
-  { title: t('ecomFba.audit.qty'), dataIndex: 'qty', width: 70, align: 'right' },
+  { title: t('ecomFba.audit.qty'), dataIndex: 'qty', width: 70, align: 'right', customRender: ({ text }) => qty(text) },
   m('actualFee', t('ecomFba.audit.actualFee')),
   m('actualUnit', t('ecomFba.audit.actualUnit')),
   { title: t('ecomFba.audit.dims'), key: 'dims', width: 220, exportValue: (r) => (r.lengthCm ? `${r.lengthCm}x${r.widthCm}x${r.heightCm} cm ${r.weightKg} kg` : '') },

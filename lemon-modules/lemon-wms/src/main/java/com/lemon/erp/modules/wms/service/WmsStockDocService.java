@@ -31,6 +31,7 @@ import com.lemon.erp.modules.wms.model.StockChange;
 import com.lemon.erp.modules.wms.model.StockInType;
 import com.lemon.erp.modules.wms.model.StockOutType;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -39,6 +40,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -72,6 +75,7 @@ public class WmsStockDocService {
     private final StockDocValidator validator;
     private final StockDocReverser reverser;
     private final PermissionService permissionService;
+    private final ObjectProvider<TransferReceiveOwner> receiveOwnerProviders;
 
     public static final String PROCESS_KEY = "wms_stock_doc";
     /** 查看成本金额（均价、库存金额、流水和单据的单价金额） */
@@ -88,6 +92,11 @@ public class WmsStockDocService {
             docs.forEach(d -> headers.put(d.getId(), d.getWarehouseName()));
             Map<Long, List<String>> names = LineWarehouses.names(docMapper.selectItemWarehouses(headers.keySet()), headers);
             docs.forEach(d -> d.setWarehouseNames(names.get(d.getId())));
+            if (kind == TRANSFER) {
+                Map<Long, String> owners = receiveOwners(docs.stream().filter(d -> d.getStatus() == DocStatus.TRANSIT)
+                        .map(WmsStockDoc::getId).toList());
+                docs.forEach(d -> d.setReceiveOwner(owners.get(d.getId())));
+            }
         }
         return PageResult.of(page);
     }
@@ -108,6 +117,9 @@ public class WmsStockDocService {
             });
         }
         doc.setItems(items);
+        if (kind == TRANSFER && doc.getStatus() == DocStatus.TRANSIT) {
+            doc.setReceiveOwner(receiveOwners(List.of(id)).get(id));
+        }
         return doc;
     }
 
@@ -274,6 +286,33 @@ public class WmsStockDocService {
     @Transactional
     public void receive(Long id, LocalDate receiveDate) {
         WmsStockDoc doc = getAccessible(TRANSFER, id);
+        String owner = doc.getStatus() == DocStatus.TRANSIT ? receiveOwners(List.of(id)).get(id) : null;
+        if (owner != null) {
+            throw new BizException("wms.error.transferReceiveAtSource", doc.getDocNo(), owner);
+        }
+        doReceive(doc, receiveDate);
+    }
+
+    /**
+     * 业务单据（{@link TransferReceiveOwner}）收货：与 {@link #receive} 相同，但不检查收货归属，由业务单据在自己的收货流程中调用
+     */
+    @Transactional
+    public void receiveBySource(Long id, LocalDate receiveDate) {
+        doReceive(getAccessible(TRANSFER, id), receiveDate);
+    }
+
+    /** 由业务单据管理收货的在途调拨单 → 来源说明 */
+    public Map<Long, String> receiveOwners(Collection<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, String> owners = new HashMap<>();
+        receiveOwnerProviders.orderedStream().forEach(o -> o.owners(ids).forEach(owners::putIfAbsent));
+        return owners;
+    }
+
+    private void doReceive(WmsStockDoc doc, LocalDate receiveDate) {
+        Long id = doc.getId();
         if (doc.getStatus() != DocStatus.TRANSIT) {
             throw new BizException("wms.error.transferOrderNotTransit", doc.getDocNo());
         }

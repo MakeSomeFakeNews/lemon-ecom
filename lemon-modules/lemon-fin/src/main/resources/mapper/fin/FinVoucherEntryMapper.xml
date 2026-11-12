@@ -91,15 +91,14 @@
             <when test="dimension.name() == 'DEPT'">e.dept_id</when>
             <when test="dimension.name() == 'CUSTOMER'">e.customer_id</when>
             <when test="dimension.name() == 'SUPPLIER'">e.supplier_id</when>
-            <when test="dimension.name() == 'PROJECT'">e.project_id</when>
             <otherwise>e.material_id</otherwise>
         </choose>
     </sql>
 
     <select id="selectAuxBalance" resultType="com.lemon.erp.modules.fin.dto.AuxBalanceRow">
         SELECT t.aux_id,
-               <choose><when test="dimension.name() == 'DEPT' or dimension.name() == 'PROJECT'">NULL</when><otherwise>x.code</otherwise></choose> AS aux_code,
-               <choose><when test="dimension.name() == 'PROJECT'">NULL</when><otherwise>x.name</otherwise></choose> AS aux_name,
+               <choose><when test="dimension.name() == 'DEPT'">NULL</when><otherwise>x.code</otherwise></choose> AS aux_code,
+               x.name AS aux_name,
                a.id AS account_id, a.code AS account_code, a.name AS account_name,
                t.debit, t.credit, t.balance
         FROM (
@@ -119,12 +118,10 @@
             <when test="dimension.name() == 'DEPT'">LEFT JOIN sys_dept x ON x.id = t.aux_id</when>
             <when test="dimension.name() == 'CUSTOMER'">LEFT JOIN scm_customer x ON x.id = t.aux_id</when>
             <when test="dimension.name() == 'SUPPLIER'">LEFT JOIN scm_supplier x ON x.id = t.aux_id</when>
-            <!-- 项目（历史分录的辅助核算）没有资料表，只按 ID 列出 -->
-            <when test="dimension.name() == 'PROJECT'"></when>
             <otherwise>LEFT JOIN wms_material x ON x.id = t.aux_id</otherwise>
         </choose>
         WHERE t.debit &lt;&gt; 0 OR t.credit &lt;&gt; 0 OR t.balance &lt;&gt; 0
-        ORDER BY <choose><when test="dimension.name() == 'DEPT'">x.name</when><when test="dimension.name() == 'PROJECT'">t.aux_id</when><otherwise>x.code</otherwise></choose>, a.code
+        ORDER BY <choose><when test="dimension.name() == 'DEPT'">x.name</when><otherwise>x.code</otherwise></choose>, a.code
     </select>
 
 </mapper>

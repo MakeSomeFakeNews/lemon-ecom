@@ -8,5 +8,9 @@ import java.util.List;
 
 public interface EcomAdScheduleMapper extends BaseMapper<EcomAdSchedule> {
 
-    List<EcomAdSchedule> selectList(@Param("storeId") Long storeId);
+    /**
+     * 分时策略列表（带活动、店铺名称）。不能命名为 selectList：XML 中同名语句会覆盖 BaseMapper.selectList(Wrapper)，
+     * 定时任务按条件查询时报 Parameter 'storeId' not found
+     */
+    List<EcomAdSchedule> selectByStore(@Param("storeId") Long storeId);
 }

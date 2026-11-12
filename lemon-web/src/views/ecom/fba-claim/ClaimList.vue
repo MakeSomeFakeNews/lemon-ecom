@@ -80,7 +80,7 @@ import { useColumns } from '@/composables/useColumns'
 import { useDict } from '@/composables/useDict'
 import { useTable } from '@/composables/useTable'
 import { findDict, toOptions } from '@/utils/dict'
-import { money } from '@/utils/number'
+import { money, qty } from '@/utils/number'
 import { FbaClaimStatus } from '@/constants/enums'
 import { t } from '@/locales'
 import { n0 } from '../fba-health/fba'
@@ -136,7 +136,7 @@ const columns = [
     align: 'right',
     exportColumns: [
       { title: t('ecomFba.claim.paidAmount'), dataIndex: 'paidAmount' },
-      { title: t('ecomFba.claim.paidQty'), dataIndex: 'paidQty' },
+      { title: t('ecomFba.claim.paidQty'), dataIndex: 'paidQty', customRender: ({ text }) => qty(text) },
       { title: t('ecomFba.claim.paidBase'), dataIndex: 'paidBase' },
       { title: t('ecomFba.claim.paidDate'), dataIndex: 'paidDate' }
     ]

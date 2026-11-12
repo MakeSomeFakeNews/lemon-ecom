@@ -3,7 +3,7 @@
 <mapper namespace="com.lemon.erp.modules.scm.mapper.ScmPurchaseContractMapper">
 
     <sql id="columns">
-        c.*, s.code AS supplier_code, s.name AS supplier_name, u.nickname AS create_by_name, t.tender_no,
+        c.*, s.code AS supplier_code, s.name AS supplier_name, u.nickname AS create_by_name,
         (SELECT COALESCE(SUM(CASE WHEN o.status = 'CLOSED' THEN ROUND(oi.done_qty * oi.price, 2) ELSE oi.amount END), 0)
          FROM scm_order o JOIN scm_order_item oi ON oi.order_id = o.id
          WHERE o.contract_id = c.id AND o.status &lt;&gt; 'DRAFT') AS ordered_amount
@@ -13,7 +13,6 @@
         FROM scm_purchase_contract c
         LEFT JOIN scm_supplier s ON s.id = c.supplier_id
         LEFT JOIN sys_user u ON u.id = c.create_by
-        LEFT JOIN scm_tender t ON t.id = c.tender_id
     </sql>
 
     <select id="selectPageList" resultType="com.lemon.erp.modules.scm.entity.ScmPurchaseContract">

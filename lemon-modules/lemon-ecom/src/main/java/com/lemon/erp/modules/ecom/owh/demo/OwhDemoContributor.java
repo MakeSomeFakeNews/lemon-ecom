@@ -453,7 +453,8 @@ public class OwhDemoContributor implements DemoContributor {
             List<Long> created = new ArrayList<>();
             tx.run("owh-order", () -> created.add(orderService.createManual(d, null)));
             for (Long orderId : created) {
-                packageMapper.selectByOrderId(orderId).stream()
+                // 在新事务中读：本方法在演示数据的外层事务中执行，MySQL 可重复读下外层事务看不到 tx.run 刚提交的包裹
+                tx.read(() -> packageMapper.selectByOrderId(orderId)).stream()
                         .filter(p -> p.getStatus() == EcomPackageStatus.WAIT_LABEL && Objects.equals(p.getWarehouseId(), o.mapping().getWarehouseId()))
                         .forEach(p -> packages.add(p.getId()));
             }
@@ -462,7 +463,7 @@ public class OwhDemoContributor implements DemoContributor {
     }
 
     /**
-     * 包裹按顺序分到各状态：早的已发货，之后已推送、截单中、已取消、推送失败，最近的留在待推送
+     * 包裹按顺序分到各状态：早的已发货，之后已推送、截单中、已取消、推送失败、已出库（ERP 发货失败待重试），最近的留在待推送
      */
     private void outbounds(DemoContext ctx, Owh o, List<Long> packages, List<Long> shipped, List<Long> pushed) {
         int n = packages.size();
@@ -473,7 +474,7 @@ public class OwhDemoContributor implements DemoContributor {
             Long pkg = packages.get(i);
             OwhOutboundStatus target = i < shippedEnd ? OwhOutboundStatus.SHIPPED : i < pushedEnd ? OwhOutboundStatus.PUSHED
                     : i == pushedEnd ? OwhOutboundStatus.INTERCEPTING : i == pushedEnd + 1 ? OwhOutboundStatus.CANCELLED
-                    : i < failedEnd ? OwhOutboundStatus.FAILED : null;
+                    : i < failedEnd ? OwhOutboundStatus.FAILED : i == failedEnd ? OwhOutboundStatus.OUTBOUND : null;
             if (target == null) {
                 continue;
             }
@@ -513,6 +514,14 @@ public class OwhDemoContributor implements DemoContributor {
                     outboundService.applyState(ob.getId(), new OwhData.OutboundState(OwhOutboundStatus.OUTBOUND, "D", tracking, product[2],
                             pushTime.plusHours(18 + ctx.between(0, 20))));
                     shipped.add(ob.getId());
+                } else if (target == OwhOutboundStatus.OUTBOUND) {
+                    // 服务商已出库、ERP 回传平台发货失败：停在「已出库」，记录原因，下次同步重试（演示出库单的「重试发货」）
+                    outboundMapper.update(Wrappers.<EcomOwhOutbound>lambdaUpdate().set(EcomOwhOutbound::getStatus, OwhOutboundStatus.OUTBOUND)
+                            .set(EcomOwhOutbound::getOwhStatus, "D").set(EcomOwhOutbound::getTrackingNo, "1Z" + (200000000L + ctx.between(0, 99999999)) + "US")
+                            .set(EcomOwhOutbound::getCarrierName, product[2]).set(EcomOwhOutbound::getOutboundTime, pushTime.plusHours(20))
+                            .set(EcomOwhOutbound::getErrorMsg, "平台回传发货失败：请求超时（Read timed out），下次同步自动重试") // i18n-ignore 演示数据存库
+                            .eq(EcomOwhOutbound::getId, ob.getId()));
+                    pushed.add(ob.getId());
                 } else if (target == OwhOutboundStatus.PUSHED) {
                     pushed.add(ob.getId());
                 } else if (target == OwhOutboundStatus.INTERCEPTING) {
@@ -601,8 +610,10 @@ public class OwhDemoContributor implements DemoContributor {
 
     /** 已发货出库单的订单生成退货退款（退回海外仓）与海外仓退件单，按 states 依次为已收货（含不良品）/ 已推送 / 草稿；状态为空时只生成待处理的退货单 */
     private void returns(DemoContext ctx, Owh o, List<Long> shipped, OwhReturnStatus... states) {
-        List<EcomOwhOutbound> obs = outboundMapper.selectList(Wrappers.<EcomOwhOutbound>lambdaQuery().eq(EcomOwhOutbound::getAccountId, o.account().getId())
-                .eq(EcomOwhOutbound::getStatus, OwhOutboundStatus.SHIPPED).orderByAsc(EcomOwhOutbound::getId));
+        // 在新事务中读（出库单由前面的 tx.run 提交，外层事务在 MySQL 可重复读下看不到）
+        List<EcomOwhOutbound> obs = tx.read(() -> outboundMapper.selectList(Wrappers.<EcomOwhOutbound>lambdaQuery()
+                .eq(EcomOwhOutbound::getAccountId, o.account().getId())
+                .eq(EcomOwhOutbound::getStatus, OwhOutboundStatus.SHIPPED).orderByAsc(EcomOwhOutbound::getId)));
         int n = 0;
         for (EcomOwhOutbound ob : obs) {
             if (n >= states.length) {

@@ -20,7 +20,7 @@
         <a-tooltip v-for="s in data.segments" :key="s.segment" :title="$t(`jxc.rfm.segDesc.${s.segment}`)">
           <div class="seg" :class="{ active: segment === s.segment, empty: !s.count }" @click="s.count && (segment = s.segment)">
             <div class="seg-name"><span class="dot" :style="{ background: SEGMENT_COLORS[s.segment] }" />{{ $t(`jxc.rfm.seg.${s.segment}`) }}</div>
-            <div class="sub-text">{{ $t('jxc.rfm.count', { n: s.count }) }} · ¥{{ money(s.monetary) }}</div>
+            <div class="sub-text">{{ $t('jxc.rfm.count', { n: s.count }) }} · {{ symMoney(s.monetary) }}</div>
           </div>
         </a-tooltip>
       </div>
@@ -88,7 +88,7 @@ import { drillActions, drillColumn, last12Months, rangePresets } from '@/compone
 import { useUserStore } from '@/store/user'
 import { useDict } from '@/composables/useDict'
 import { toOptions } from '@/utils/dict'
-import { money } from '@/utils/number'
+import { money, symMoney } from '@/utils/number'
 import { writeExcel } from '@/utils/excel'
 import { JxcDimension, RfmMode, RfmSegment } from '@/constants/enums'
 import { t } from '@/locales'

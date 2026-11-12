@@ -23,7 +23,7 @@
         <a-col v-for="k in kpis" :key="k.key" :xs="12" :md="8" :xl="6" :xxl="3">
           <div class="page-card kpi" :class="{ main: k.main }">
             <div class="sub-text">{{ k.label }}</div>
-            <div class="kpi-value" :class="{ neg: k.neg }">¥{{ money(k.value) }}</div>
+            <div class="kpi-value" :class="{ neg: k.neg }">{{ symMoney(k.value) }}</div>
             <div v-if="k.extra" class="sub-text">{{ k.extra }}</div>
           </div>
         </a-col>
@@ -85,7 +85,7 @@ import { jxcAssets } from '@/api/ecom/jxc'
 import { shortMoney } from '@/components/charts/charts'
 import { dictLabel } from '@/components/jxc/jxc'
 import { useDict } from '@/composables/useDict'
-import { money } from '@/utils/number'
+import { money, symMoney } from '@/utils/number'
 import { t } from '@/locales'
 
 const dict = useDict('wms_material_category')
@@ -109,13 +109,11 @@ const kpis = computed(() => {
     { key: 'inventory', label: t('jxc.assets.inventory'), value: d.inventoryAmount },
     { key: 'ar', label: t('jxc.assets.receivable'), value: b.arBalance,
       extra: num(b.arOverdue) ? t('jxc.assets.overdue', { v: money(b.arOverdue) }) : '' },
-    { key: 'notesIn', label: t('jxc.assets.notesReceivable'), value: b.notesReceivable, optional: true },
     { key: 'prepaid', label: t('jxc.assets.prepaid'), value: b.advancePaid },
     { key: 'ap', label: t('jxc.assets.payable'), value: b.apBalance },
-    { key: 'notesOut', label: t('jxc.assets.notesPayable'), value: b.notesPayable, optional: true },
     { key: 'advance', label: t('jxc.assets.advance'), value: b.advanceReceived },
     { key: 'net', label: t('jxc.assets.netAssets'), value: d.netAssets, main: true, neg: num(d.netAssets) < 0 }
-  ].filter((k) => !k.optional || num(k.value) !== 0)
+  ]
 })
 const unvouchered = computed(() => data.value.unvouchered || {})
 

@@ -35,6 +35,9 @@
             <span :class="negativeClass(detail.totalQty)">{{ formatQty(detail.totalQty) }}</span>
           </a-descriptions-item>
           <a-descriptions-item v-if="detail.sourceNo" :label="$t('wms.common.sourceNo')">{{ detail.sourceNo }}</a-descriptions-item>
+          <a-descriptions-item v-if="detail.receiveOwner" :label="$t('ecomFixa.transfer.receiveLabel')">
+            {{ $t('ecomFixa.transfer.receiveAt', { source: detail.receiveOwner }) }}
+          </a-descriptions-item>
           <a-descriptions-item v-if="detail.partnerName" :label="$t('wms.flow.partner')">{{ detail.partnerName }}</a-descriptions-item>
           <a-descriptions-item v-if="detail.redOf" :label="$t('wms.doc.reversedDoc')">{{ detail.redOfNo || detail.redOf }}</a-descriptions-item>
           <a-descriptions-item :label="$t('wms.doc.prepared')">{{ detail.createByName || '-' }} {{ detail.createTime }}</a-descriptions-item>
@@ -156,7 +159,11 @@ const canEdit = computed(() => userStore.hasPerm(`wms:${props.kind}:edit`))
 const canConfirm = computed(() => userStore.hasPerm(`wms:${props.kind}:confirm`))
 const inTransit = computed(() => detail.value?.inTransit === true || detail.value?.inTransit === 1)
 const showReceive = computed(
-  () => props.kind === 'transfer' && detail.value?.status === DocStatus.TRANSIT && userStore.hasPerm('wms:transfer:receive')
+  () =>
+    props.kind === 'transfer' &&
+    detail.value?.status === DocStatus.TRANSIT &&
+    !detail.value?.receiveOwner &&
+    userStore.hasPerm('wms:transfer:receive')
 )
 const showReverse = computed(() => !!detail.value && canReverse(detail.value) && userStore.hasPerm(`wms:${props.kind}:reverse`))
 const showFooter = computed(

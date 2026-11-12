@@ -8,10 +8,6 @@ public enum FundSource {
     AR,
     /** 未核销的应付单 */
     AP,
-    /** 持有中的应收票据到期 */
-    NOTE_IN,
-    /** 未兑付的应付票据到期 */
-    NOTE_OUT,
     /** 已审批待付款的报销 */
     CLAIM,
     /** 手工计划项 */

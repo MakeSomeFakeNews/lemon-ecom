@@ -121,7 +121,7 @@ const columns = [
   { title: t('ecomOwh.common.warehouse'), key: 'warehouse', width: 200, ellipsis: true, exportValue: (r) => `${r.warehouseName} ${r.owhCode || ''}` },
   { title: t('ecomOwh.inbound.owhOrderNo'), dataIndex: 'owhOrderNo', width: 150, ellipsis: true },
   { title: t('ecomOwh.inbound.boxCount'), dataIndex: 'boxCount', width: 80, align: 'right' },
-  { title: t('ecomOwh.inbound.qtyReceived'), key: 'qty', width: 140, exportValue: (r) => `${r.receivedQty}/${r.totalQty}` },
+  { title: t('ecomOwh.inbound.qtyReceived'), key: 'qty', width: 140, exportValue: (r) => `${qty(r.receivedQty)}/${qty(r.totalQty)}` },
   { title: t('ecomOwh.inbound.status'), key: 'status', dataIndex: 'status', width: 110, dict: 'ecom_owh_inbound_status' },
   { title: t('ecomOwh.inbound.erp'), key: 'erpReceived', width: 100, exportValue: (r) => (r.erpReceived === 1 ? t('ecomOwh.inbound.erpReceived') : t('ecomOwh.inbound.erpTransit')) },
   { title: t('ecomOwh.inbound.trackingNo'), dataIndex: 'trackingNo', width: 160, ellipsis: true },

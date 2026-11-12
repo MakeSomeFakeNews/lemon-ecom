@@ -170,7 +170,8 @@ public class FbaDemoContributor implements DemoContributor {
 
     /** 美国站上传库存规划报告（REPORT），其他站按头程推算后再调整部分 SKU 的库龄分段 */
     private void health(DemoContext ctx, EcomStore store) {
-        List<FbaViews.HealthRow> rows = healthService.rows(new FbaHealthService.Query(store.getId(), null, null, null, null, null));
+        // 在新事务中读：库存健康由前面的 tx.run 重建，外层事务在 MySQL 可重复读下看不到（H2 读已提交没有这个问题）
+        List<FbaViews.HealthRow> rows = tx.read(() -> healthService.rows(new FbaHealthService.Query(store.getId(), null, null, null, null, null)));
         if (rows.isEmpty()) {
             return;
         }
@@ -237,7 +238,8 @@ public class FbaDemoContributor implements DemoContributor {
     // ---------------------------------------------------------------- 移除订单
 
     private void removals(DemoContext ctx, EcomStore store, String prefix, Long defectWh) {
-        List<FbaViews.HealthRow> rows = healthService.rows(new FbaHealthService.Query(store.getId(), null, null, null, null, null));
+        // 在新事务中读：库存健康由前面的 tx.run 重建，外层事务在 MySQL 可重复读下看不到（H2 读已提交没有这个问题）
+        List<FbaViews.HealthRow> rows = tx.read(() -> healthService.rows(new FbaHealthService.Query(store.getId(), null, null, null, null, null)));
         if (rows.size() < 4) {
             return;
         }
@@ -381,7 +383,7 @@ public class FbaDemoContributor implements DemoContributor {
 
     /** 货件对账：已签收货件按发货数登记实收，最近的两行少收 1–3 件（入库短少） */
     private void receipts(DemoContext ctx, EcomStore store) {
-        PageResult<FbaViews.ReceiptRow> page = claimService.receipts(1, 200, store.getId(), null, null);
+        PageResult<FbaViews.ReceiptRow> page = tx.read(() -> claimService.receipts(1, 200, store.getId(), null, null));
         int n = 0;
         for (FbaViews.ReceiptRow r : page.records()) {
             if (r.getStatus() != InboundStatus.RECEIVED || r.getShippedQty() == null || r.getShippedQty().signum() <= 0) {
@@ -430,7 +432,8 @@ public class FbaDemoContributor implements DemoContributor {
 
     /** 索赔处理：一部分已提交（Case），少量驳回、忽略；再上传赔偿报告，按 Case 编号 / SKU 自动匹配为已赔付 */
     private void claimFlow(DemoContext ctx, EcomStore store) {
-        List<EcomFbaClaim> claims = claimService.page(1, 500, store.getId(), null, FbaClaimStatus.PENDING, null, null).records();
+        // 在新事务中读：索赔由前面的 tx.run（fba-detect 等）提交
+        List<EcomFbaClaim> claims = tx.read(() -> claimService.page(1, 500, store.getId(), null, FbaClaimStatus.PENDING, null, null).records());
         List<EcomFbaClaim> submitted = new ArrayList<>();
         int i = 0;
         for (EcomFbaClaim c : claims) {

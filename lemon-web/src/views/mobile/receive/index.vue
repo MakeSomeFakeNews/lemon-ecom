@@ -67,6 +67,7 @@ import { useDict } from '@/composables/useDict'
 import { useUserStore } from '@/store/user'
 
 import { OrderStatus } from '@/constants/enums'
+import { qty } from '@/utils/number'
 /**
  * 扫码收货：选择采购订单后逐个扫描物料条码累计数量（包装条码按换算比例），
  * 序列号物料选中后扫描序列号；没有指定库位的按上架策略推荐，生成采购入库单。
@@ -151,7 +152,7 @@ async function onScan(code) {
   if (row.serials.length >= row.limit) return scan.show(t('mobile.receive.overQty', { name: row.materialName }), false)
   row.serials.push(code)
   row.qty = row.serials.length
-  scan.show(t('mobile.common.serialAdded', { name: row.materialName, code, n: row.qty }))
+  scan.show(t('mobile.common.serialAdded', { name: row.materialName, code, n: qty(row.qty) }))
 }
 function removeSerial(row, s) {
   row.serials = row.serials.filter((x) => x !== s)

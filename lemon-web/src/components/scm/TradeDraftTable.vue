@@ -29,8 +29,8 @@
       </template>
       <template v-else-if="column.key === 'totalQty'">{{ formatQty(record.totalQty) }}</template>
       <template v-else-if="column.key === 'totalAmount'">
-        ¥{{ formatMoney(record.totalAmount) }}
-        <div v-if="Number(record.freight)" class="sub-text">{{ $t('scm.freight.value', { amount: '¥' + formatMoney(record.freight) }) }}</div>
+        {{ symMoney(record.totalAmount) }}
+        <div v-if="Number(record.freight)" class="sub-text">{{ $t('scm.freight.value', { amount: symMoney(record.freight) }) }}</div>
       </template>
       <template v-else-if="column.key === 'action'">
         <TableActions
@@ -58,6 +58,7 @@ import { useTable } from '@/composables/useTable'
 import { useUserStore } from '@/store/user'
 import { formatQty } from '@/components/wms/wms'
 import { ORDER_KINDS, TRADE_KINDS, formatMoney } from './scm'
+import { symMoney } from '@/utils/number'
 
 /**
  * 出入库草稿列表（业务参数 scm.tradeDoc.draft），在出入库列表页的「草稿」页签中显示，与单据列表共用查询条件。

@@ -240,18 +240,7 @@
                SUM(CASE WHEN kind = 'PAYMENT' THEN amount ELSE 0 END) AS "payment"
         FROM fin_settlement
         WHERE status = 'APPROVED' AND settle_date &gt;= #{begin} AND settle_date &lt;= #{end}
-          AND NOT EXISTS (SELECT 1 FROM fin_note_log l WHERE l.settlement_id = fin_settlement.id)
         GROUP BY YEAR(settle_date) * 100 + MONTH(settle_date)
-    </select>
-
-    <!-- 票据的资金收付：收票、背书、开票不是现金（上面的收付款不含票据业务生成的），托收、贴现（扣除贴现息）计收款，应付票据兑付计付款 -->
-    <select id="selectNoteCashByMonth" resultType="com.lemon.erp.modules.ecom.jxc.dto.JxcViews$CashRow">
-        SELECT YEAR(action_date) * 100 + MONTH(action_date) AS "period",
-               SUM(CASE WHEN action IN ('COLLECT', 'DISCOUNT') THEN amount - interest ELSE 0 END) AS "receipt",
-               SUM(CASE WHEN action = 'PAY' THEN amount ELSE 0 END) AS "payment"
-        FROM fin_note_log
-        WHERE action IN ('COLLECT', 'DISCOUNT', 'PAY') AND action_date &gt;= #{begin} AND action_date &lt;= #{end}
-        GROUP BY YEAR(action_date) * 100 + MONTH(action_date)
     </select>
 
     <select id="selectAdvanceByMonth" resultType="com.lemon.erp.modules.ecom.jxc.dto.JxcViews$CashRow">
@@ -344,32 +333,16 @@
              WHERE o.kind = 'AR' AND o.due_date &lt; #{asOf}) AS "arOverdue",
             (SELECT COALESCE(SUM(o.open_amount), 0) FROM (<include refid="billOpen"/>) o WHERE o.kind = 'AP') AS "apBalance",
             (SELECT COALESCE(SUM(o.open_amount), 0) FROM (<include refid="advanceOpen"/>) o WHERE o.kind = 'RECEIPT') AS "advanceReceived",
-            (SELECT COALESCE(SUM(o.open_amount), 0) FROM (<include refid="advanceOpen"/>) o WHERE o.kind = 'PAYMENT') AS "advancePaid",
-            <!-- 截至日持有的应收票据：已收票，且没有在截至日之前贴现、托收、拒付或背书（背书的付款已生效） -->
-            (SELECT COALESCE(SUM(n.amount), 0) FROM fin_note n
-             WHERE n.kind = 'RECEIVABLE'
-               AND EXISTS (SELECT 1 FROM fin_note_log l WHERE l.note_id = n.id AND l.action = 'RECEIVE' AND l.action_date &lt;= #{asOf})
-               AND NOT EXISTS (SELECT 1 FROM fin_note_log l LEFT JOIN fin_settlement s ON s.id = l.settlement_id
-                               WHERE l.note_id = n.id AND l.action_date &lt;= #{asOf}
-                                 AND (l.action IN ('DISCOUNT', 'COLLECT', 'DISHONOR') OR (l.action = 'ENDORSE' AND s.status = 'APPROVED')))
-            ) AS "notesReceivable",
-            <!-- 截至日未兑付的应付票据：已开出（付款已生效），且没有在截至日之前兑付 -->
-            (SELECT COALESCE(SUM(n.amount), 0) FROM fin_note n
-             WHERE n.kind = 'PAYABLE'
-               AND EXISTS (SELECT 1 FROM fin_note_log l JOIN fin_settlement s ON s.id = l.settlement_id
-                           WHERE l.note_id = n.id AND l.action = 'ISSUE' AND l.action_date &lt;= #{asOf} AND s.status = 'APPROVED')
-               AND NOT EXISTS (SELECT 1 FROM fin_note_log l WHERE l.note_id = n.id AND l.action = 'PAY' AND l.action_date &lt;= #{asOf})
-            ) AS "notesPayable"
+            (SELECT COALESCE(SUM(o.open_amount), 0) FROM (<include refid="advanceOpen"/>) o WHERE o.kind = 'PAYMENT') AS "advancePaid"
     </select>
 
-    <!-- 截至日已生效、还没有生成凭证的收付款（不含票据业务生成的，票据单独计入应收应付票据）：资金余额取自凭证，不含这些收付款 -->
+    <!-- 截至日已生效、还没有生成凭证的收付款：资金余额取自凭证，不含这些收付款 -->
     <select id="selectUnvouchered" resultType="com.lemon.erp.modules.ecom.jxc.dto.JxcViews$Unvouchered">
         SELECT COUNT(*) AS "count",
                COALESCE(SUM(CASE WHEN s.kind = 'RECEIPT' THEN s.amount ELSE 0 END), 0) AS "receipt",
                COALESCE(SUM(CASE WHEN s.kind = 'PAYMENT' THEN s.amount ELSE 0 END), 0) AS "payment"
         FROM fin_settlement s
         WHERE s.status = 'APPROVED' AND s.voucher_id IS NULL AND s.settle_date &lt;= #{asOf}
-          AND NOT EXISTS (SELECT 1 FROM fin_note_log l WHERE l.settlement_id = s.id)
     </select>
 
     <select id="selectTopBalances" resultType="com.lemon.erp.modules.ecom.jxc.dto.JxcViews$PartnerBalance">

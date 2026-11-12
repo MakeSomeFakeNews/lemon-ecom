@@ -106,12 +106,8 @@ export default {
   // 入库类型
   wms_in_type: {
     'PURCHASE': 'Purchase Receipt', // 采购入库
-    'PRODUCTION': 'Production Receipt', // 生产入库
     'SALES_RETURN': 'Sales Return', // 销售退货
     'OTHER': 'Other Inbound', // 其他入库
-    'PRODUCTION_RETURN': 'Production Return', // 生产退料
-    'OUTSOURCE_RETURN': 'Outsourcing Receipt', // 委外收回
-    'SCRAP_IN': 'Scrap Receipt', // 报废入库
     'CONSIGN_IN': 'Consignment Inbound', // 寄售入库
     'OPENING': 'Opening Inbound', // 期初入库
     'ASSEMBLY': 'Assembly/Disassembly', // 组装拆卸
@@ -135,12 +131,8 @@ export default {
   },
   wms_out_type: {
     'SALES': 'Sales Delivery', // 销售出库
-    'PRODUCTION': 'Material Issue', // 生产领料
     'PURCHASE_RETURN': 'Purchase Return', // 采购退货
     'OTHER': 'Other Outbound', // 其他出库
-    'PROJECT': 'Project Issue', // 项目领料
-    'OUTSOURCE': 'Outsourcing Issue', // 委外发料
-    'SERVICE': 'Service Issue', // 服务领用
     'SCRAP': 'Scrap Outbound', // 报废出库
     'CONSIGN': 'Consignment Consumption', // 寄售消耗
     'CONSUME': 'Department Issue', // 部门领用
@@ -213,15 +205,7 @@ export default {
   scm_order_source: {
     'PURCHASE_PLAN': 'Purchase Plan', // 采购计划
     'MANUAL': 'Manual', // 手工
-    'MRP': 'MRP', // MRP
-    'KIT': 'Production Shortage', // 生产缺料
-    'CRM': 'Opportunity', // 商机
-    'REQUISITION': 'Requisition', // 请购单
-    'INQUIRY': 'RFQ', // 询价单
-    'QUOTATION': 'Sales Quotation', // 销售报价
     'CONSIGN': 'Consignment Settlement', // 寄售结算
-    'TENDER': 'Tender', // 招标
-    'DEALER': 'Dealer Order', // 经销商订货
     'IMPORT': 'External Import', // 外部导入
     'DIRECT': 'Direct Document', // 直接开单
   },
@@ -251,8 +235,6 @@ export default {
     'ASSET': 'Asset Disposal', // 资产处置
     'COST': 'Cost Carry-forward', // 成本结转
     'CLOSE': 'P&L Carry-forward', // 结转损益
-    'SALARY': 'Payroll', // 工资
-    'PROJECT': 'Project', // 项目
     'EXPENSE': 'Expense', // 费用
     'ADVANCE': 'Advances', // 预收预付
     'BAD_DEBT': 'Bad Debt', // 坏账
@@ -261,7 +243,6 @@ export default {
     'CLAIM': 'Expense Claim', // 报销
     'LOAN': 'Loan', // 借款
     'FX': 'Exchange Gain/Loss', // 汇兑
-    'NOTE': 'Notes', // 票据
     'TRANSFER': 'Account Transfer', // 账户调拨
     'INCOME_EXPENSE': 'Other Income / Expense', // 其他收支
     'NETTING': 'AR/AP Netting', // 应收应付对冲
@@ -279,19 +260,14 @@ export default {
     'PURCHASE_IN': 'Purchase Receipt', // 采购入库
     'PURCHASE_RETURN': 'Purchase Return', // 采购退货
     'MANUAL': 'Opening / Manual', // 期初 / 手工
-    'PROJECT': 'Project Billing', // 项目开票
-    'SHIPMENT': 'Freight', // 运费
-    'TICKET': 'Service Charge', // 服务收费
     'ASSET': 'Fixed Asset', // 固定资产
-    'NOTE': 'Dishonored Note', // 票据拒付
-    'QUALITY_CLAIM': 'Quality Claim', // 质量索赔
-    'REBATE': 'Rebate', // 返利
     'OFFSET': 'Offset', // 冲账单
     'ORDER_ADJUST': 'Order Rounding Adjustment', // 订单尾差调整
     'PURCHASE_FREIGHT': 'Purchase Freight', // 采购运费
     'SALES_FREIGHT': 'Sales Freight', // 销售运费
     'SALES_RETURN_FREIGHT': 'Sales Return Freight', // 销售退货运费
     'PURCHASE_RETURN_FREIGHT': 'Purchase Return Freight', // 采购退货运费
+    'PLATFORM_FEE': 'Marketplace Fees', // 电商平台费用
   },
   // 运费承担
   scm_freight_bearer: {
@@ -322,7 +298,6 @@ export default {
     'CASH': 'Cash', // 现金
     'DRAFT': 'Acceptance Bill', // 承兑汇票
     'ONLINE': 'Alipay / WeChat Pay', // 支付宝 / 微信
-    'NOTE': 'Note', // 票据
   },
   // 资产类别
   fin_asset_category: {
@@ -362,35 +337,10 @@ export default {
     'RELEASED': 'Released', // 已放行
     'RETURNED': 'Returned', // 已退货
   },
-  // 请购单状态
-  scm_requisition_status: {
-    'DRAFT': 'Draft', // 草稿
-    'APPROVING': 'In Approval', // 审批中
-    'APPROVED': 'Approved', // 已批准
-    'ORDERED': 'Ordered', // 已下单
-    'CLOSED': 'Closed', // 已关闭
-  },
-  // 询价单状态
-  scm_inquiry_status: {
-    'QUOTING': 'Quoting', // 询价中
-    'FINISHED': 'Awarded', // 已定标
-    'CLOSED': 'Closed', // 已关闭
-  },
-  // 报价单状态
-  scm_quotation_status: {
-    'DRAFT': 'Draft', // 草稿
-    'APPROVING': 'In Approval', // 审批中
-    'APPROVED': 'Approved', // 已批准
-    'ORDERED': 'Won', // 已成交
-    'LOST': 'Expired', // 已失效
-  },
-  // 发货通知状态
-  scm_delivery_status: {
-    'PENDING': 'To Pick', // 待拣货
-    'PICKED': 'Picked', // 已拣货
-    'SHIPPED': 'Shipped', // 已出库
-    'CANCELLED': 'Canceled', // 已取消
-  },
+
+
+
+
   // 仓库类型
   wms_warehouse_type: {
     'NORMAL': 'General', // 普通仓
@@ -434,34 +384,9 @@ export default {
     'APPROVED': 'Effective', // 已生效
     'REJECTED': 'Rejected', // 已驳回
   },
-  // 票据类型
-  fin_note_type: {
-    'BANK': 'Bank Acceptance Bill', // 银行承兑汇票
-    'COMMERCIAL': 'Commercial Acceptance Bill', // 商业承兑汇票
-  },
-  // 票据状态
-  fin_note_status: {
-    'HELD': 'Held', // 持有
-    'ENDORSING': 'Endorsement in Approval', // 背书审批中
-    'ENDORSED': 'Endorsed', // 已背书
-    'DISCOUNTED': 'Discounted', // 已贴现
-    'COLLECTED': 'Collected', // 已托收
-    'DISHONORED': 'Dishonored', // 已拒付
-    'ISSUING': 'Issuance in Approval', // 开票审批中
-    'ISSUED': 'Unpaid', // 未兑付
-    'PAID': 'Paid', // 已兑付
-    'CANCELLED': 'Voided', // 已作废
-  },
-  // 票据操作
-  fin_note_action: {
-    'RECEIVE': 'Receive', // 收票
-    'ENDORSE': 'Endorse', // 背书转让
-    'DISCOUNT': 'Discount', // 贴现
-    'COLLECT': 'Collect', // 托收
-    'DISHONOR': 'Dishonor', // 拒付
-    'ISSUE': 'Issue', // 开票
-    'PAY': 'Pay', // 兑付
-  },
+
+
+
   // 采购合同类型
   scm_contract_type: {
     'FRAMEWORK': 'Framework Agreement', // 框架协议
@@ -474,20 +399,8 @@ export default {
     'ACTIVE': 'Active', // 生效
     'CLOSED': 'Closed', // 已关闭
   },
-  // 招标状态
-  scm_tender_status: {
-    'DRAFT': 'Draft', // 草稿
-    'BIDDING': 'Bidding', // 投标中
-    'OPENED': 'Bids Opened', // 已开标
-    'AWARDED': 'Awarded', // 已定标
-    'CANCELLED': 'Canceled', // 已取消
-  },
-  // 送货通知状态
-  scm_asn_status: {
-    'SUBMITTED': 'To Receive', // 待收货
-    'RECEIVED': 'Received', // 已收货
-    'CANCELLED': 'Canceled', // 已取消
-  },
+
+
   // 供应商确认
   scm_supplier_confirm: {
     'ACCEPTED': 'Accepted', // 已接受
@@ -530,26 +443,10 @@ export default {
     'REDUCE': 'Spend & Save', // 满减
     'GIFT': 'Buy & Get Free', // 买赠
   },
-  // 返利状态
-  scm_rebate_status: {
-    'ACTIVE': 'Active', // 执行中
-    'SETTLED': 'Settled', // 已结算
-  },
-  // 返利兑付方式
-  scm_rebate_settle: {
-    'CREDIT_NOTE': 'Credit Note', // 红字应收
-    'NEXT_ORDER': 'Deduct from Next Order', // 下次订单抵扣
-  },
-  // 返利种类
-  scm_rebate_kind: {
-    'SALES': 'Sales Rebate', // 销售返利
-    'PURCHASE': 'Purchase Rebate', // 采购返利
-  },
-  // 返利计算方式
-  scm_rebate_calc: {
-    'TIER': 'Tiered Rate', // 阶梯比例
-    'ITEM': 'Item Amounts', // 按项目填写金额
-  },
+
+
+
+
   // 收支方向
   fin_fund_direction: {
     'IN': 'Income', // 收入
@@ -584,12 +481,7 @@ export default {
     'SHIP': 'Shipping Staging', // 发货暂存
     'DEFECT': 'Defective', // 不良品位
   },
-  // 波次状态
-  scm_wave_status: {
-    'PICKING': 'Picking', // 拣货中
-    'DONE': 'Completed', // 已完成
-    'CANCELLED': 'Canceled', // 已取消
-  },
+
   // 存货计价方法
   wms_cost_method: {
     'WEIGHTED': 'Monthly Weighted Average', // 月末一次加权平均
@@ -601,12 +493,7 @@ export default {
     'ASSEMBLE': 'Assembly', // 组装
     'DISASSEMBLE': 'Disassembly', // 拆卸
   },
-  // 提成依据
-  fin_commission_basis: {
-    'SALES': 'Sales Amount', // 销售额
-    'PROFIT': 'Gross Profit', // 毛利
-    'RECEIPT': 'Collections', // 回款
-  },
+
   // 价格控制方式
   scm_price_control_mode: {
     'WARN': 'Warn', // 提示
@@ -984,6 +871,7 @@ export default {
     'BATCH': 'Bulk Change', // 批量修改
     'REPRICER': 'Repricer', // 自动调价
     'PUBLISH': 'Publishing', // 刊登
+    'AUTOMATION': 'Automation Rule', // 自动化规则
   },
   // 改价结果
   ecom_price_change_status: {
@@ -1296,5 +1184,123 @@ export default {
     'INBOUND': 'Inbound', // 入库单
     'RETURN': 'Return', // 退件单
     'TRANSFER': 'Transfer', // 调拨单
+  },
+  // 日报来源
+  ecom_ops_report_source: {
+    'SCHEDULE': 'Scheduled', // 定时
+    'MANUAL': 'Manual', // 手动
+  },
+  // 日报 AI 状态
+  ecom_ops_report_ai_status: {
+    'NONE': 'Not Generated', // 未生成
+    'SUCCESS': 'Generated', // 已生成
+    'FAILED': 'Failed', // 失败
+  },
+  // 推送渠道
+  ecom_ops_push_channel: {
+    'SITE': 'In-app Message', // 站内消息
+    'DINGTALK': 'DingTalk', // 钉钉
+    'WECOM': 'WeCom', // 企业微信
+    'FEISHU': 'Feishu', // 飞书
+  },
+  // 违禁词类型（业务字典）
+  ecom_banned_word_type: {
+    'PROHIBITED': 'Prohibited', // 禁用词
+    'TRADEMARK': 'Trademark', // 侵权品牌词
+    'EXAGGERATION': 'Exaggeration', // 夸大宣传词
+    'MEDICAL': 'Medical Claim', // 医疗功效词
+  },
+  // 违禁词处理方式
+  ecom_banned_word_level: {
+    'BLOCK': 'Block Publishing', // 阻止发布
+    'WARN': 'Warn Only', // 只提醒
+  },
+  // 违禁词匹配方式
+  ecom_banned_word_match: {
+    'WORD': 'Whole Word', // 整词
+    'CONTAINS': 'Contains', // 包含
+  },
+  // 异常 SKU 类型
+  ecom_ops_abnormal_type: {
+    'SALES_DROP': 'Sales Drop', // 销量骤降
+    'PROFIT_DROP': 'Profit Drop', // 利润下滑
+    'RETURN_RATE_UP': 'Return Rate Up', // 退货率升高
+  },
+  // 广告异常类型
+  ecom_ops_ad_alert_type: {
+    'OVER_BUDGET': 'Over Budget', // 超预算
+    'ACOS_HIGH': 'High ACOS', // ACOS 偏高
+    'NO_ORDER': 'Spend w/o Orders', // 花费无转化
+  },
+
+  // 自动化触发器
+  ecom_auto_trigger: {
+    'ORDER_NEW': 'New Order', // 新订单
+    'ORDER_EXCEPTION': 'Order Exception', // 订单异常
+    'ORDER_LOSS': 'Order Estimated Loss', // 订单预估亏损
+    'STOCKOUT_RISK': 'Stock-out Risk', // 断货风险
+    'STOCK_LOW': 'Below Safety Stock', // 低于安全库存
+    'REVIEW_NEGATIVE': 'New Negative Review', // 新差评
+    'MESSAGE_TIMEOUT': 'Buyer Message Overdue', // 买家消息超时未回复
+    'LISTING_HIJACKED': 'Listing Hijacked', // 商品被跟卖
+    'LISTING_RANK_DROP': 'Rank Dropped', // 排名大跌
+    'LISTING_DELISTED': 'Listing Delisted', // 商品被下架
+    'STORE_AUTH_INVALID': 'Store Auth Invalid', // 店铺授权失效
+    'SYNC_FAILED': 'Channel Sync Failed', // 渠道同步失败
+    'INBOUND_RECEIVED': 'Inbound Received', // 头程货件签收
+    'INBOUND_OVERDUE': 'Inbound Overdue', // 头程货件超期
+    'AD_ACOS_HIGH': 'Ad ACOS Too High', // 广告 ACOS 过高
+    'AD_BUDGET_EXHAUSTED': 'Ad Budget Exhausted', // 广告预算耗尽
+    'FBA_CLAIM_DEADLINE': 'FBA Claim Deadline Near', // FBA 索赔临近截止
+    'RETURN_RATE_HIGH': 'High Return Rate', // 退货率异常
+    'COMPETITOR_PRICE_LOWER': 'Undercut by Competitor', // 价格被竞品低于
+  },
+  // 自动化动作
+  ecom_auto_action: {
+    'NOTIFY': 'Send Notification', // 发送通知
+    'IM_ROBOT': 'Group Bot', // 群机器人
+    'WEBHOOK': 'Webhook', // Webhook
+    'TODO': 'Create To-do', // 创建待办
+    'ORDER_HOLD': 'Hold Order', // 挂起订单
+    'ORDER_TAG': 'Tag Order', // 订单打标签
+    'ORDER_ASSIGN': 'Assign Warehouse / Carrier', // 指定仓库 / 物流
+    'LISTING_REPRICE': 'Reprice Listing', // 在线商品调价
+    'PURCHASE_PLAN': 'Create Purchase Plan', // 生成采购计划
+    'CS_TICKET': 'Create After-sales Ticket', // 建售后工单
+    'AD_PAUSE': 'Pause Campaign', // 暂停广告活动
+    'AD_ADJUST': 'Adjust Bid / Budget', // 调整竞价 / 预算
+  },
+  // 自动化执行结果
+  ecom_auto_result: {
+    'SUCCESS': 'Success', // 成功
+    'PARTIAL': 'Partial', // 部分成功
+    'FAILED': 'Failed', // 失败
+    'NOT_MATCHED': 'Not Matched', // 条件不满足
+    'DEBOUNCED': 'Debounced', // 防抖跳过
+    'LIMITED': 'Limit Reached', // 达到上限
+  },
+  // 自动化动作结果
+  ecom_auto_action_status: {
+    'SUCCESS': 'Success', // 成功
+    'FAILED': 'Failed', // 失败
+    'SKIPPED': 'Skipped', // 跳过
+    'SUGGESTED': 'Suggested', // 仅建议
+  },
+  // 自动化待办状态
+  ecom_auto_todo_status: {
+    'OPEN': 'Open', // 待处理
+    'DONE': 'Done', // 已完成
+  },
+  // 自动化触发器分类
+  ecom_auto_category: {
+    'ORDER': 'Orders', // 订单
+    'STOCK': 'Stock', // 库存与补货
+    'CS': 'Customer Service', // 客服与评价
+    'LISTING': 'Listing Monitor', // 商品监控
+    'STORE': 'Stores & Channels', // 店铺与渠道
+    'LOGISTICS': 'First-leg Logistics', // 头程物流
+    'ADS': 'Ads', // 广告
+    'FBA': 'FBA', // FBA
+    'PRICE': 'Price', // 价格
   },
 }

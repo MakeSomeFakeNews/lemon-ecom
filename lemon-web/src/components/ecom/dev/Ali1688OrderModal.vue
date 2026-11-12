@@ -49,7 +49,7 @@
         <template v-if="preview.existing?.length">
           <div class="section-title">{{ $t('ecomDev.order.existing') }}</div>
           <div v-for="o in preview.existing" :key="o.id" class="skipped">
-            {{ o.aliOrderId }} <DictTag type="ecom_1688_order_status" :value="o.status" /> <span class="sub-text">¥{{ money(o.totalAmount) }} · {{ o.sellerName || o.sellerLoginId }}</span>
+            {{ o.aliOrderId }} <DictTag type="ecom_1688_order_status" :value="o.status" /> <span class="sub-text">{{ symMoney(o.totalAmount) }} · {{ o.sellerName || o.sellerLoginId }}</span>
           </div>
         </template>
         <a-form layout="vertical" class="opts">
@@ -82,7 +82,7 @@ import RemoteSelect from '@/components/common/RemoteSelect.vue'
 import { createAli1688Order, listAli1688Account, previewAli1688Order } from '@/api/ecom/dev'
 import { OrderStatus } from '@/constants/enums'
 import request from '@/utils/request'
-import { money, price, qty } from '@/utils/number'
+import { money, price, qty, symMoney } from '@/utils/number'
 
 /**
  * 采购订单一键下单到 1688：预览按卖家拆分的订单（物料 → 1688 规格、下单数量 = 采购数量 ÷ 换算），选择下单账号、填写留言后下单；

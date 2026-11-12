@@ -61,11 +61,9 @@ export default {
     tip: 'By document business date (base unit). Without a warehouse, transfers are excluded; with a warehouse, transfers in/out count as other inbound/outbound',
     openQty: 'Opening',
     purchaseIn: 'Purchase Receipt',
-    productionIn: 'Completion Receipt',
     salesReturn: 'Sales Return',
     otherIn: 'Other Inbound',
     salesOut: 'Sales Delivery',
-    productionOut: 'Material Issue',
     purchaseReturn: 'Purchase Return',
     otherOut: 'Other Outbound',
     closeQty: 'Closing'
@@ -132,7 +130,7 @@ export default {
     type: 'Warehouse Type',
     consignTip: 'Consignment warehouses are excluded from available stock; stock in supplier consignment warehouses belongs to the supplier and is excluded from inventory cost',
     consignHint: 'Excluded from available stock',
-    defectTip: 'Stock in defective warehouses is excluded from MRP and kitting',
+    defectTip: 'Stock in defective warehouses is excluded from available stock and reorder suggestions',
     defectHint: 'Excluded from planning',
     contact: 'Contact',
     phone: 'Phone',
@@ -218,6 +216,9 @@ export default {
     dragTip: 'Drag to reorder; drop onto another category to make it a subcategory'
   },
   material: {
+    sectionBasic: 'Basic Info',
+    sectionStock: 'Inventory & Cost',
+    sectionOther: 'Other',
     hideCategory: 'Hide categories',
     showCategory: 'Show categories',
     createTitle: 'New Material',

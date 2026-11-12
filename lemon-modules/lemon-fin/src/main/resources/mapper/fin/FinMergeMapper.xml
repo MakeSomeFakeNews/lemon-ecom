@@ -8,9 +8,6 @@
     <sql id="settleKind"><choose><when test="customer">kind = 'RECEIPT'</when><otherwise>kind = 'PAYMENT'</otherwise></choose></sql>
     <sql id="invoiceKind"><choose><when test="customer">kind = 'OUTPUT'</when><otherwise>kind = 'INPUT'</otherwise></choose></sql>
     <sql id="ioType"><choose><when test="customer">partner_type = 'CUSTOMER'</when><otherwise>partner_type = 'SUPPLIER'</otherwise></choose></sql>
-    <sql id="noteKind"><choose><when test="customer">kind = 'RECEIVABLE'</when><otherwise>kind = 'PAYABLE'</otherwise></choose></sql>
-    <!-- 票据操作记录的往来单位：收票为客户，背书、开票为供应商 -->
-    <sql id="noteAction"><choose><when test="customer">action = 'RECEIVE'</when><otherwise>action IN ('ENDORSE', 'ISSUE')</otherwise></choose></sql>
     <sql id="auxColumn"><choose><when test="customer">customer_id</when><otherwise>supplier_id</otherwise></choose></sql>
 
     <select id="impacts" resultType="com.lemon.erp.framework.ref.MergeImpact">
@@ -28,8 +25,6 @@
         SELECT 'fin.merge.invoice', COUNT(*), 0 FROM fin_invoice WHERE <include refid="invoiceKind"/> AND partner_id IN <include refid="ids"/>
         UNION ALL
         SELECT 'fin.merge.ioDoc', COUNT(*), 0 FROM fin_io_doc WHERE <include refid="ioType"/> AND partner_id IN <include refid="ids"/>
-        UNION ALL
-        SELECT 'fin.merge.note', COUNT(*), 0 FROM fin_note WHERE <include refid="noteKind"/> AND partner_id IN <include refid="ids"/>
         UNION ALL
         SELECT 'fin.merge.voucherEntry', COUNT(*), 0 FROM fin_voucher_entry WHERE <include refid="auxColumn"/> IN <include refid="ids"/>
         UNION ALL
@@ -62,14 +57,6 @@
 
     <update id="mergeIoDoc">
         UPDATE fin_io_doc SET partner_id = #{targetId} WHERE <include refid="ioType"/> AND partner_id IN <include refid="ids"/>
-    </update>
-
-    <update id="mergeNote">
-        UPDATE fin_note SET partner_id = #{targetId} WHERE <include refid="noteKind"/> AND partner_id IN <include refid="ids"/>
-    </update>
-
-    <update id="mergeNoteLog">
-        UPDATE fin_note_log SET partner_id = #{targetId} WHERE <include refid="noteAction"/> AND partner_id IN <include refid="ids"/>
     </update>
 
     <update id="mergeVoucherEntry">

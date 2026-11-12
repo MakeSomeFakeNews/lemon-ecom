@@ -6,7 +6,7 @@
       <a-checkbox v-model:checked="query.missingOnly" @change="search">{{ $t('ecomFba.dim.missingOnly') }}</a-checkbox>
     </div>
     <TableToolbar :exporter="exportAll" v-model:size="size" v-model:checked="checked" :columns="columns" @refresh="load">
-      <a-dropdown v-perm="'ecom:fbaFee:edit'">
+      <a-dropdown v-if="userStore.hasPerm('ecom:fbaFee:edit')">
         <a-button type="primary"><template #icon><CloudSyncOutlined /></template>{{ $t('ecomFba.claim.dataOps') }} <DownOutlined /></a-button>
         <template #overlay>
           <a-menu @click="onDataMenu">
@@ -80,6 +80,10 @@ import { money } from '@/utils/number'
 import { AmzReportType, EcomPlatform } from '@/constants/enums'
 import { t } from '@/locales'
 import { n0 } from '../fba-health/fba'
+import { useUserStore } from '@/store/user'
+
+/** a-dropdown 的根不是元素，v-perm 不生效，改用 v-if 判断权限 */
+const userStore = useUserStore()
 
 /** 商品尺寸：平台仓配送的在线商品 + 已维护的尺寸重量、亚马逊分段 / 预估费、系统试算 */
 const m = (key, title) => ({ title, key, dataIndex: key, width: 120, align: 'right', money: true })

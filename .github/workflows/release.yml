@@ -57,7 +57,7 @@ jobs:
           labels: |
             org.opencontainers.image.title=${{ matrix.title }}
             org.opencontainers.image.description=面向跨境电商卖家的开源 ERP：多平台店铺、订单、海外仓与 FBA、结算与利润分析
-            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.licenses=GPL-3.0-only
       - uses: docker/build-push-action@v7
         with:
           context: .

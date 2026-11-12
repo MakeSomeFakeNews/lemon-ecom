@@ -2,7 +2,7 @@
   <template v-if="fields.length">
     <div v-if="title" class="cf-title">{{ title }}</div>
     <a-row :gutter="16">
-      <a-col v-for="f in fields" :key="f.fieldKey" :xs="24" :sm="f.fieldType === CustomFieldType.TEXTAREA ? 24 : span">
+      <a-col v-for="f in fields" :key="f.fieldKey" :xs="24" :sm="f.fieldType === CustomFieldType.TEXTAREA ? 24 : span" :lg="f.fieldType === CustomFieldType.TEXTAREA ? 24 : lg || span">
         <a-form-item :label="f.label" :required="f.required === 1" :extra="f.remark || undefined">
           <a-input v-if="f.fieldType === CustomFieldType.TEXT" v-model:value="values[f.fieldKey]" :maxlength="1000" :disabled="disabled" />
           <a-textarea v-else-if="f.fieldType === CustomFieldType.TEXTAREA" v-model:value="values[f.fieldKey]" :rows="2" :maxlength="1000" :disabled="disabled" />
@@ -46,6 +46,8 @@ defineProps({
   title: String,
   /** 每项占的栅格（sm 以上） */
   span: { type: Number, default: 12 },
+  /** 每项占的栅格（lg 以上，子页表单宽屏多列时用），不传同 span */
+  lg: Number,
   disabled: Boolean
 })
 </script>

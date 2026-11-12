@@ -116,7 +116,7 @@ const data = ref({ total: {}, trend: [], cash: null, salesmen: [], customers: []
 const loading = ref(false)
 
 const num = (v) => Number(v || 0)
-const yuan = (v) => t('jxc.common.yuan', { v: shortMoney(v) })
+const yuan = (v) => `${Number(v) < 0 ? '-' : ''}${t('jxc.common.yuan', { v: shortMoney(Math.abs(Number(v) || 0)) })}`
 const sumCash = (field) => (data.value.cash || []).reduce((s, r) => s + num(r[field]), 0)
 
 const kpis = computed(() => {

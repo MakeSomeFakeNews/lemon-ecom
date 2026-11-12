@@ -9,7 +9,7 @@ export default {
   brandLine1: '让企业经营',
   brandLine2: '像柠檬一样',
   brandHighlight: '清新高效',
-  brandDesc: '从采购、生产、仓储到财务、人力、客户与项目，一套系统打通业务全流程，数据实时联动、账实一致。',
+  brandDesc: '从多平台店铺、订单、刊登到采购补货、头程物流、海外仓与财务结算，一套系统打通跨境电商业务全流程，数据实时联动、账实一致。',
   tagWorkflow: '审批流程',
   tagDataPerm: '数据权限',
   tagCurrency: '多币种',

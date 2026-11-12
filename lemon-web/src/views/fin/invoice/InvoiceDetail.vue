@@ -6,8 +6,8 @@
         <a-descriptions-item :label="$t('fin.invoice.invoiceType')"><DictTag type="fin_invoice_type" :value="detail.invoiceType" /></a-descriptions-item>
         <a-descriptions-item :label="KINDS[detail.kind]?.partnerLabel">{{ detail.partnerName }}</a-descriptions-item>
         <a-descriptions-item :label="$t('fin.invoice.invoiceDate')">{{ detail.invoiceDate }}</a-descriptions-item>
-        <a-descriptions-item :label="$t('fin.invoice.amount')"><b>¥{{ formatMoney(detail.amount) }}</b></a-descriptions-item>
-        <a-descriptions-item :label="$t('fin.invoice.taxAmount')">¥{{ formatMoney(detail.taxAmount) }}</a-descriptions-item>
+        <a-descriptions-item :label="$t('fin.invoice.amount')"><b>{{ symMoney(detail.amount) }}</b></a-descriptions-item>
+        <a-descriptions-item :label="$t('fin.invoice.taxAmount')">{{ symMoney(detail.taxAmount) }}</a-descriptions-item>
         <a-descriptions-item :label="$t('common.field.status')">
           <a-tag :color="detail.status === InvoiceStatus.VOID ? 'default' : 'green'" :bordered="false">{{ detail.status === InvoiceStatus.VOID ? $t('fin.invoice.statusVoid') : $t('fin.invoice.statusValid') }}</a-tag>
         </a-descriptions-item>
@@ -22,7 +22,7 @@
         <div class="section-title block-title">{{ $t('fin.invoice.lines') }}</div>
         <a-table row-key="id" size="small" :columns="lineColumns" :data-source="detail.lines" :pagination="false" :scroll="{ x: 760 }" class="block">
           <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'qty'">{{ record.qty != null ? Number(record.qty) : '' }} {{ record.unit || '' }}</template>
+            <template v-if="column.key === 'qty'">{{ record.qty != null ? qty(record.qty) : '' }} {{ record.unit || '' }}</template>
             <template v-else-if="column.key === 'price'">{{ record.price != null ? Number(record.price) : '' }}</template>
             <template v-else-if="column.key === 'taxRate'">{{ record.taxRate != null ? `${Number(record.taxRate)}%` : '' }}</template>
             <template v-else-if="['amount', 'taxAmount'].includes(column.key)">{{ formatMoney(record[column.key]) }}</template>
@@ -62,6 +62,7 @@ import { useUserStore } from '@/store/user'
 import { formatMoney, periodText } from '@/components/fin/fin'
 import { KINDS, SOURCES } from './invoice'
 import { InvoiceKind, InvoiceSource, InvoiceStatus } from '@/constants/enums'
+import { qty, symMoney } from '@/utils/number'
 
 /** 发票详情：明细行、勾稽的单据、附件。通过 ref 调用 open(发票)，取消勾稽后触发 changed */
 const emit = defineEmits(['changed'])

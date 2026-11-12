@@ -321,7 +321,7 @@ export default {
     period: 'Period',
     periodRange: 'Period: {range}, compared with the previous period',
     sources: 'Data included',
-    sourcesEmpty: 'No data sources available to you (requires access to BI, financial reports, production, quality, HR, etc.)',
+    sourcesEmpty: 'No data sources available to you (requires access to e-commerce, inventory & sales reports, warehouse, financial reports, etc.)',
     limitedTag: '{label} (your data scope)',
     limitedScopeTip: 'Only data within your data scope is included, not company-wide',
     generateTip: 'AI writes the report from the summarized data above, which is sent to the configured model service. It usually takes 30 seconds to 2 minutes; you can leave this page and read it in the list when it is done.',

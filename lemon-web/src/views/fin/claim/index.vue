@@ -51,7 +51,7 @@
             <div>{{ record.userName }}</div>
             <div class="sub-text">{{ record.deptName || '-' }}</div>
           </template>
-          <template v-else-if="column.key === 'amount'">¥{{ formatMoney(record.amount) }}</template>
+          <template v-else-if="column.key === 'amount'">{{ symMoney(record.amount) }}</template>
           <template v-else-if="column.key === 'loan'">
             <template v-if="record.loanId">
               <div>{{ record.loanNo }}</div>
@@ -118,7 +118,7 @@
       <div class="items-head">
         <span class="section-title">{{ $t('fin.claim.items') }}</span>
         <a-space>
-          <span>{{ $t('common.field.total') }} <b class="total">¥{{ formatMoney(itemTotal) }}</b></span>
+          <span>{{ $t('common.field.total') }} <b class="total">{{ symMoney(itemTotal) }}</b></span>
           <a-button size="small" @click="addItem"><template #icon><PlusOutlined /></template>{{ $t('common.action.addRow') }}</a-button>
         </a-space>
       </div>
@@ -157,7 +157,7 @@
           ? $t('fin.claim.payTipLoan', { no: payTarget.loanNo })
           : $t('fin.claim.payTip')"
       />
-      <p v-if="payTarget">{{ $t('fin.claim.payLine', { name: payTarget.userName }) }} <b>¥{{ formatMoney(payTarget.amount) }}</b></p>
+      <p v-if="payTarget">{{ $t('fin.claim.payLine', { name: payTarget.userName }) }} <b>{{ symMoney(payTarget.amount) }}</b></p>
       <a-form layout="vertical">
         <a-form-item :label="$t('fin.claim.payAccount')" :required="!payTarget?.loanId" :extra="payTarget?.loanId ? $t('fin.claim.payAccountExtra') : ''">
           <AccountSelect v-model:value="payForm.accountId" :roles="['CASH', 'BANK']" :placeholder="$t('fin.claim.payAccountPh')" />
@@ -176,7 +176,7 @@
           <a-descriptions-item :label="$t('fin.claim.expenseDept')">{{ detail.deptName || '-' }}</a-descriptions-item>
           <a-descriptions-item :label="$t('fin.claim.claimDate')">{{ detail.claimDate }}</a-descriptions-item>
           <a-descriptions-item :label="$t('common.field.status')"><DictTag type="fin_claim_status" :value="detail.status" /></a-descriptions-item>
-          <a-descriptions-item :label="$t('common.field.amount')"><b>¥{{ formatMoney(detail.amount) }}</b></a-descriptions-item>
+          <a-descriptions-item :label="$t('common.field.amount')"><b>{{ symMoney(detail.amount) }}</b></a-descriptions-item>
           <a-descriptions-item :label="$t('fin.claim.offsetLoan')">
             {{ detail.loanNo || '-' }}
             <span v-if="Number(detail.loanOffset)" class="sub-text">{{ $t('fin.claim.offsetParen', { amount: formatMoney(detail.loanOffset) }) }}</span>
@@ -231,6 +231,7 @@ import { ExpenseClaimStatus, LoanStatus } from '@/constants/enums'
 import AiExtractButton from '@/components/ai/AiExtractButton.vue'
 import AiPrefillAlert from '@/components/ai/AiPrefillAlert.vue'
 import { useAiPrefill } from '@/composables/useAiPrefill'
+import { symMoney } from '@/utils/number'
 /** 费用科目：制造费用、销售费用、管理费用、财务费用下的末级科目 */
 const EXPENSE_PREFIX = ['5101', '6601', '6602', '6603']
 

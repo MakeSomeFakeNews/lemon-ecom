@@ -268,14 +268,14 @@ public final class WmsStockAiTools {
     /** 收发存汇总的一行（数量，按基本单位）：openQty + 各类入库 - 各类出库 = closeQty */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record InOutSummaryRow(String materialCode, String materialName, String spec, String unit, BigDecimal openQty,
-                                  BigDecimal purchaseIn, BigDecimal productionIn, BigDecimal salesReturn, BigDecimal otherIn,
-                                  BigDecimal salesOut, BigDecimal productionOut, BigDecimal purchaseReturn, BigDecimal otherOut,
+                                  BigDecimal purchaseIn, BigDecimal salesReturn, BigDecimal otherIn,
+                                  BigDecimal salesOut, BigDecimal purchaseReturn, BigDecimal otherOut,
                                   BigDecimal closeQty) {
 
         static InOutSummaryRow of(InOutRow r) {
             return new InOutSummaryRow(r.getMaterialCode(), r.getMaterialName(), r.getSpec(), r.getUnit(), plain(r.getOpenQty()),
-                    plain(r.getPurchaseIn()), plain(r.getProductionIn()), plain(r.getSalesReturn()), plain(r.getOtherIn()),
-                    plain(r.getSalesOut()), plain(r.getProductionOut()), plain(r.getPurchaseReturn()), plain(r.getOtherOut()),
+                    plain(r.getPurchaseIn()), plain(r.getSalesReturn()), plain(r.getOtherIn()),
+                    plain(r.getSalesOut()), plain(r.getPurchaseReturn()), plain(r.getOtherOut()),
                     plain(r.getCloseQty()));
         }
     }

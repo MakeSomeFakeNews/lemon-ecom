@@ -1,7 +1,7 @@
 <template>
   <a-modal v-model:open="visible" :title="$t('pricing.lookup.stockTitle', { name: material?.name || '' })" width="min(760px, 100vw)" :footer="null">
     <a-table
-      :row-key="(r, i) => i"
+      :row-key="seqKey"
       size="small"
       :columns="columns"
       :data-source="rows"
@@ -29,6 +29,10 @@ import { quickLookupStock } from '@/api/scm/quickLookup'
 import { qty } from '@/utils/number'
 import { useUserStore } from '@/store/user'
 import StockHistory from '@/components/wms/StockHistory.vue'
+import { seqRowKey } from '@/utils/rowKey'
+
+/** 行没有唯一字段，按行对象分配序号 */
+const seqKey = seqRowKey()
 
 /**
  * 库存分布：各仓库、库位、批次（有效期、冻结）的数量。用法：ref.open(row)

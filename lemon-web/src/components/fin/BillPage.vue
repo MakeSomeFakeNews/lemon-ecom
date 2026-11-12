@@ -25,10 +25,10 @@
           </div>
           <div class="stats">
             <span v-if="list.some((b) => isForeign(b.currency))" class="sub-text">{{ $t('fin.billPage.foreignTip') }}</span>
-            <span>{{ $t('fin.billPage.pageTotal') }} <b>¥{{ formatMoney(pageTotal.amount) }}</b></span>
-            <span v-if="pageTotal.discount">{{ conf.netLabel }} ¥{{ formatMoney(pageTotal.amount - pageTotal.discount) }}</span>
-            <span>{{ $t('fin.billPage.settled') }} ¥{{ formatMoney(pageTotal.settled) }}</span>
-            <span>{{ $t('fin.billPage.unsettled') }} <b class="warn">¥{{ formatMoney(pageTotal.amount - pageTotal.settled) }}</b></span>
+            <span>{{ $t('fin.billPage.pageTotal') }} <b>{{ symMoney(pageTotal.amount) }}</b></span>
+            <span v-if="pageTotal.discount">{{ conf.netLabel }} {{ symMoney(pageTotal.amount - pageTotal.discount) }}</span>
+            <span>{{ $t('fin.billPage.settled') }} {{ symMoney(pageTotal.settled) }}</span>
+            <span>{{ $t('fin.billPage.unsettled') }} <b class="warn">{{ symMoney(pageTotal.amount - pageTotal.settled) }}</b></span>
           </div>
           <a-table
             row-key="id"
@@ -56,12 +56,12 @@
                 </div>
               </template>
               <template v-else-if="column.key === 'amount'">
-                <span :class="{ neg: Number(record.amount) < 0 }">¥{{ formatMoney(record.amount) }}</span>
+                <span :class="{ neg: Number(record.amount) < 0 }">{{ symMoney(record.amount) }}</span>
                 <div class="sub-text">{{ $t('fin.billPage.taxN', { amount: formatMoney(record.taxAmount) }) }}</div>
                 <div v-if="isForeign(record.currency)" class="sub-text">{{ $t('fin.billPage.originalN', { amount: `${record.currency} ${formatMoney(record.amountFc)}` }) }}</div>
               </template>
               <template v-else-if="column.key === 'netAmount'">
-                <span :class="{ neg: Number(record.netAmount) < 0 }">¥{{ formatMoney(record.netAmount) }}</span>
+                <span :class="{ neg: Number(record.netAmount) < 0 }">{{ symMoney(record.netAmount) }}</span>
                 <div v-if="Number(record.discountAmount)" class="sub-text">{{ $t('fin.billPage.discountN', { amount: formatMoney(record.discountAmount) }) }}</div>
               </template>
               <template v-else-if="column.key === 'currency'">
@@ -72,7 +72,7 @@
                 <span v-else class="sub-text">{{ record.currency || 'CNY' }}</span>
               </template>
               <template v-else-if="column.key === 'settled'">
-                <div>¥{{ formatMoney(record.settledAmount) }}</div>
+                <div>{{ symMoney(record.settledAmount) }}</div>
                 <div class="sub-text">{{ $t('fin.billPage.remainingN', { amount: formatMoney(remaining(record)) }) }}</div>
                 <div v-if="isForeign(record.currency)" class="sub-text">
                   {{ $t('fin.billPage.originalSettled', { settled: formatMoney(record.settledFc), remaining: formatMoney(Number(record.amountFc || 0) - Number(record.settledFc || 0)) }) }}
@@ -80,7 +80,7 @@
                 <div v-if="Number(record.badDebtAmount)" class="sub-text neg">{{ $t('fin.billPage.badDebtN', { amount: formatMoney(record.badDebtAmount) }) }}</div>
               </template>
               <template v-else-if="column.key === 'invoiced'">
-                <div>¥{{ formatMoney(record.invoicedAmount ?? 0) }}</div>
+                <div>{{ symMoney(record.invoicedAmount ?? 0) }}</div>
                 <div v-if="Number(record.amount) > 0" class="sub-text">
                   {{ Number(record.invoicedAmount) >= Number(record.amount) ? conf.invoicedAll : conf.notInvoiced(formatMoney(Number(record.amount) - Number(record.invoicedAmount || 0))) }}
                 </div>
@@ -126,6 +126,7 @@
             row-key="partnerId"
             size="middle"
             :columns="agingColumns"
+            :scroll="{ x: 1060 }"
             :data-source="aging.list.value"
             :loading="aging.loading.value"
             :pagination="aging.pagination"
@@ -236,6 +237,7 @@ import { useAction } from '@/composables/useAction'
 import { useUserStore } from '@/store/user'
 
 import { BillSource, BillStatus } from '@/constants/enums'
+import { symMoney } from '@/utils/number'
 /** 应收管理 / 应付管理，kind = ar | ap */
 const props = defineProps({
   kind: { type: String, required: true }

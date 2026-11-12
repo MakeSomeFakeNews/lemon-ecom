@@ -15,7 +15,7 @@
           <a @click="router.push({ path: '/ecom/ali1688-order', query: { id: record.id } })">{{ record.aliOrderId }}</a>
         </template>
         <template v-else-if="column.key === 'amount'">
-          <b>¥ {{ money(record.totalAmount) }}</b>
+          <b>{{ symMoney(record.totalAmount) }}</b>
           <div class="sub-text">{{ $t('ecomDev.order.amountText', { product: money(record.productAmount), fee: money(record.shippingFee) }) }}</div>
         </template>
         <template v-else-if="column.key === 'logistics'">{{ record.logisticsCompany || '' }} {{ record.logisticsNo || '-' }}</template>
@@ -24,7 +24,7 @@
       <template #summary>
         <a-table-summary-row v-if="list.length">
           <a-table-summary-cell :col-span="2">{{ $t('ecomDev.po.paidTotal') }}</a-table-summary-cell>
-          <a-table-summary-cell align="right"><b>¥ {{ money(paidTotal) }}</b></a-table-summary-cell>
+          <a-table-summary-cell align="right"><b>{{ symMoney(paidTotal) }}</b></a-table-summary-cell>
           <a-table-summary-cell :col-span="3" />
         </a-table-summary-row>
       </template>
@@ -44,7 +44,7 @@ import Ali1688OrderModal from './Ali1688OrderModal.vue'
 import { ali1688OrdersByPo, syncAli1688Orders } from '@/api/ecom/dev'
 import { Ali1688OrderStatus, OrderStatus } from '@/constants/enums'
 import { useUserStore } from '@/store/user'
-import { money } from '@/utils/number'
+import { money, symMoney } from '@/utils/number'
 
 /**
  * 采购订单详情中的「1688 采购」页签：本订单生成的 1688 采购单（状态、实付含运费、物流），一键下单到 1688（已审核 / 部分入库的订单）、同步

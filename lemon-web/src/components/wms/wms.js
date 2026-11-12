@@ -35,21 +35,13 @@ export const MANUAL_TYPES = { in: ['OTHER', 'CONSIGN_IN'], out: ['OTHER', 'SCRAP
 export const AUTO_TYPE_SOURCES = {
   in: {
     PURCHASE: 'purchaseIn',
-    PRODUCTION: 'woFinish',
     SALES_RETURN: 'salesReturn',
-    PRODUCTION_RETURN: 'woReturn',
-    OUTSOURCE_RETURN: 'outsourceReturn',
-    SCRAP_IN: 'woScrap',
     OPENING: 'opening',
     ASSEMBLY: 'assembly'
   },
   out: {
     SALES: 'salesOut',
-    PRODUCTION: 'woIssue',
     PURCHASE_RETURN: 'purchaseReturn',
-    PROJECT: 'project',
-    OUTSOURCE: 'outsourceIssue',
-    SERVICE: 'service',
     CONSIGN: 'consign',
     CONSUME: 'consume',
     ASSEMBLY: 'assembly'

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.automation.mapper.EcomAutoRuleMapper">
+
+    <!-- 创建人昵称来自 sys_user（只读 JOIN） -->
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.automation.entity.EcomAutoRule">
+        SELECT r.id, r.name, r.trigger_code, r.status, r.scope_json, r.condition_json, r.actions_json, r.debounce_hours, r.daily_limit,
+               r.template_code, r.trigger_count, r.last_trigger_time, r.last_result, r.remark, r.create_by, r.create_time, r.update_time,
+               u.nickname AS create_by_name,
+               (SELECT COUNT(*) FROM ecom_auto_log l WHERE l.rule_id = r.id AND l.result IN ('FAILED', 'PARTIAL') AND l.create_time &gt;= #{failedSince})
+                   AS failed_count
+        FROM ecom_auto_rule r
+        LEFT JOIN sys_user u ON u.id = r.create_by
+        <where>
+            <if test="keyword != null and keyword != ''">AND (r.name LIKE CONCAT('%', #{keyword}, '%') OR r.remark LIKE CONCAT('%', #{keyword}, '%'))</if>
+            <if test="trigger != null">AND r.trigger_code = #{trigger}</if>
+            <if test="status != null">AND r.status = #{status}</if>
+        </where>
+        ORDER BY r.status DESC, r.id DESC
+    </select>
+
+    <update id="markTriggered">
+        UPDATE ecom_auto_rule SET trigger_count = trigger_count + 1, last_trigger_time = #{time}, last_result = #{result}
+        WHERE id = #{id}
+    </update>
+</mapper>

@@ -46,6 +46,7 @@ import { locationOptions } from '@/api/wms/location'
 import { availableSerials, pageStock } from '@/api/wms/stock'
 import { availableQty, fillPutaway, formatQty, today } from '@/components/wms/wms'
 import { useUserStore } from '@/store/user'
+import { qty } from '@/utils/number'
 
 /**
  * 上架：扫描来源库位（收货区等）列出库存，扫描物料选中后扫描目标库位，或按上架策略推荐；
@@ -119,7 +120,7 @@ async function onScan(code) {
   if (row.serials.includes(code)) return scan.show(t('mobile.common.serialScanned', { code }), false)
   row.serials.push(code)
   row.qty = row.serials.length
-  scan.show(t('mobile.common.serialAdded', { name: row.materialName, code, n: row.qty }))
+  scan.show(t('mobile.common.serialAdded', { name: row.materialName, code, n: qty(row.qty) }))
 }
 function removeSerial(row, s) {
   row.serials = row.serials.filter((x) => x !== s)

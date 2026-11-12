@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.automation.mapper.EcomAutoTodoMapper">
+
+    <!-- 处理人昵称来自 sys_user（只读 JOIN） -->
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.automation.entity.EcomAutoTodo">
+        SELECT t.id, t.rule_id, t.assignee_id, t.store_id, t.title, t.content, t.link, t.object_key, t.due_date, t.status, t.done_by, t.done_time,
+               t.create_time, t.update_time, r.name AS rule_name, u.nickname AS assignee_name, s.name AS store_name
+        FROM ecom_auto_todo t
+        LEFT JOIN ecom_auto_rule r ON r.id = t.rule_id
+        LEFT JOIN sys_user u ON u.id = t.assignee_id
+        LEFT JOIN ecom_store s ON s.id = t.store_id
+        <where>
+            <if test="assigneeId != null">AND t.assignee_id = #{assigneeId}</if>
+            <if test="status != null">AND t.status = #{status}</if>
+            <if test="keyword != null and keyword != ''">AND (t.title LIKE CONCAT('%', #{keyword}, '%') OR t.content LIKE CONCAT('%', #{keyword}, '%'))</if>
+        </where>
+        ORDER BY CASE WHEN t.status = 'OPEN' THEN 0 ELSE 1 END, t.due_date, t.id DESC
+    </select>
+</mapper>

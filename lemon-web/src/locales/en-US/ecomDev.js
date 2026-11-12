@@ -280,6 +280,8 @@ export default {
     callback: 'App callback URL:',
     add: 'New 1688 account',
     edit: 'Edit 1688 account',
+    sectionBasic: 'Basic Info',
+    sectionApp: 'Open Platform App',
     name: 'Account name',
     nameRequired: 'Please enter the account name',
     appKeyRequired: 'Please enter the AppKey',

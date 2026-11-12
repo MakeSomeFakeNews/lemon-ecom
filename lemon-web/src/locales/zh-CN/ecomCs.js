@@ -74,6 +74,21 @@ export default {
     recent: '该买家的最近订单'
   },
   template: {
+    sample: {
+      buyerName: 'John Smith',
+      orderNo: '113-4567890-1234567',
+      trackingNo: '1Z999AA10123456784',
+      carrier: 'UPS',
+      productName: 'Wireless Earbuds',
+      storeName: 'Lemon Store'
+    },
+    sectionBasic: '基本信息',
+    sectionContent: '模板内容',
+    variables: '变量',
+    variablesTip: '点击插入到内容的光标处',
+    preview: '预览',
+    previewTip: '按示例数据替换变量',
+    previewEmpty: '输入内容后在这里预览',
     pick: '快捷回复模板',
     none: '没有可用的模板',
     missing: '以下变量没有取到值，请补充：{vars}',

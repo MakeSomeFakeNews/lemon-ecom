@@ -17,7 +17,7 @@
       <a-tabs v-else v-model:active-key="activeTab" size="small">
         <a-tab-pane v-for="tab in tabs" :key="tab.key" :tab="`${tab.label} (${data[tab.key].length})`">
           <a-table
-            :row-key="(r, i) => `${tab.key}-${i}`"
+            :row-key="(r) => `${tab.key}-${seqKey(r)}`"
             size="small"
             :columns="tab.columns"
             :data-source="data[tab.key]"
@@ -48,6 +48,10 @@ import { useI18n } from 'vue-i18n'
 import { priceReference } from '@/api/scm/pricing'
 import { money, price, qty } from '@/utils/number'
 import { OrderKind } from '@/constants/enums'
+import { seqRowKey } from '@/utils/rowKey'
+
+/** 行没有唯一字段，按行对象分配序号 */
+const seqKey = seqRowKey()
 
 /**
  * 价格参考弹窗：销售历史、进货历史（日期 单号 单位编号 单位名称 数量 单价 金额 备注）、进货数量（按供应商汇总）、

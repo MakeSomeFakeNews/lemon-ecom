@@ -26,15 +26,15 @@
       <template v-if="data">
         <a-alert v-if="data.linkedSupplierName" type="info" show-icon class="cards" :message="$t('fin.linkedAp.statementLinked', { name: data.linkedSupplierName })" />
         <a-row :gutter="12" class="cards">
-          <a-col :xs="12" :md="6"><a-statistic :title="$t('fin.partnerStatement.opening')" :value="Number(data.opening)" :precision="2" prefix="¥" /></a-col>
-          <a-col :xs="12" :md="6"><a-statistic :title="labels.periodIncrease" :value="Number(data.increase)" :precision="2" prefix="¥" /></a-col>
-          <a-col :xs="12" :md="6"><a-statistic :title="labels.periodDecrease" :value="Number(data.decrease)" :precision="2" prefix="¥" /></a-col>
-          <a-col :xs="12" :md="6"><a-statistic :title="$t('fin.partnerStatement.closing')" :value="Number(data.closing)" :precision="2" prefix="¥" /></a-col>
+          <a-col :xs="12" :md="6"><a-statistic :title="$t('fin.partnerStatement.opening')" :value="Math.abs(Number(data.opening) || 0)" :precision="2" :prefix="Number(data.opening) < 0 ? '-¥' : '¥'" /></a-col>
+          <a-col :xs="12" :md="6"><a-statistic :title="labels.periodIncrease" :value="Math.abs(Number(data.increase) || 0)" :precision="2" :prefix="Number(data.increase) < 0 ? '-¥' : '¥'" /></a-col>
+          <a-col :xs="12" :md="6"><a-statistic :title="labels.periodDecrease" :value="Math.abs(Number(data.decrease) || 0)" :precision="2" :prefix="Number(data.decrease) < 0 ? '-¥' : '¥'" /></a-col>
+          <a-col :xs="12" :md="6"><a-statistic :title="$t('fin.partnerStatement.closing')" :value="Math.abs(Number(data.closing) || 0)" :precision="2" :prefix="Number(data.closing) < 0 ? '-¥' : '¥'" /></a-col>
         </a-row>
       </template>
 
       <a-table
-        :row-key="(r, i) => i"
+        :row-key="seqKey"
         size="small"
         bordered
         :columns="columns"
@@ -86,6 +86,10 @@ import { printDocs } from '@/utils/print'
 import { useUserStore } from '@/store/user'
 
 import { BillKind, PartnerLedgerType } from '@/constants/enums'
+import { seqRowKey } from '@/utils/rowKey'
+
+/** 行没有唯一字段，按行对象分配序号 */
+const seqKey = seqRowKey()
 /** 往来对账单：客户 / 供应商在期间内的应收应付、收付款、预收预付和逐笔余额，可打印给对方核对 */
 const { t } = useI18n()
 const dict = useDict('fin_bill_source', 'fin_settle_method')

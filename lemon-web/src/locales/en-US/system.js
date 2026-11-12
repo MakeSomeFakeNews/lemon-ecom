@@ -138,6 +138,7 @@ export default {
       ecom_return_reason: 'Return Reason',
       ecom_payout_channel: 'Payment Channel',
       ecom_cs_language: 'Template Language',
+      ecom_banned_word_type: 'Banned Word Type',
       ecom_dev_source: 'Product Source',
       ecom_store_member_role: 'Store Role',
       ecom_promo_type: 'Promotion Type',
@@ -273,6 +274,11 @@ export default {
     selectType: 'Select the type'
   },
   tenant: {
+    sectionBasic: 'Basic Info',
+    sectionFeatures: 'Features',
+    sectionLimits: 'Limits',
+    sectionAdmin: 'Administrator',
+    sectionOther: 'Other',
     name: 'Tenant Name',
     add: 'Add Tenant',
     edit: 'Edit Tenant',
@@ -333,7 +339,7 @@ export default {
     selectType: 'Select the notice type',
     scope: 'Audience',
     audience: 'Recipients',
-    allTip: 'All active internal users (excluding supplier portal accounts)',
+    allTip: 'All active users',
     depts: 'Departments',
     deptsTip: 'Includes all sub-departments of the selected departments',
     selectDepts: 'Select departments',

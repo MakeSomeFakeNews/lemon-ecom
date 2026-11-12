@@ -321,7 +321,7 @@ export default {
     period: '期间',
     periodRange: '统计期间：{range}，与上期对比',
     sources: '将包含的数据',
-    sourcesEmpty: '你没有可用的数据来源（需要商务智能、财务报表、生产、质量、人事等相应权限）',
+    sourcesEmpty: '你没有可用的数据来源（需要电商、进销存报表、仓库、财务报表等相应权限）',
     limitedTag: '{label}（按数据权限）',
     limitedScopeTip: '只统计你数据权限范围内的数据，不是全公司口径',
     generateTip: '报告由 AI 根据上述数据的汇总值撰写，汇总数据会发送给所配置的模型服务。生成通常需要 30 秒到 2 分钟，可以离开本页，完成后在列表中查看。',

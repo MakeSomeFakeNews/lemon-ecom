@@ -526,7 +526,7 @@ public class EcomOwhInboundService {
                 LocalDate biz = doc == null || doc.get("bizDate") == null ? date : LocalDate.parse(String.valueOf(doc.get("bizDate")).substring(0, 10));
                 d = date.isBefore(biz) ? biz : date;
                 if (doc != null && TRANSIT.equals(doc.get("status"))) {
-                    stockDocService.receive(i.getSourceId(), d);
+                    stockDocService.receiveBySource(i.getSourceId(), d);
                 } else if (doc == null || !DONE.equals(doc.get("status"))) {
                     throw new BizException("ecom.error.owh.transferNotTransit", doc == null ? "-" : doc.get("docNo"));
                 }

@@ -63,6 +63,18 @@ public class EcomStoreMemberService {
         return user.isAdmin() || user.dataScope() == null || user.dataScope().all();
     }
 
+    /**
+     * 指定用户负责和被授权的店铺 ID（不判断该用户是否不受限制；定时任务按订阅人生成运营日报时使用，调用方先判断角色数据权限）
+     */
+    public Set<Long> ownedOrGrantedStoreIds(Long userId) {
+        return Set.copyOf(memberMapper.selectVisibleStoreIds(userId));
+    }
+
+    /** 用户是否不受店铺限制（超级管理员、全部数据权限） */
+    public static boolean unrestrictedUser(LoginUser user) {
+        return unrestricted(user);
+    }
+
     // ---------------------------------------------------------------- 按店铺
 
     /** 店铺授权页：店铺（当前用户可见的）、负责人与授权成员；userId 只看某用户负责或被授权的店铺 */

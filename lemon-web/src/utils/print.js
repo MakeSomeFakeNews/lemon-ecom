@@ -141,7 +141,7 @@ function toRows(columns, rows) {
  * @param {(string | [string, any, string?])[]} [doc.signs] 签字栏，如 ['审核', ['制单', '张三']]，第三项为匹配键
  * @param {string} [doc.note]  备注
  * @param {{title: string, columns: object[], rows: object[]}[]} [doc.sections] 主表之后的其他明细表
- * @param {boolean} [doc.slip] 条状单据（工资条）：一页打印多条，之间用虚线分隔
+ * @param {boolean} [doc.slip] 条状单据：一页打印多条，之间用虚线分隔
  * @param {string} [type] 打印模板标识，用于把翻译后的名称对应回中文匹配键
  */
 export function toPrintDoc(doc, type) {

@@ -4,7 +4,7 @@
       <div class="kpis">
         <div class="kpi main" :class="{ loss: Number(result.profit) < 0 }">
           <div class="label">{{ $t('ecomDev.calc.profit') }}</div>
-          <div class="value">¥ {{ money(result.profit) }}</div>
+          <div class="value">{{ symMoney(result.profit) }}</div>
           <div class="sub">{{ result.currency }} {{ money(result.profitSite) }}</div>
         </div>
         <div class="kpi" :class="marginClass(result.margin)">
@@ -15,7 +15,7 @@
         <div class="kpi">
           <div class="label">{{ $t('ecomDev.calc.salePriceResult') }}</div>
           <div class="value">{{ result.currency }} {{ money(result.salePrice) }}</div>
-          <div class="sub">≈ ¥ {{ money(result.revenue) }} · {{ $t('ecomDev.calc.rateShort', { rate: Number(result.exchangeRate) }) }}</div>
+          <div class="sub">≈ {{ symMoney(result.revenue) }} · {{ $t('ecomDev.calc.rateShort', { rate: Number(result.exchangeRate) }) }}</div>
         </div>
         <div class="kpi">
           <div class="label">{{ $t('ecomDev.calc.breakeven') }}</div>
@@ -70,7 +70,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDict } from '@/composables/useDict'
 import { findDict } from '@/utils/dict'
-import { money } from '@/utils/number'
+import { money, symMoney } from '@/utils/number'
 import { marginClass } from '@/views/ecom/dev-project/dev'
 
 /**

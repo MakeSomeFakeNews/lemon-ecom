@@ -74,6 +74,21 @@ export default {
     recent: 'Recent orders of this buyer'
   },
   template: {
+    sample: {
+      buyerName: 'John Smith',
+      orderNo: '113-4567890-1234567',
+      trackingNo: '1Z999AA10123456784',
+      carrier: 'UPS',
+      productName: 'Wireless Earbuds',
+      storeName: 'Lemon Store'
+    },
+    sectionBasic: 'Basic info',
+    sectionContent: 'Template content',
+    variables: 'Variables',
+    variablesTip: 'Click to insert at the cursor',
+    preview: 'Preview',
+    previewTip: 'Variables replaced with sample data',
+    previewEmpty: 'Type the content to preview it here',
     pick: 'Quick reply template',
     none: 'No templates available',
     missing: 'These variables have no value, please fill them in: {vars}',

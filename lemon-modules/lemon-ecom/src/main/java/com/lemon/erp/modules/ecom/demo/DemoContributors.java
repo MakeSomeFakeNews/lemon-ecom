@@ -13,6 +13,8 @@ final class DemoContributors {
     static final String SUPPLIER_BY_CODE = "demo.supplierByCode";
     /** 店铺编码 → 店铺负责人 ID：Map&lt;String, Long&gt; */
     static final String STORE_OWNER = "demo.storeOwner";
+    /** 会计演示账号 ID（审核记账凭证；创建失败时为空）：Long */
+    static final String ACCOUNTANT_ID = "demo.accountantId";
     /** 订单计划：DemoOrderPlan */
     static final String ORDER_PLAN = "demo.orderPlan";
     /** 在线商品：店铺 ID → (平台 SKU → 在线商品)：Map&lt;Long, Map&lt;String, DemoListings.Item&gt;&gt; */

@@ -110,6 +110,10 @@ public class WmsStockDoc extends BaseEntity {
     @TableField(exist = false)
     private String receiveByName;
 
+    /** 在途调拨单由业务单据管理收货时的来源说明（如「头程货件 xxx」），此时只能到来源单据中收货 */
+    @TableField(exist = false)
+    private String receiveOwner;
+
     /** 红字单据冲销的原单号 */
     @TableField(exist = false)
     private String redOfNo;

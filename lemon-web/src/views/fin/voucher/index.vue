@@ -73,7 +73,7 @@
             <div class="sub-text">{{ periodText(record.period) }}</div>
           </template>
           <template v-else-if="column.key === 'amount'">
-            <span :class="{ neg: Number(record.totalDebit) < 0 }">¥{{ formatMoney(record.totalDebit) }}</span>
+            <span :class="{ neg: Number(record.totalDebit) < 0 }">{{ symMoney(record.totalDebit) }}</span>
           </template>
           <template v-else-if="column.key === 'status'">
             <DictTag type="fin_voucher_status" :value="record.status" />
@@ -125,6 +125,7 @@ import { toOptions } from '@/utils/dict'
 import { canDeleteVoucher, canReverse, currentPeriod, formatMoney, periodText } from '@/components/fin/fin'
 
 import { VoucherSource, VoucherStatus } from '@/constants/enums'
+import { symMoney } from '@/utils/number'
 const { t } = useI18n()
 const userStore = useUserStore()
 const dict = useDict('fin_voucher_status', 'fin_voucher_source')

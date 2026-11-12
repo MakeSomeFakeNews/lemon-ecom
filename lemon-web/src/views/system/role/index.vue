@@ -87,7 +87,7 @@
                 <template #tab><TabTitle :title="$t('system.role.basicInfo')" :dirty="dirty.basic" /></template>
                 <RoleBasicPanel
                   v-if="detail"
-                  v-model:dirty="dirty.basic"
+                  @update:dirty="(v) => (dirty.basic = v)"
                   :detail="detail"
                   :readonly="!can.edit"
                   @saved="refresh"
@@ -97,7 +97,7 @@
                 <template #tab><TabTitle :title="$t('system.role.menuPerm')" :dirty="dirty.menu" /></template>
                 <RoleMenuPanel
                   v-if="detail"
-                  v-model:dirty="dirty.menu"
+                  @update:dirty="(v) => (dirty.menu = v)"
                   :detail="detail"
                   :menu-tree="menuTreeData"
                   :readonly="!can.edit"
@@ -108,7 +108,7 @@
                 <template #tab><TabTitle :title="$t('system.role.dataPerm')" :dirty="dirty.scope" /></template>
                 <RoleDataScopePanel
                   v-if="detail"
-                  v-model:dirty="dirty.scope"
+                  @update:dirty="(v) => (dirty.scope = v)"
                   :detail="detail"
                   :dept-tree="deptTreeData"
                   :readonly="!can.dataScope"

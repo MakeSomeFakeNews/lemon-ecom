@@ -27,7 +27,7 @@
         <a-button v-perm="'ecom:fbaRemoval:add'" type="primary" @click="formRef.openCreate({ storeId: query.storeId })">
           <template #icon><PlusOutlined /></template>{{ $t('ecomFba.removal.add') }}
         </a-button>
-        <a-dropdown v-perm="'ecom:fbaRemoval:sync'">
+        <a-dropdown v-if="userStore.hasPerm('ecom:fbaRemoval:sync')">
           <a-button><template #icon><CloudSyncOutlined /></template>{{ $t('ecomFba.claim.dataOps') }} <DownOutlined /></a-button>
           <template #overlay>
             <a-menu @click="onDataMenu">
@@ -106,6 +106,10 @@ import { AmzReportType, EcomPlatform } from '@/constants/enums'
 import { t } from '@/locales'
 import { n0 } from '../fba-health/fba'
 import { canCancel, canDelete, canDispose, canReceive, isEditable } from './removal'
+import { useUserStore } from '@/store/user'
+
+/** a-dropdown 的根不是元素，v-perm 不生效，改用 v-if 判断权限 */
+const userStore = useUserStore()
 
 /**
  * FBA 移除订单：计划 → 提交（亚马逊移除订单号）→ 报告同步发货 / 弃置数量 → 本地仓收货（良品 / 不良品）或弃置出库

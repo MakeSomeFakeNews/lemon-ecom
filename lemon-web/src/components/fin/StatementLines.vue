@@ -6,14 +6,14 @@
         <span class="source-no">{{ record.sourceNo }}</span>
       </template>
       <template v-else-if="column.key === 'amount'">
-        <span :class="{ negative: Number(record.amount) < 0 }">¥{{ formatMoney(record.amount) }}</span>
+        <span :class="{ negative: Number(record.amount) < 0 }">{{ symMoney(record.amount) }}</span>
       </template>
-      <template v-else-if="column.key === 'tax'">¥{{ formatMoney(record.taxAmount) }}</template>
+      <template v-else-if="column.key === 'tax'">{{ symMoney(record.taxAmount) }}</template>
     </template>
     <template #summary>
       <a-table-summary-row>
         <a-table-summary-cell :col-span="3">{{ $t('fin.statementLines.totalCount', { n: lines.length }) }}</a-table-summary-cell>
-        <a-table-summary-cell align="right"><b>¥{{ formatMoney(total) }}</b></a-table-summary-cell>
+        <a-table-summary-cell align="right"><b>{{ symMoney(total) }}</b></a-table-summary-cell>
         <a-table-summary-cell />
       </a-table-summary-row>
     </template>
@@ -25,8 +25,9 @@ import { computed } from 'vue'
 import DictTag from '@/components/DictTag.vue'
 import { formatMoney } from './fin'
 import { t } from '@/locales'
+import { symMoney } from '@/utils/number'
 
-/** 对账单明细（财务与供应商门户共用）：生成时的应付单快照，退货、索赔为负数 */
+/** 对账单明细：生成时的应付单快照，退货、索赔为负数 */
 const props = defineProps({
   lines: { type: Array, default: () => [] }
 })

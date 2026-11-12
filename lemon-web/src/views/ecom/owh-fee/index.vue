@@ -67,7 +67,7 @@
             <div v-if="record.materialName" class="sub-text">{{ record.materialName }}</div>
           </template>
           <template v-else-if="column.key === 'amount'">{{ money(record.amount) }} <span class="sub-text">{{ record.currency }}</span></template>
-          <template v-else-if="column.key === 'amountBase'">{{ record.amountBase != null ? `¥${money(record.amountBase)}` : '-' }}</template>
+          <template v-else-if="column.key === 'amountBase'">{{ record.amountBase != null ? `${symMoney(record.amountBase)}` : '-' }}</template>
           <template v-else-if="column.key === 'status'">
             <DictTag type="ecom_owh_fee_status" :value="record.status" />
           </template>
@@ -99,7 +99,7 @@
           <template v-else-if="column.key === 'itemType'">
             <DictTag type="ecom_settlement_item_type" :value="record.itemType" />
           </template>
-          <template v-else-if="column.key === 'amountBase'">¥{{ money(record.amountBase) }}</template>
+          <template v-else-if="column.key === 'amountBase'">{{ symMoney(record.amountBase) }}</template>
         </template>
       </a-table>
     </a-modal>
@@ -124,7 +124,7 @@ import { useColumns } from '@/composables/useColumns'
 import { useDict } from '@/composables/useDict'
 import { useTable } from '@/composables/useTable'
 import { toOptions } from '@/utils/dict'
-import { money } from '@/utils/number'
+import { money, symMoney } from '@/utils/number'
 import { showSyncResults } from '../owh-outbound/owh'
 
 /**
@@ -165,8 +165,8 @@ async function loadSummary() {
   summary.value = (await owhFeeSummary({ accountId: p.accountId, beginDate: p.beginDate, endDate: p.endDate })) || {}
 }
 const stats = computed(() => [
-  { key: 'total', label: t('ecomOwh.fee.total'), value: `¥${money(summary.value.total)}` },
-  ...(dict.ecom_owh_fee_type || []).map((d) => ({ key: d.value, label: d.label, value: `¥${money(summary.value.byType?.[d.value])}` }))
+  { key: 'total', label: t('ecomOwh.fee.total'), value: `${symMoney(summary.value.total)}` },
+  ...(dict.ecom_owh_fee_type || []).map((d) => ({ key: d.value, label: d.label, value: `${symMoney(summary.value.byType?.[d.value])}` }))
 ])
 function reload() {
   load()

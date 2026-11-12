@@ -12,6 +12,7 @@
             <a v-if="form.platformUrl" :href="form.platformUrl" target="_blank" rel="noopener" class="sub-text">{{ form.platformItemId || $t('ecomPublish.list.open') }}</a>
             <span v-else-if="form.platformItemId" class="sub-text">{{ form.platformItemId }}</span>
             <span class="spacer" />
+            <ListingAiButton v-if="!readonly && form.id" :item-id="form.id" :form="form" :words="bannedWords" @apply="applyAi" />
             <a-button size="small" class="pub-master-btn" @click="emit('open-draft', form.draftId)">{{ $t('ecomPublish.item.masterContent') }}</a-button>
           </div>
           <a-anchor direction="horizontal" :items="anchorItems" :get-container="getContainer" :target-offset="104" class="pub-anchor" @click="(e) => e.preventDefault()" />
@@ -21,16 +22,17 @@
           <a-alert v-if="readonly" type="info" show-icon class="block" :message="$t('ecomPublish.item.readonlyTip')" />
           <a-alert v-if="caps?.note" type="info" show-icon class="block" :message="caps.note" />
           <a-alert v-if="form.errorMessage" type="error" show-icon class="block" :message="$t('ecomPublish.item.lastError')" :description="form.errorMessage" />
+          <CompliancePanel v-if="!readonly && form.id" :result="compliance" :texts="form" :words="bannedWords" :loaded="bannedLoaded" :default-expanded="false" />
 
           <section id="pub-sec-basic" class="pub-sec">
             <h3 class="sec-title">{{ $t('ecomPublish.item.secBasic') }}</h3>
-            <a-form-item :label="$t('ecomPublish.item.title')" name="title">
+            <a-form-item :label="$t('ecomPublish.item.title')" name="title" :validate-status="fieldStatus('title')" :help="fieldHelp('title')">
               <a-input v-model:value="form.title" :maxlength="255" show-count />
             </a-form-item>
             <a-form-item :label="$t('ecomPublish.item.bullets')">
               <div v-for="(b, i) in form.bullets" :key="i" class="bullet-row">
                 <span class="bullet-no">{{ i + 1 }}</span>
-                <a-input v-model:value="form.bullets[i]" :maxlength="500" />
+                <a-input v-model:value="form.bullets[i]" :maxlength="500" :status="fieldStatus(`bullets.${i}`)" />
                 <a-button v-if="!readonly" type="text" danger @click="form.bullets.splice(i, 1)"><template #icon><DeleteOutlined /></template></a-button>
               </div>
               <a-button v-if="!readonly && form.bullets.length < 10" type="dashed" size="small" @click="form.bullets.push('')">
@@ -95,7 +97,7 @@
 
           <section id="pub-sec-desc" class="pub-sec">
             <h3 class="sec-title">{{ $t('ecomPublish.item.description') }}</h3>
-            <a-form-item name="description">
+            <a-form-item name="description" :validate-status="fieldStatus('description')" :help="fieldHelp('description')">
               <a-textarea v-model:value="form.description" :maxlength="20000" show-count :auto-size="{ minRows: 6, maxRows: 18 }" />
             </a-form-item>
           </section>
@@ -173,6 +175,9 @@ import CategoryPicker from './CategoryPicker.vue'
 import ImagesEditor from './ImagesEditor.vue'
 import KeyValueEditor from './KeyValueEditor.vue'
 import StoreRail from './StoreRail.vue'
+import CompliancePanel from '@/components/ecom/assistant/CompliancePanel.vue'
+import ListingAiButton from '@/components/ecom/assistant/ListingAiButton.vue'
+import { useListingCompliance } from '@/components/ecom/assistant/useListingCompliance'
 import VariantsSection from './VariantsSection.vue'
 import { EDITABLE, attrsText, itemPayload } from './publish'
 
@@ -248,6 +253,10 @@ const drawer = useFormDrawer({
   onSuccess: () => emit('success')
 })
 const { formRef, form } = drawer
+// 违禁词实时检查（AI 运营助手）：高亮字段、发布前拦截 / 确认
+const { words: bannedWords, loaded: bannedLoaded, result: compliance, fieldStatus, fieldHelp, beforePublish } = useListingCompliance(form)
+/** AI 写 Listing 的结果填入表单（只含选择应用的部分） */
+const applyAi = (v) => Object.assign(form.value, v)
 const title = computed(() =>
   form.value.storeName ? `${draftInfo.value?.materialName || form.value.materialName || ''} · ${t(readonly.value ? 'ecomPublish.item.viewTitle' : 'ecomPublish.item.editTitle')}` : ''
 )
@@ -295,6 +304,7 @@ async function save(publish) {
   } catch {
     return
   }
+  if (publish && !(await beforePublish())) return
   saving.value = true
   try {
     const id = form.value.id

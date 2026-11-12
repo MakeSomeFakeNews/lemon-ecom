@@ -49,11 +49,6 @@ public final class CostSource {
     private final Map<Long, Map<TradeKind, QtyAmount>> trade = new HashMap<>();
     /** 采购订单关闭的尾差调整（不含税、本位币），计入采购金额，不影响数量 */
     private final Map<Long, BigDecimal> purchaseAdjust = new HashMap<>();
-    /** 物料 → 项目领料数量（扣除退回）、委外发料数量，计入合同履约成本、委托加工物资 */
-    private final Map<Long, BigDecimal> projectOut = new HashMap<>();
-    private final Map<Long, BigDecimal> outsourceOut = new HashMap<>();
-    /** 服务领用的备件（售后），计入销售费用 */
-    private final Map<Long, BigDecimal> serviceOut = new HashMap<>();
     /** 物料 → 入库类别 / 出库类别 → 数量：其他出入库按类别取对方科目 */
     private final Map<Long, Map<String, BigDecimal>> categoryIn = new HashMap<>();
     private final Map<Long, Map<String, BigDecimal>> categoryOut = new HashMap<>();
@@ -96,7 +91,7 @@ public final class CostSource {
         refCosts.put(materialId, refCost);
     }
 
-    /** 本期库存流水：合计入库、出库，并按业务类型归入销售、组装拆卸、项目领料、委外发料、售后备件 */
+    /** 本期库存流水：合计入库、出库，并按业务类型归入销售、组装拆卸 */
     public void addMovement(StockMovement row) {
         Long m = row.materialId();
         StockSums v = stock.getOrDefault(m, StockSums.ZERO);
@@ -110,13 +105,6 @@ public final class CostSource {
         } else if (row.is(StockInType.ASSEMBLY)) {
             assemblyIn.merge(m, row.inQty(), BigDecimal::add);
             assemblyOut.merge(m, row.outQty(), BigDecimal::add);
-        } else if (row.is(StockOutType.PROJECT)) {
-            projectOut.merge(m, row.outQty().subtract(row.inQty()), BigDecimal::add);
-        } else if (row.is(StockOutType.OUTSOURCE, StockInType.OUTSOURCE_RETURN)) {
-            // 委外发料计入委托加工物资，加工商退回（委外收回）冲减
-            outsourceOut.merge(m, row.outQty().subtract(row.inQty()), BigDecimal::add);
-        } else if (row.is(StockOutType.SERVICE)) {
-            serviceOut.merge(m, row.outQty().subtract(row.inQty()), BigDecimal::add);
         }
         stock.put(m, new StockSums(v.inQty().add(row.inQty()), v.outQty().add(row.outQty()), salesOut, salesReturn));
     }

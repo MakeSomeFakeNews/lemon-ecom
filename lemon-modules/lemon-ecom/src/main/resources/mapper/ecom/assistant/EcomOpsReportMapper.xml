@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.assistant.mapper.EcomOpsReportMapper">
+
+    <!-- 店铺全部可见：子查询中的 ecom_ops_report_store 由店铺数据权限自动加上可见店铺条件 -->
+    <sql id="visible">
+        r.store_count = (SELECT COUNT(*) FROM ecom_ops_report_store rs WHERE rs.report_id = r.id)
+    </sql>
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.assistant.entity.EcomOpsReport">
+        SELECT r.id, r.report_date, r.scope_key, r.scope_name, r.store_count, r.source, r.orders, r.sales, r.profit, r.sales_change,
+               r.profit_change, r.abnormal_count, r.bad_review_count, r.stock_risk_count, r.ad_alert_count, r.todo_count, r.summary,
+               r.ai_status, r.ai_sample, r.push_count, r.pushed_time, r.create_by, u.nickname AS create_by_name, r.create_time, r.update_time
+        FROM ecom_ops_report r
+        LEFT JOIN sys_user u ON u.id = r.create_by
+        WHERE <include refid="visible"/>
+        <if test="begin != null">AND r.report_date &gt;= #{begin}</if>
+        <if test="end != null">AND r.report_date &lt;= #{end}</if>
+        <if test="storeId != null">AND EXISTS (SELECT 1 FROM ecom_ops_report_store x WHERE x.report_id = r.id AND x.store_id = #{storeId})</if>
+        ORDER BY r.report_date DESC, r.id DESC
+    </select>
+
+    <select id="selectVisible" resultType="com.lemon.erp.modules.ecom.assistant.entity.EcomOpsReport">
+        SELECT r.*, u.nickname AS create_by_name
+        FROM ecom_ops_report r
+        LEFT JOIN sys_user u ON u.id = r.create_by
+        WHERE r.id = #{id} AND <include refid="visible"/>
+    </select>
+</mapper>

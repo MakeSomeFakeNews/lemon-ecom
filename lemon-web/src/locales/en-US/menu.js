@@ -662,4 +662,25 @@ export default {
   5264: 'Cancel Transfer', // 取消调拨单
   527: 'Receiving Differences', // 收货差异
   5270: 'Handle Differences', // 处理差异
+  // AI 运营助手（运营管理 23 下的「智能运营」分组 985）
+  985: 'AI Operations', // 智能运营
+  580: 'Daily Ops Report', // 运营日报
+  581: 'Banned Words', // 违禁词库
+  5800: 'Generate Report', // 生成日报
+  5801: 'Delete Report', // 删除日报
+  5802: 'Subscriptions', // 订阅设置
+  5810: 'Add Banned Word', // 新增违禁词
+  5811: 'Edit Banned Word', // 修改违禁词
+  5812: 'Delete Banned Word', // 删除违禁词
+  5820: 'AI Listing Writer', // AI 写 Listing（刊登中心 500 下的按钮）
+
+  // 自动化规则中心（auto 线）；985 为运营管理下的「智能运营」分组，与 AI 运营助手线共用（谁先合并谁写入，不要重复）
+  590: 'Automation Rules', // 自动化规则
+  591: 'Execution Log', // 执行日志
+  592: 'To-do Reminders', // 待办提醒
+  5900: 'Add Rule', // 新增规则
+  5901: 'Edit Rule', // 修改规则
+  5902: 'Delete Rule', // 删除规则
+  5903: 'Test Run', // 试运行
+  5910: 'Retry', // 重试
 }

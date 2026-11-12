@@ -281,6 +281,12 @@ export default {
     picker: '拣货人'
   },
   rule: {
+    sectionBasic: '基本信息',
+    groupScope: '订单范围',
+    groupProduct: '商品',
+    groupValue: '金额与重量',
+    groupAssign: '仓库与物流',
+    groupAudit: '审核与标记',
     title: '订单规则',
     add: '新增规则',
     edit: '修改规则',
@@ -424,7 +430,7 @@ export default {
     totalCost: '费用合计',
     totalQty: '合计数量',
     unitLanded: '单件头程成本',
-    unitLandedHint: '（头程运费 + 关税 + 其他费用）÷ 合计数量，签收后计入平台仓库存成本',
+    unitLandedHint: '（头程运费 + 关税 + 其他费用）÷ 合计数量（各物料平均分摊，按件计）。发运时计算，补录费用后重新计算；不计入库存成本（调拨按调出成本入库），平台配送订单出库时按该店铺各物料最近一次货件的单件头程成本 × 数量计入订单头程成本',
     transferDoc: '调拨单',
     items: '货件明细',
     noItems: '请添加明细行',

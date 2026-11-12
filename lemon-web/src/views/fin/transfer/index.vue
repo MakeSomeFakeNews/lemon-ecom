@@ -30,9 +30,9 @@
             <ArrowRightOutlined class="arrow" />
             <span>{{ record.toAccountName }}</span>
           </template>
-          <template v-else-if="column.key === 'amount'">¥{{ formatMoney(record.amount) }}</template>
+          <template v-else-if="column.key === 'amount'">{{ symMoney(record.amount) }}</template>
           <template v-else-if="column.key === 'fee'">
-            <span v-if="Number(record.fee)">¥{{ formatMoney(record.fee) }}</span>
+            <span v-if="Number(record.fee)">{{ symMoney(record.fee) }}</span>
             <span v-else class="sub-text">-</span>
           </template>
           <template v-else-if="column.key === 'feeBearer'">
@@ -110,8 +110,8 @@
         <a-descriptions-item :label="$t('fin.transfer.date')">{{ viewing.transferDate }}</a-descriptions-item>
         <a-descriptions-item :label="$t('fin.transfer.from')">{{ viewing.fromAccountName }}</a-descriptions-item>
         <a-descriptions-item :label="$t('fin.transfer.to')">{{ viewing.toAccountName }}</a-descriptions-item>
-        <a-descriptions-item :label="$t('common.field.amount')"><b>¥{{ formatMoney(viewing.amount) }}</b></a-descriptions-item>
-        <a-descriptions-item :label="$t('fin.transfer.fee')">¥{{ formatMoney(viewing.fee) }}</a-descriptions-item>
+        <a-descriptions-item :label="$t('common.field.amount')"><b>{{ symMoney(viewing.amount) }}</b></a-descriptions-item>
+        <a-descriptions-item :label="$t('fin.transfer.fee')">{{ symMoney(viewing.fee) }}</a-descriptions-item>
         <a-descriptions-item :label="$t('fin.transfer.feeBearer')">
           <template v-if="Number(viewing.fee)">
             <DictTag type="fin_fee_bearer" :value="viewing.feeBearer" />
@@ -157,6 +157,7 @@ import { useFormDrawer } from '@/composables/useFormDrawer'
 import { useTable } from '@/composables/useTable'
 import { useAction } from '@/composables/useAction'
 import { useRouteOpen } from '@/composables/useRouteOpen'
+import { symMoney } from '@/utils/number'
 
 /** 账户调拨：银行账户之间、银行与现金之间转账；手续费由所选的支付账户支出（出纳日记账中单独一笔），计入财务费用 */
 const { t } = useI18n()

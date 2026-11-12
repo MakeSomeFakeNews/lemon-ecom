@@ -402,7 +402,7 @@ export default {
     qtyGte: '数量 ≥',
     addTier: '添加阶梯',
     tierTip: '采购数量达到阶梯数量时按阶梯单价，最多 10 档',
-    setDefault: '设为该物料的默认供应商（MRP 按默认供应商生成采购订单）',
+    setDefault: '设为该物料的默认供应商（补货建议按默认供应商生成采购订单）',
     thisSupplier: '本供应商',
     allSuppliers: '全部供应商',
     noHistory: '没有采购入库记录',
@@ -419,8 +419,8 @@ export default {
     supplierTitle: '合并供应商资料',
     tip: '把重复的资料合并到保留的资料下，合并后不能撤销',
     ruleKeep: '保留资料的名称、信用额度、账期、价格等级、负责人等属性不变；被合并的资料停用并标记「已合并」，可在其「资料 → 变更记录」中追溯，之后没有引用时可删除',
-    ruleDocs: '订单、出入库单、草稿、应收应付、收付款、预收预付、冲账单、发票、凭证辅助核算、CRM、项目、附件等全部改为保留的资料，单据金额、币种、核销关系不变',
-    rulePriceCustomer: '同一物料的客户执行价以保留客户为准，价格记忆合为一行（最新价取日期最近的、最低 / 最高价取各自的最低 / 最高）；CRM 经营信息以保留客户为准',
+    ruleDocs: '订单、出入库单、草稿、应收应付、收付款、预收预付、冲账单、发票、凭证辅助核算、附件等全部改为保留的资料，单据金额、币种、核销关系不变',
+    rulePriceCustomer: '同一物料的客户执行价以保留客户为准，价格记忆合为一行（最新价取日期最近的、最低 / 最高价取各自的最低 / 最高）',
     rulePriceSupplier: '同一物料的供货价格以保留供应商为准（被合并的是默认供应商时保留的设为默认），价格记忆合为一行',
     ruleLink: '合并后只能有一个关联单位（供应商的关联客户）；涉及的资料关联了不同单位时不能合并',
     sources: '被合并的资料',
@@ -445,6 +445,11 @@ export default {
     mergedTo: '已合并到 {name}'
   },
   supplier: {
+    sectionBasic: '基本信息',
+    sectionContact: '联系方式',
+    sectionFinance: '结算与开票',
+    sectionBusiness: '业务设置',
+    sectionOther: '其他',
     linkedCustomer: '关联客户',
     linkedCustomerExtra: '同一单位既是供应商又是客户时选择（一个客户只能关联一个供应商）：查询应收时可「挂接应付」，并可做应收应付对冲',
     linkedCustomerOf: '关联客户 {name}',
@@ -488,6 +493,11 @@ export default {
     nameRequired: '请输入供应商名称'
   },
   customer: {
+    sectionBasic: '基本信息',
+    sectionSales: '销售设置',
+    sectionFinance: '结算与信用',
+    sectionContact: '联系方式',
+    sectionOther: '其他',
     linkedSupplierOf: '关联供应商 {name}',
     codeOrName: '编码或名称',
     level: '等级',

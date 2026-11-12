@@ -29,10 +29,10 @@
         :columns="columns"
         @refresh="load"
       >
-        <a-button v-perm="'scm:customer:add'" type="primary" @click="drawer.openCreate()">
+        <a-button v-perm="'scm:customer:add'" type="primary" @click="formRef.openCreate()">
           <template #icon><PlusOutlined /></template>{{ $t('scm.customer.add') }}
         </a-button>
-        <AiExtractButton target="scm.customer" perm="scm:customer:add" :title="$t('scm.customer.customer')" @result="ai.apply" />
+        <AiExtractButton target="scm.customer" perm="scm:customer:add" :title="$t('scm.customer.customer')" @result="(r) => formRef.applyAi(r)" />
         <a-button v-perm="'scm:customer:add'" @click="importOpen = true">
           <template #icon><ImportOutlined /></template>{{ $t('common.action.import') }}
         </a-button>
@@ -84,7 +84,7 @@
             <div>{{ record.contact || '-' }}</div>
             <div v-if="record.phone" class="sub-text">{{ record.phone }}</div>
           </template>
-          <template v-else-if="column.key === 'creditLimit'">{{ record.creditLimit != null ? '¥' + formatMoney(record.creditLimit) : $t('scm.customer.unlimited') }}</template>
+          <template v-else-if="column.key === 'creditLimit'">{{ record.creditLimit != null ? symMoney(record.creditLimit) : $t('scm.customer.unlimited') }}</template>
           <template v-else-if="column.key === 'paymentDays'">{{ record.paymentDays ? $t('scm.customer.days', { n: record.paymentDays }) : $t('scm.customer.cash') }}</template>
           <template v-else-if="column.key === 'status'">
             <StatusSwitch
@@ -103,93 +103,7 @@
       </a-table>
     </a-card>
 
-    <FormDrawer :drawer="drawer" :create-title="$t('scm.customer.add')" :edit-title="$t('scm.customer.edit')">
-      <AiPrefillAlert :ai="ai" />
-      <a-form ref="formRef" :model="form" :rules="rules" layout="vertical">
-        <a-row :gutter="16">
-          <a-col :xs="24" :sm="12">
-            <a-form-item :label="$t('scm.customer.code')" name="code">
-              <a-input v-model:value="form.code" :maxlength="32" :placeholder="$t('scm.customer.codePlaceholder')" />
-            </a-form-item>
-          </a-col>
-          <a-col :xs="24" :sm="12">
-            <a-form-item :label="$t('scm.customer.name')" name="name" :class="ai.cls('name')">
-              <a-input v-model:value="form.name" :maxlength="128" />
-            </a-form-item>
-          </a-col>
-          <a-col :xs="24" :sm="12">
-            <a-form-item :label="$t('scm.customer.level')" name="level">
-              <a-select v-model:value="form.level" allow-clear :options="toOptions(dict.scm_customer_level)" />
-            </a-form-item>
-          </a-col>
-          <a-col :xs="24" :sm="12">
-            <a-form-item :label="$t('pricing.level.priceLevel')" name="priceLevel" :extra="$t('pricing.level.priceLevelExtra')">
-              <a-select v-model:value="form.priceLevel" :options="priceLevelOptions" />
-            </a-form-item>
-          </a-col>
-          <a-col :xs="24" :sm="12">
-            <a-form-item :label="$t('scm.customer.salesChannel')" name="channel" :extra="$t('scm.customer.channelTip')">
-              <a-radio-group v-model:value="form.channel">
-                <a-radio v-for="o in dict.scm_channel" :key="o.value" :value="o.value">{{ o.label }}</a-radio>
-              </a-radio-group>
-            </a-form-item>
-          </a-col>
-          <a-col :xs="24" :sm="12">
-            <a-form-item :label="$t('scm.customer.owner')" name="ownerId" :extra="$t('scm.customer.ownerTip')">
-              <IdentityUserSelect v-model:value="form.ownerId" :label="form.ownerName" />
-            </a-form-item>
-          </a-col>
-          <a-col :xs="24" :sm="12">
-            <a-form-item :label="$t('scm.customer.region')" name="region" :extra="$t('scm.customer.regionTip')">
-              <a-select
-                v-model:value="form.region"
-                allow-clear
-                show-search
-                option-filter-prop="label"
-                :placeholder="$t('scm.customer.regionPlaceholder')"
-                :options="optionsWithCurrent(dict.scm_region, form.region)"
-              />
-            </a-form-item>
-          </a-col>
-          <a-col :xs="24" :sm="12">
-            <a-form-item :label="$t('scm.customer.paymentDays')" name="paymentDays" :extra="$t('scm.customer.paymentDaysTip')">
-              <a-input-number v-model:value="form.paymentDays" :min="0" :max="365" :addon-after="$t('scm.customer.day')" class="full" />
-            </a-form-item>
-          </a-col>
-          <a-col :xs="24" :sm="12">
-            <a-form-item :label="$t('scm.customer.contact')" name="contact">
-              <a-input v-model:value="form.contact" :maxlength="64" />
-            </a-form-item>
-          </a-col>
-          <a-col :xs="24" :sm="12">
-            <a-form-item :label="$t('scm.customer.phone')" name="phone">
-              <a-input v-model:value="form.phone" :maxlength="32" />
-            </a-form-item>
-          </a-col>
-          <a-col :xs="24" :sm="12">
-            <a-form-item :label="$t('scm.customer.creditLimit')" name="creditLimit" :extra="$t('scm.customer.creditLimitTip')">
-              <a-input-number v-model:value="form.creditLimit" :min="0" :precision="2" prefix="¥" class="full" />
-            </a-form-item>
-          </a-col>
-          <a-col :xs="24" :sm="12">
-            <a-form-item :label="$t('scm.customer.taxNo')" name="taxNo" :class="ai.cls('taxNo')">
-              <a-input v-model:value="form.taxNo" :maxlength="32" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="24">
-            <a-form-item :label="$t('scm.customer.shipAddress')" name="address">
-              <a-input v-model:value="form.address" :maxlength="255" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="24">
-            <a-form-item :label="$t('common.field.remark')" name="remark">
-              <a-textarea v-model:value="form.remark" :rows="2" :maxlength="255" show-count />
-            </a-form-item>
-          </a-col>
-        </a-row>
-        <CustomFieldsForm :fields="cfFields" :values="form.cf || {}" :title="$t('scm.customer.extInfo')" />
-      </a-form>
-    </FormDrawer>
+    <CustomerForm ref="formRef" @saved="load" />
 
     <ImportModal
       v-model:open="importOpen"
@@ -223,45 +137,38 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { DollarOutlined, DownOutlined, ExportOutlined, ImportOutlined, MergeCellsOutlined, PaperClipOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import DictTag from '@/components/DictTag.vue'
-import FormDrawer from '@/components/FormDrawer.vue'
 import ImportModal from '@/components/ImportModal.vue'
 import RecordExtrasModal from '@/components/RecordExtrasModal.vue'
 import SearchForm from '@/components/SearchForm.vue'
 import StatusSwitch from '@/components/StatusSwitch.vue'
 import TableToolbar from '@/components/TableToolbar.vue'
-import IdentityUserSelect from '@/components/common/IdentityUserSelect.vue'
 import PartnerMergeModal from '@/components/scm/PartnerMergeModal.vue'
 import CustomerPriceDrawer from '@/components/scm/CustomerPriceDrawer.vue'
 import { usePriceLevels } from '@/components/wms/priceLevels'
 import { CUSTOMER_PRICE_COLUMNS, exportCustomerPriceRows, priceImportSample } from '@/components/scm/customerPrices'
 import { importCustomerPrices } from '@/api/scm/pricing'
-import { addPartner, changePartnerStatus, deletePartner, getPartner, pagePartner, updatePartner, importPartner } from '@/api/scm/partner'
+import { changePartnerStatus, deletePartner, pagePartner, importPartner } from '@/api/scm/partner'
 import { sumWidth, useColumns } from '@/composables/useColumns'
 import { useDict } from '@/composables/useDict'
-import { useFormDrawer } from '@/composables/useFormDrawer'
 import { useTable } from '@/composables/useTable'
 import { useUserStore } from '@/store/user'
-import { optionsWithCurrent, toOptions } from '@/utils/dict'
+import { toOptions } from '@/utils/dict'
 import { formatMoney } from '@/components/scm/scm'
-import CustomFieldsForm from '@/components/common/CustomFieldsForm.vue'
-import { useCustomColumns, useCustomFields } from '@/composables/useCustomFields'
+import { useCustomColumns } from '@/composables/useCustomFields'
 import { useAction } from '@/composables/useAction'
 import AiExtractButton from '@/components/ai/AiExtractButton.vue'
-import AiPrefillAlert from '@/components/ai/AiPrefillAlert.vue'
-import { useAiPrefill } from '@/composables/useAiPrefill'
 
-import { STATUS_ENABLED } from '@/utils/constants'
 import TableActions from '@/components/common/TableActions.vue'
 import { actionColumn } from '@/components/common/tableActions'
+import CustomerForm from './CustomerForm.vue'
+import { symMoney } from '@/utils/number'
+
 const { t } = useI18n()
 const userStore = useUserStore()
 const dict = useDict('sys_common_status', 'scm_customer_level', 'scm_channel', 'scm_region')
 
-// 价格等级（启用的价格列；当前值所在的列已停用时仍列出）与客户执行价
-const { levels, levelName } = usePriceLevels()
-const priceLevelOptions = computed(() =>
-  levels.value.filter((l) => l.status === STATUS_ENABLED || l.level === (form.value.priceLevel ?? 0)).map((l) => ({ value: l.level, label: l.name }))
-)
+// 价格等级名称（列表列）与客户执行价
+const { levelName } = usePriceLevels()
 const customerPriceRef = ref()
 // 执行价批量导入导出（全部客户，含客户编码列）
 const priceImportOpen = ref(false)
@@ -313,8 +220,6 @@ const showSearch = ref(true)
 const query = reactive({ keyword: undefined, level: undefined, status: undefined, channel: undefined, region: undefined })
 const { list, loading, size, pagination, load, search, onTableChange, exportAll } = useTable((p) => pagePartner('customer', p), query)
 // 自定义字段：表单中填写，勾选「列表显示」的作为列
-const cf = useCustomFields('scm_customer')
-const cfFields = cf.fields
 const { columns: cfColumns, cell: cfCell } = useCustomColumns('scm_customer', list)
 const tableColumns = computed(() => {
   const cols = visibleColumns.value
@@ -329,28 +234,8 @@ function resetQuery() {
 
 onMounted(load)
 
-const rules = {
-  code: [
-    { required: true, message: t('scm.customer.codeRequired') },
-    { pattern: /^[A-Za-z0-9_-]{1,32}$/, message: t('scm.customer.codePattern') }
-  ],
-  name: [{ required: true, whitespace: true, message: t('scm.customer.nameRequired') }]
-}
-const FIELDS = ['code', 'name', 'level', 'priceLevel', 'contact', 'phone', 'address', 'taxNo', 'creditLimit', 'paymentDays', 'remark', 'channel', 'region',
-  'ownerId']
-const drawer = useFormDrawer(
-  cf.wrap({
-    emptyForm: () => ({ id: undefined, ...Object.fromEntries(FIELDS.map((f) => [f, undefined])), paymentDays: 30, channel: 'DIRECT', priceLevel: 0 }),
-    fetch: async (record) => ({ ...(await getPartner('customer', record.id)), ownerName: record.ownerName }),
-    create: (data) => addPartner('customer', data),
-    update: (id, data) => updatePartner('customer', id, data),
-    toPayload: (f) => Object.fromEntries(FIELDS.map((k) => [k, f[k] === '' || f[k] === undefined ? null : f[k]])),
-    onSuccess: load
-  })
-)
-const { formRef, form } = drawer
-// 智能录入：名片、营业执照等识别结果打开新增表单并预填
-const ai = useAiPrefill('customer', (data) => drawer.openCreate(data), () => drawer.open.value)
+// 新增 / 编辑（子页）
+const formRef = ref()
 
 const remove = useAction((id) => deletePartner('customer', id), { successKey: 'common.msg.deleteSuccess', reload: () => load() })
 // 资料合并（issue #95）
@@ -358,7 +243,7 @@ const mergeRef = ref()
 
 /** 行操作：编辑、客户价格、删除直接显示，资料、合并在「更多」中 */
 const rowActions = (record) => [
-  { type: 'edit', perm: 'scm:customer:edit', onClick: () => drawer.openEdit(record) },
+  { type: 'edit', perm: 'scm:customer:edit', onClick: () => formRef.value.openEdit(record) },
   { key: 'price', label: t('pricing.customerPrice.open'), icon: DollarOutlined, onClick: () => customerPriceRef.value.open(record) },
   { type: 'delete', perm: 'scm:customer:remove', confirm: t('scm.customer.confirmDelete', { name: record.name }), onClick: () => remove(record.id) },
   { key: 'extras', label: t('scm.customer.extras'), icon: PaperClipOutlined, more: true, onClick: () => openExtras(record) },
@@ -373,8 +258,5 @@ const rowActions = (record) => [
 .sub-text {
   color: var(--app-text-3);
   font-size: 12px;
-}
-.full {
-  width: 100%;
 }
 </style>

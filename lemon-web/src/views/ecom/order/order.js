@@ -3,7 +3,7 @@ import { Modal, message } from 'ant-design-vue'
 import dayjs from 'dayjs'
 import { t } from '@/locales'
 import { EcomLocalStatus, FulfillmentType } from '@/constants/enums'
-import { money } from '@/utils/number'
+import { money, symMoney } from '@/utils/number'
 
 /** 平台订单按处理状态可做的操作（与后端 EcomOrderService / EcomOrderOpsService 的校验一致） */
 
@@ -92,4 +92,4 @@ export const ORDER_RESULT_KEYS = { done: 'ecomOrder.ops.done', partial: 'ecomOrd
 /** 原币金额：币种 + 千分位金额，如 USD 12.50 */
 export const fcMoney = (currency, n) => `${currency || ''} ${money(n)}`.trim()
 /** 本位币金额 */
-export const baseMoney = (n) => `¥${money(n)}`
+export const baseMoney = (n) => `${symMoney(n)}`

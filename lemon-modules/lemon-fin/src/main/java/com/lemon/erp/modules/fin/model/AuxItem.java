@@ -13,7 +13,6 @@ public enum AuxItem {
     DEPT,
     CUSTOMER,
     SUPPLIER,
-    PROJECT,
     MATERIAL;
 
     /** 名称的消息键 */

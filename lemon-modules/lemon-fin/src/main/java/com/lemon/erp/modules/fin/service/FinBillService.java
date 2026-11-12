@@ -23,19 +23,13 @@ import com.lemon.erp.modules.fin.model.VoucherLine;
 import com.lemon.erp.modules.fin.model.VoucherSource;
 import com.lemon.erp.modules.fin.model.VoucherStatus;
 import com.lemon.erp.modules.scm.event.OrderCloseAdjustedEvent;
-import com.lemon.erp.modules.scm.event.RebateSettledEvent;
-import com.lemon.erp.modules.scm.event.RebateUnsettledEvent;
-import com.lemon.erp.modules.scm.model.RebateKind;
-import com.lemon.erp.modules.scm.model.ScmConstants;
 import com.lemon.erp.modules.scm.event.PurchaseFreightEvent;
 import com.lemon.erp.modules.scm.event.TradeDocConfirmedEvent;
 import com.lemon.erp.modules.scm.model.OrderKind;
 import com.lemon.erp.modules.scm.model.TradeKind;
 import com.lemon.erp.modules.scm.service.ScmCustomerService;
 import com.lemon.erp.modules.scm.service.ScmQueryService;
-import com.lemon.erp.modules.scm.service.ScmRebateService;
 import com.lemon.erp.modules.scm.service.ScmSupplierService;
-import com.lemon.erp.modules.scm.service.ScmTaxRates;
 import com.lemon.erp.modules.scm.service.ScmTradeDocService;
 import com.lemon.erp.modules.wms.service.DocNoService;
 import lombok.RequiredArgsConstructor;
@@ -72,8 +66,6 @@ public class FinBillService {
     private final ScmSupplierService supplierService;
     private final DocNoService docNoService;
     private final FinBizPeriodGuard periodGuard;
-    private final ScmRebateService rebateService;
-    private final ScmTaxRates taxRates;
     private final ScmQueryService scmQueryService;
     private final ScmTradeDocService tradeDocService;
     private final PermissionService permissionService;
@@ -224,6 +216,38 @@ public class FinBillService {
         deleteSourceBill(id);
     }
 
+    /** 某个来源生成的单据（如电商平台结算生成的平台费用红字应收），按 ID */
+    public List<FinBill> listBySource(BillSource sourceType, Long sourceId) {
+        return billMapper.selectList(Wrappers.<FinBill>lambdaQuery().eq(FinBill::getSourceType, sourceType).eq(FinBill::getSourceId, sourceId)
+                .orderByAsc(FinBill::getId));
+    }
+
+    /**
+     * 来源单据撤销时删除它生成的单据（连同未审核的凭证）；已核销、凭证已审核 / 记账或所在期间已结账的保留不删
+     *
+     * @return 是否已删除
+     */
+    @Transactional
+    public boolean deleteGeneratedIfUnused(Long id) {
+        FinBill bill = billMapper.selectById(id);
+        if (bill == null) {
+            return true;
+        }
+        if (bill.getSettledAmount().signum() != 0 || periodGuard.isClosed(bill.getBillDate())
+                || settlementItemMapper.exists(Wrappers.<FinSettlementItem>lambdaQuery().eq(FinSettlementItem::getBillId, id))) {
+            return false;
+        }
+        if (bill.getVoucherId() != null) {
+            VoucherStatus vs = voucherService.statusOf(bill.getVoucherId());
+            if (vs != null && vs != VoucherStatus.DRAFT) {
+                return false;
+            }
+            voucherService.deleteOwned(bill.getVoucherId());
+        }
+        billMapper.deleteById(id);
+        return true;
+    }
+
     /** 只能删除手工录入、未核销、未生成凭证的单据 */
     @Transactional
     public void delete(List<Long> ids) {
@@ -273,24 +297,6 @@ public class FinBillService {
         return bill;
     }
 
-    /**
-     * 返利结算（红字单据方式）：销售返利生成红字应收单冲减应收，采购返利生成红字应付单冲减应付；税额按默认税率（供应链业务参数，默认 13%）价内计算，与结算同一事务
-     */
-    @EventListener
-    public void onRebateSettled(RebateSettledEvent e) {
-        BigDecimal tax = ScmConstants.tax(e.amount(), taxRates.defaultRate());
-        boolean purchase = e.kind() == RebateKind.PURCHASE;
-        FinBill bill = createFromSource(purchase ? BillKind.AP : BillKind.AR, e.partnerId(), BillSource.REBATE, e.rebateId(), e.rebateNo(),
-                e.settleDate(), e.amount().negate(), tax.negate(), (purchase ? "采购返利 " : "销售返利 ") + e.rebateNo(), null); // i18n-ignore
-        rebateService.bindBill(e.rebateId(), bill.getId());
-    }
-
-    /** 撤销返利结算：删除红字应收单（已核销、已生成凭证时抛异常，撤销回滚） */
-    @EventListener
-    public void onRebateUnsettled(RebateUnsettledEvent e) {
-        deleteSourceBill(e.billId());
-    }
-
     /** 出入库确认后生成应收 / 应付单，与出入库在同一事务 */
     @EventListener
     public void onTradeDocConfirmed(TradeDocConfirmedEvent e) {
@@ -325,6 +331,16 @@ public class FinBillService {
         }
         bill.setRemark("订单 " + e.orderNo() + " 关闭尾差调整"); // i18n-ignore
         billMapper.insert(bill);
+    }
+
+    /**
+     * 日期范围内还没有生成凭证的业务单据 ID（不含手工录入的期初单据和金额为 0 的），按日期先后，供批量生成凭证（如演示数据）
+     */
+    public List<Long> unvoucheredIds(LocalDate begin, LocalDate end) {
+        return billMapper.selectList(Wrappers.<FinBill>lambdaQuery().select(FinBill::getId).between(FinBill::getBillDate, begin, end)
+                        .isNull(FinBill::getVoucherId).ne(FinBill::getSourceType, BillSource.MANUAL).ne(FinBill::getAmount, BigDecimal.ZERO)
+                        .orderByAsc(FinBill::getBillDate).orderByAsc(FinBill::getId))
+                .stream().map(FinBill::getId).toList();
     }
 
     /**
@@ -409,18 +425,38 @@ public class FinBillService {
         return bill;
     }
 
+    /**
+     * 电商平台费用确认：平台结算确认时按费用科目生成红字应收（来源 PLATFORM_FEE，到期日 = 单据日期 = 结算周期结束日），
+     * 凭证 借 费用科目 / 贷 应收账款；随后的收款单用它冲抵应收，只按结算净额收款
+     *
+     * @param amount    费用金额（本位币，正数），单据金额为其负数
+     * @param accountId 费用科目（凭证科目设置中「电商平台费用」按结算明细类型取的科目）
+     */
+    @Transactional
+    public FinBill createPlatformFeeBill(Long customerId, Long sourceId, String sourceNo, LocalDate date, BigDecimal amount, Long accountId,
+                                         String remark) {
+        periodGuard.checkOpen(date, "fin.label.receivable");
+        FinBill bill = newBill(BillKind.AR, customerId, BillSource.PLATFORM_FEE, sourceId, sourceNo, date, date, amount.negate(), BigDecimal.ZERO);
+        bill.setExpenseAccountId(accountId);
+        bill.setRemark(remark);
+        billMapper.insert(bill);
+        return bill;
+    }
+
     // ---------------------------------------------------------------- 内部
 
     /** 凭证分录：退货单据金额为负数，VoucherLine 自动记到相反方向 */
     private List<VoucherLine> lines(FinBill bill) {
         String partner = partnerName(bill.getKind(), bill.getPartnerId());
         List<VoucherLine> lines = new ArrayList<>();
-        if (bill.getSourceType() == BillSource.OFFSET) {
+        if (bill.getSourceType() == BillSource.OFFSET || bill.getSourceType() == BillSource.PLATFORM_FEE) {
             // 冲账单（红字）：应收冲账 借 费用类科目 / 贷 应收账款；应付冲账 借 应付账款 / 贷 收入或冲减成本类科目
-            String summary = "冲账 " + bill.getSourceNo() + " " + partner; // i18n-ignore
+            // 电商平台费用（红字应收）：借 平台费用科目 / 贷 应收账款
+            String summary = (bill.getSourceType() == BillSource.PLATFORM_FEE ? "平台费用 " : "冲账 ") + bill.getSourceNo() + " " + partner; // i18n-ignore
             BigDecimal amount = bill.getAmount().negate();
             boolean ar = bill.getKind() == BillKind.AR;
             Long account = bill.getExpenseAccountId() != null ? bill.getExpenseAccountId()
+                    : bill.getSourceType() == BillSource.PLATFORM_FEE ? accountRules.accountId(AccountRole.PLATFORM_FEE)
                     : accountRules.accountId(ar ? AccountRole.OFFSET_AR : AccountRole.OFFSET_AP);
             if (ar) {
                 lines.add(VoucherLine.debit(summary, account, null, amount));
@@ -446,46 +482,20 @@ public class FinBillService {
                 lines.add(VoucherLine.credit(summary, account, bill.getDeptId(), bill.getAmount()));
                 return lines;
             }
-            if (bill.getSourceType() == BillSource.SHIPMENT) {
-                // 代垫运费（客户承担的发运运费）：借 应收账款 / 贷 代垫运费，与付承运商时的 借 代垫运费 相抵
-                String summary = "代垫运费 " + bill.getSourceNo() + " " + partner; // i18n-ignore
-                lines.add(VoucherLine.debit(summary, accountRules.accountId(AccountRole.RECEIVABLE), null, bill.getAmount())
-                        .withCustomer(bill.getPartnerId()));
-                lines.add(VoucherLine.credit(summary, accountRules.accountId(AccountRole.FREIGHT_ADVANCE), null, bill.getAmount()));
-                return lines;
-            }
-            String summary = (bill.getSourceType() == BillSource.PROJECT ? "项目开票 " : bill.getSourceType() == BillSource.TICKET ? "服务收费 " // i18n-ignore
-                    : bill.getSourceType() == BillSource.REBATE ? "销售返利 " : bill.getSourceType() == BillSource.ORDER_ADJUST ? "订单尾差调整 " // i18n-ignore
+            String summary = (bill.getSourceType() == BillSource.ORDER_ADJUST ? "订单尾差调整 " // i18n-ignore
                     : sign.signum() < 0 ? "销售退货 " : "销售出库 ") // i18n-ignore
                     + bill.getSourceNo() + " " + partner;
             BigDecimal net = bill.getAmount().subtract(bill.getTaxAmount());
-            boolean project = bill.getSourceType() == BillSource.PROJECT;
             lines.add(VoucherLine.debit(summary, accountRules.accountId(AccountRole.RECEIVABLE), null, bill.getAmount())
-                    .withCustomer(bill.getPartnerId()).withProject(bill.getProjectId()));
+                    .withCustomer(bill.getPartnerId()));
             if (isTradeDoc(bill) || bill.getSourceType() == BillSource.ORDER_ADJUST) {
                 // 销售出库 / 退货、订单尾差调整：主营业务收入按物料分类取科目
                 byCategory(bill, net).forEach((category, amount) -> lines.add(
                         VoucherLine.credit(summary, accountRules.accountId(AccountRole.REVENUE, category), null, amount)));
             } else {
-                // 项目开票计入合同负债，按完工百分比确认收入时再转入主营业务收入（项目月结）
-                // 服务工单收费计入其他业务收入
-                AccountRole revenue = project ? AccountRole.CONTRACT_LIABILITY
-                        : bill.getSourceType() == BillSource.TICKET ? AccountRole.OTHER_REVENUE : AccountRole.REVENUE;
-                lines.add(VoucherLine.credit(summary, accountRules.accountId(revenue), null, net)
-                        .withProject(bill.getProjectId()));
+                lines.add(VoucherLine.credit(summary, accountRules.accountId(AccountRole.REVENUE), null, net));
             }
             lines.add(VoucherLine.credit(summary, accountRules.accountId(AccountRole.OUTPUT_VAT), null, bill.getTaxAmount()));
-            return lines;
-        }
-        if (bill.getSourceType() == BillSource.REBATE) {
-            // 采购返利（红字应付单）：借 应付账款 / 贷 采购返利科目（默认冲减主营业务成本）、进项税额（红字，即进项税额转出）
-            String summary = "采购返利 " + bill.getSourceNo() + " " + partner; // i18n-ignore
-            BigDecimal amount = bill.getAmount().negate();
-            BigDecimal tax = bill.getTaxAmount().negate();
-            lines.add(VoucherLine.debit(summary, accountRules.accountId(AccountRole.PAYABLE), null, amount)
-                    .withSupplier(bill.getPartnerId()));
-            lines.add(VoucherLine.credit(summary, accountRules.accountId(AccountRole.PURCHASE_REBATE), null, amount.subtract(tax)));
-            lines.add(VoucherLine.credit(summary, accountRules.accountId(AccountRole.INPUT_VAT), null, tax));
             return lines;
         }
         if (bill.getSourceType() == BillSource.ORDER_ADJUST) {
@@ -519,8 +529,7 @@ public class FinBillService {
             // 费用类应付（运费等）：借 费用科目、进项税额 / 贷 应付账款
             // 销售运费（月结的承运商应付）借 销售运费或代垫运费 / 贷 应付账款；
             // 采购退货运费：给供应商的红字应付 借 应付账款 / 贷 代垫运费，月结的承运商应付 借 代垫运费 / 贷 应付账款
-            String summary = bill.getSourceType() == BillSource.SHIPMENT ? "运费 " + bill.getSourceNo() + " " + partner // i18n-ignore
-                    : bill.getSourceType() == BillSource.PURCHASE_FREIGHT ? "采购运费 " + bill.getSourceNo() + " " + partner // i18n-ignore
+            String summary = bill.getSourceType() == BillSource.PURCHASE_FREIGHT ? "采购运费 " + bill.getSourceNo() + " " + partner // i18n-ignore
                     : bill.getSourceType() == BillSource.SALES_FREIGHT ? "销售运费 " + bill.getSourceNo() + " " + partner // i18n-ignore
                     : bill.getSourceType() == BillSource.PURCHASE_RETURN_FREIGHT ? "退货运费 " + bill.getSourceNo() + " " + partner // i18n-ignore
                     : bill.getSourceNo() + " " + partner;

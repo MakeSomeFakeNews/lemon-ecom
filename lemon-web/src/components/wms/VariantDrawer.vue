@@ -27,7 +27,7 @@
         <a-button v-if="!isTemplate || a.values.some((v) => !usedValues.has(v.id))" type="link" size="small" @click="checkAll(a)">{{ $t('wms.variant.selectAll') }}</a-button>
       </div>
       <div v-if="canGenerate" class="generate">
-        <i18n-t keypath="wms.variant.willAdd" tag="span"><template #n><b>{{ newCount }}</b></template></i18n-t>
+        <i18n-t keypath="wms.variant.willAdd" tag="span" scope="global"><template #n><b>{{ newCount }}</b></template></i18n-t>
         <a-button v-perm="'wms:material:add'" type="primary" :disabled="!newCount" :loading="generating" @click="generate">{{ $t('wms.variant.generate') }}</a-button>
         <span class="sub-text">{{ $t('wms.variant.attrTip') }}</span>
       </div>

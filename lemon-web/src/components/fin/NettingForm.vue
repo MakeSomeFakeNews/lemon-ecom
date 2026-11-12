@@ -50,11 +50,11 @@
                 </template>
               </template>
             </a-table>
-            <div class="total">{{ $t('fin.netting.sideTotal') }} <b>¥{{ formatMoney(side.total) }}</b></div>
+            <div class="total">{{ $t('fin.netting.sideTotal') }} <b>{{ symMoney(side.total) }}</b></div>
           </a-col>
         </a-row>
         <div class="summary">
-          <span>{{ $t('fin.netting.amount') }} <b>¥{{ formatMoney(Math.min(arTotal, apTotal)) }}</b></span>
+          <span>{{ $t('fin.netting.amount') }} <b>{{ symMoney(Math.min(arTotal, apTotal)) }}</b></span>
           <span v-if="arTotal !== apTotal" class="neg">{{ $t('fin.netting.diff', { amount: formatMoney(round2(arTotal - apTotal)) }) }}</span>
         </div>
       </template>
@@ -68,7 +68,7 @@ import { message } from 'ant-design-vue'
 import DictTag from '@/components/DictTag.vue'
 import PartnerSelect from '@/components/scm/PartnerSelect.vue'
 import { addNetting, nettingCandidates } from '@/api/fin'
-import { round2 } from '@/utils/number'
+import { round2, symMoney } from '@/utils/number'
 import { today } from '@/components/wms/wms'
 import { formatMoney } from './fin'
 import { t } from '@/locales'

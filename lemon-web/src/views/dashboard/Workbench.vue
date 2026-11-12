@@ -39,8 +39,8 @@
         </span>
         <div class="stat-body">
           <div class="stat-label">{{ c.label }}</div>
-          <div class="stat-value" :data-key="c.key" :title="c.kind === 'MONEY' ? `¥${money(c.value)}` : undefined">
-            <template v-if="c.kind === 'MONEY'"><span class="stat-unit">¥</span>{{ compactKeys.has(c.key) ? shortMoney(c.value) : money(c.value) }}</template>
+          <div class="stat-value" :data-key="c.key" :title="c.kind === 'MONEY' ? `${symMoney(c.value)}` : undefined">
+            <template v-if="c.kind === 'MONEY'"><template v-if="Number(c.value) < 0">-</template><span class="stat-unit">¥</span>{{ compactKeys.has(c.key) ? shortMoney(Math.abs(c.value)) : money(Math.abs(c.value || 0)) }}</template>
             <template v-else>{{ Number(c.value) }}<span class="stat-unit suffix">{{ cardMeta[c.key].unit }}</span></template>
           </div>
           <div v-if="c.previous != null" class="stat-sub" :title="`${$t('dashboard.vsLastMonth')} ${trend(c).text}`">
@@ -154,7 +154,7 @@ import { pageTodoTask } from '@/api/workflow/task'
 import { currentLocale } from '@/locales'
 import { useUserStore } from '@/store/user'
 import { greeting } from '@/utils/format'
-import { money as formatMoney } from '@/utils/number'
+import { money as formatMoney, symMoney } from '@/utils/number'
 import { shortMoney } from '@/components/charts/charts'
 import { flattenPages } from '@/utils/menu'
 import { joinPath } from '@/utils/path'

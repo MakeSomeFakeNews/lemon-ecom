@@ -53,7 +53,7 @@
     <div class="items-head">
       <span class="section-title">{{ $t('fin.io.items') }}</span>
       <a-space>
-        <span>{{ $t('common.field.total') }} <b class="total">¥{{ formatMoney(itemTotal) }}</b></span>
+        <span>{{ $t('common.field.total') }} <b class="total">{{ symMoney(itemTotal) }}</b></span>
         <a-button size="small" @click="lines.addRow()"><template #icon><PlusOutlined /></template>{{ $t('common.action.addRow') }}</a-button>
       </a-space>
     </div>
@@ -100,7 +100,8 @@ import { useFormDrawer } from '@/composables/useFormDrawer'
 import { rowKey, useLineItems } from '@/composables/useLineItems'
 import { optionsWithCurrent, toOptions } from '@/utils/dict'
 import { FundDirection, IoPartnerType } from '@/constants/enums'
-import { SETTLE_METHOD_NOTE, STATUS_ENABLED } from '@/utils/constants'
+import { STATUS_ENABLED } from '@/utils/constants'
+import { symMoney } from '@/utils/number'
 
 /** 其他收入单 / 费用支出单的新增、修改（待确认时）；保存后由列表或详情确认生成凭证 */
 const emit = defineEmits(['saved'])
@@ -110,8 +111,7 @@ const direction = ref(FundDirection.IN)
 const income = computed(() => direction.value === FundDirection.IN)
 const title = computed(() => (income.value ? t('fin.io.createIn') : t('fin.io.createOut')))
 const editTitle = computed(() => (income.value ? t('fin.io.editIn') : t('fin.io.editOut')))
-/** 票据结算由票据管理办理，不能选择 */
-const settleOptions = computed(() => optionsWithCurrent(dict.fin_settle_method, drawer.form.value.settleMethod).filter((o) => o.value !== SETTLE_METHOD_NOTE))
+const settleOptions = computed(() => optionsWithCurrent(dict.fin_settle_method, drawer.form.value.settleMethod))
 
 // 收支类别：启用的、与单据方向一致的（修改时补上已停用的原类别）
 const categories = ref([])

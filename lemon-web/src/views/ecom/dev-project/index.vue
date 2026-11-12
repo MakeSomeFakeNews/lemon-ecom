@@ -64,7 +64,7 @@
           <template v-else-if="column.key === 'estMargin'">
             <span v-if="record.estMargin != null" :class="['margin', marginClass(record.estMargin)]">{{ Number(record.estMargin) }}%</span>
             <span v-else class="sub-text">-</span>
-            <div v-if="record.estProfit != null" class="sub-text">¥ {{ money(record.estProfit) }}</div>
+            <div v-if="record.estProfit != null" class="sub-text">{{ symMoney(record.estProfit) }}</div>
           </template>
           <template v-else-if="column.key === 'samples'">
             <span v-if="record.sampleCount">{{ record.passedSampleCount }} / {{ record.sampleCount }}</span>
@@ -107,7 +107,7 @@ import { useDict } from '@/composables/useDict'
 import { useRouteOpen } from '@/composables/useRouteOpen'
 import { useTable } from '@/composables/useTable'
 import { toOptions } from '@/utils/dict'
-import { money } from '@/utils/number'
+import { money, symMoney } from '@/utils/number'
 import { canDelete, canManualApprove, canSubmit, imagesOf, isEditable, marginClass, MOVES } from './dev'
 import { useDevActions } from './useDevActions'
 

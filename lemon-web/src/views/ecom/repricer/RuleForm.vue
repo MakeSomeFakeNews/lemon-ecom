@@ -1,11 +1,12 @@
 <template>
-  <FormDrawer :drawer="drawer" :create-title="$t('ecomPublish.repricer.add')" :edit-title="$t('ecomPublish.repricer.edit')" width="min(760px, 100vw)">
+  <FormDrawer page :drawer="drawer" :create-title="$t('ecomPublish.repricer.add')" :edit-title="$t('ecomPublish.repricer.edit')">
     <a-form ref="formRef" :model="form" :rules="rules" layout="vertical">
+      <div class="section-title">{{ $t('ecomPublish.repricer.sectionScope') }}</div>
       <a-row :gutter="16">
-        <a-col :span="24">
+        <a-col :xs="24" :lg="8">
           <a-form-item :label="$t('ecomPublish.repricer.name')" name="name"><a-input v-model:value="form.name" :maxlength="64" /></a-form-item>
         </a-col>
-        <a-col :span="24">
+        <a-col :xs="24" :lg="16">
           <a-form-item :label="$t('ecomPublish.repricer.stores')" name="storeList" :extra="$t('ecomPublish.repricer.storesExtra')">
             <a-select v-model:value="form.storeList" mode="multiple" allow-clear :options="storeOptions" :placeholder="$t('ecomPublish.repricer.allStores')" />
           </a-form-item>
@@ -15,77 +16,89 @@
             <a-textarea v-model:value="form.skus" :auto-size="{ minRows: 2, maxRows: 5 }" :maxlength="1000" />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="12">
+      </a-row>
+
+      <div class="section-title">{{ $t('ecomPublish.repricer.sectionStrategy') }}</div>
+      <a-row :gutter="16">
+        <a-col :xs="24" :sm="12" :lg="8">
           <a-form-item :label="$t('ecomPublish.repricer.strategy')" name="strategy">
             <a-select v-model:value="form.strategy" :options="toOptions(dict.ecom_reprice_strategy)" />
           </a-form-item>
         </a-col>
         <template v-if="needsAdjust">
-          <a-col :xs="12" :sm="6">
+          <a-col :xs="12" :sm="6" :lg="4">
             <a-form-item :label="$t('ecomPublish.repricer.adjustMode')" name="adjustMode">
               <a-select v-model:value="form.adjustMode" :options="adjustOptions" />
             </a-form-item>
           </a-col>
-          <a-col :xs="12" :sm="6">
+          <a-col :xs="12" :sm="6" :lg="4">
             <a-form-item :label="$t('ecomPublish.repricer.adjustValue')" name="adjustValue">
               <a-input-number v-model:value="form.adjustValue" :min="0" :precision="2" class="full" :addon-after="form.adjustMode === PriceAdjustMode.PERCENT ? '%' : undefined" />
             </a-form-item>
           </a-col>
         </template>
-        <a-col v-if="form.strategy === RepriceStrategy.TARGET_MARGIN" :xs="12" :sm="6">
+        <a-col v-if="form.strategy === RepriceStrategy.TARGET_MARGIN" :xs="12" :sm="6" :lg="4">
           <a-form-item :label="$t('ecomPublish.repricer.targetMargin')" name="targetMargin" :extra="$t('ecomPublish.repricer.targetMarginExtra')">
             <a-input-number v-model:value="form.targetMargin" :min="-50" :max="90" :precision="2" class="full" addon-after="%" />
           </a-form-item>
         </a-col>
         <template v-if="form.strategy === RepriceStrategy.BY_STOCK">
-          <a-col :xs="12" :sm="6">
+          <a-col :xs="12" :sm="6" :lg="4">
             <a-form-item :label="$t('ecomPublish.repricer.highDays')" name="stockHighDays">
               <a-input-number v-model:value="form.stockHighDays" :min="1" :max="999" :precision="0" class="full" />
             </a-form-item>
           </a-col>
-          <a-col :xs="12" :sm="6">
+          <a-col :xs="12" :sm="6" :lg="4">
             <a-form-item :label="$t('ecomPublish.repricer.lowDays')" name="stockLowDays">
               <a-input-number v-model:value="form.stockLowDays" :min="0" :max="999" :precision="0" class="full" />
             </a-form-item>
           </a-col>
         </template>
         <a-col :span="24"><div class="sub-text strategy-tip">{{ $t(`ecomPublish.repricer.strategyTip.${form.strategy}`) }}</div></a-col>
-        <a-col :xs="24" :sm="12">
+      </a-row>
+
+      <div class="section-title">{{ $t('ecomPublish.repricer.sectionLimit') }}</div>
+      <a-row :gutter="16">
+        <a-col :xs="24" :sm="12" :lg="8">
           <a-form-item :label="$t('ecomPublish.repricer.floorMode')" name="floorMode">
             <a-radio-group v-model:value="form.floorMode" :options="toOptions(dict.ecom_reprice_floor_mode)" />
           </a-form-item>
         </a-col>
-        <a-col v-if="form.floorMode === RepriceFloorMode.FIXED" :xs="12" :sm="6">
+        <a-col v-if="form.floorMode === RepriceFloorMode.FIXED" :xs="12" :sm="6" :lg="4">
           <a-form-item :label="$t('ecomPublish.repricer.minPrice')" name="minPrice">
             <a-input-number v-model:value="form.minPrice" :min="0" :precision="2" class="full" />
           </a-form-item>
         </a-col>
-        <a-col v-else :xs="12" :sm="6">
+        <a-col v-else :xs="12" :sm="6" :lg="4">
           <a-form-item :label="$t('ecomPublish.repricer.minMargin')" name="minMargin">
             <a-input-number v-model:value="form.minMargin" :min="-50" :max="90" :precision="2" class="full" addon-after="%" />
           </a-form-item>
         </a-col>
-        <a-col :xs="12" :sm="6">
+        <a-col :xs="12" :sm="6" :lg="4">
           <a-form-item :label="$t('ecomPublish.repricer.maxPrice')" name="maxPrice">
             <a-input-number v-model:value="form.maxPrice" :min="0" :precision="2" class="full" />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="12">
+        <a-col :xs="24" :sm="12" :lg="8">
           <a-form-item :label="$t('ecomPublish.item.priceTemplate')" name="priceTemplateId" :required="needsTemplate" :extra="$t('ecomPublish.repricer.priceTemplateExtra')">
             <a-select v-model:value="form.priceTemplateId" allow-clear :options="priceOptions" />
           </a-form-item>
         </a-col>
-        <a-col :xs="12" :sm="6">
+      </a-row>
+
+      <div class="section-title">{{ $t('ecomPublish.repricer.sectionRun') }}</div>
+      <a-row :gutter="16">
+        <a-col :xs="12" :sm="6" :lg="4">
           <a-form-item :label="$t('ecomPublish.repricer.interval')" name="intervalMinutes">
             <a-select v-model:value="form.intervalMinutes" :options="intervalOptions" />
           </a-form-item>
         </a-col>
-        <a-col :xs="12" :sm="6">
+        <a-col :xs="12" :sm="6" :lg="4">
           <a-form-item :label="$t('ecomPublish.repricer.suggestOnly')" name="suggestOnly">
             <a-switch v-model:checked="form.suggestOnly" :checked-value="1" :un-checked-value="0" />
           </a-form-item>
         </a-col>
-        <a-col :span="24">
+        <a-col :xs="24" :lg="16">
           <a-form-item :label="$t('common.field.remark')" name="remark"><a-input v-model:value="form.remark" :maxlength="255" /></a-form-item>
         </a-col>
       </a-row>
@@ -154,6 +167,10 @@ defineExpose({ openCreate: drawer.openCreate, openEdit: drawer.openEdit })
 </script>
 
 <style scoped>
+.section-title {
+  font-weight: 600;
+  margin: 4px 0 12px;
+}
 .full {
   width: 100%;
 }

@@ -35,13 +35,13 @@ public class FinStatementController {
                                                     @RequestParam(required = false) Long supplierId,
                                                     @RequestParam(required = false) StatementStatus status,
                                                     @RequestParam(required = false) String keyword) {
-        return R.ok(statementService.page(current, size, supplierId, status, keyword, false));
+        return R.ok(statementService.page(current, size, supplierId, status, keyword));
     }
 
     @GetMapping("/fin/statement/{id}")
     @PreAuthorize("@ss.hasPerm('fin:statement:list')")
     public R<FinSupplierStatement> detail(@PathVariable Long id) {
-        return R.ok(statementService.detail(id, null));
+        return R.ok(statementService.detail(id));
     }
 
     @PostMapping("/fin/statement")
@@ -56,6 +56,15 @@ public class FinStatementController {
     @OperLog(title = "供应商对账单-发送", type = OperType.UPDATE) // i18n-ignore
     public R<Void> send(@PathVariable Long id) {
         statementService.send(id);
+        return R.ok();
+    }
+
+    /** 登记供应商的对账结果（确认 / 有异议），对账单发送或导出给供应商后由内部人员按供应商回复登记 */
+    @PostMapping("/fin/statement/{id}/result")
+    @PreAuthorize("@ss.hasPerm('fin:statement:edit')")
+    @OperLog(title = "供应商对账单-登记结果", type = OperType.UPDATE) // i18n-ignore
+    public R<Void> registerResult(@PathVariable Long id, @Valid @RequestBody StatementRequests.Result req) {
+        statementService.registerResult(id, req);
         return R.ok();
     }
 

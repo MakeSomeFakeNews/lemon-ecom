@@ -280,6 +280,8 @@ export default {
     callback: '应用回调地址：',
     add: '新增 1688 账号',
     edit: '修改 1688 账号',
+    sectionBasic: '基本信息',
+    sectionApp: '开放平台应用',
     name: '账号名称',
     nameRequired: '请填写账号名称',
     appKeyRequired: '请填写 AppKey',

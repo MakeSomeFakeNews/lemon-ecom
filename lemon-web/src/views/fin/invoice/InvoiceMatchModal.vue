@@ -10,7 +10,7 @@
     <template v-if="matchInvoiceRow">
       <p>
         {{ $t('fin.invoice.matchSummary', { partner: matchInvoiceRow.partnerName, amount: formatMoney(matchInvoiceRow.amount) }) }}
-        <b>¥{{ formatMoney(unmatchedAmount(matchInvoiceRow)) }}</b>{{ $t('fin.invoice.matchSummary2') }} <b class="total">¥{{ formatMoney(itemTotal) }}</b>
+        <b>{{ symMoney(unmatchedAmount(matchInvoiceRow)) }}</b>{{ $t('fin.invoice.matchSummary2') }} <b class="total">{{ symMoney(itemTotal) }}</b>
       </p>
       <a-table
         row-key="id"
@@ -50,6 +50,7 @@ import { useI18n } from 'vue-i18n'
 import { invoiceOpenBills, matchInvoice } from '@/api/fin'
 import { formatMoney } from '@/components/fin/fin'
 import { KINDS, billColumns as makeBillColumns, billRemaining, unmatchedAmount, useInvoiceBills } from './invoice'
+import { symMoney } from '@/utils/number'
 
 /** 勾稽导入的发票：通过 ref 调用 open(发票)，成功后触发 success */
 const props = defineProps({ kind: { type: String, required: true } })

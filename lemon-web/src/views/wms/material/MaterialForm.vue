@@ -2,33 +2,29 @@
   <FormDrawer page :drawer="drawer" :create-title="$t('wms.material.createTitle')" :edit-title="$t('wms.material.editTitle')">
     <AiPrefillAlert :ai="ai" />
     <a-form ref="formRef" :model="form" :rules="rules" layout="vertical">
+      <div class="section-title">{{ $t('wms.material.sectionBasic') }}</div>
       <a-row :gutter="16">
-        <a-col :xs="24" :sm="colSpan">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('wms.material.code')" name="code" :class="ai.cls('code')">
             <a-input v-model:value="form.code" :maxlength="64" :placeholder="$t('wms.material.codePh')" :disabled="basicReadonly" />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="colSpan">
+        <a-col :xs="24" :sm="12" :lg="12">
           <a-form-item :label="$t('wms.material.name')" name="name" :class="ai.cls('name')">
             <a-input v-model:value="form.name" :maxlength="128" :disabled="basicReadonly" />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="colSpan">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('wms.inout.spec')" name="spec">
             <a-input v-model:value="form.spec" :maxlength="128" :disabled="basicReadonly" />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="colSpan">
-          <a-form-item :label="$t('wms.material.unit')" name="unit">
-            <a-auto-complete v-model:value="form.unit" :options="UNITS" :maxlength="16" :placeholder="$t('wms.material.unitPh')" :disabled="basicReadonly" />
-          </a-form-item>
-        </a-col>
-        <a-col :xs="24" :sm="colSpan">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('wms.inout.category')" name="category" :class="ai.cls('category')">
             <MaterialCategorySelect v-model="form.category" usable-only :placeholder="$t('common.placeholder.select')" :disabled="basicReadonly" />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="colSpan">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('pricing.goods.brand')" name="brand">
             <a-select
               v-model:value="form.brand"
@@ -41,12 +37,46 @@
             />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="colSpan">
+        <a-col :xs="24" :sm="12" :lg="6">
+          <a-form-item :label="$t('wms.material.unit')" name="unit">
+            <a-auto-complete v-model:value="form.unit" :options="UNITS" :maxlength="16" :placeholder="$t('wms.material.unitPh')" :disabled="basicReadonly" />
+          </a-form-item>
+        </a-col>
+        <a-col :xs="24" :sm="12" :lg="6">
+          <a-form-item :label="$t('wms.units.barcode')" name="barcode" :extra="$t('wms.material.barcodeTip')">
+            <a-input v-model:value="form.barcode" :maxlength="64" :placeholder="$t('wms.common.optional')" allow-clear :disabled="basicReadonly" />
+          </a-form-item>
+        </a-col>
+      </a-row>
+
+      <div class="section-title">{{ $t('wms.material.sectionStock') }}</div>
+      <a-row :gutter="16">
+        <a-col :xs="24" :sm="12" :lg="6">
+          <a-form-item :label="$t('wms.material.costMethod')" name="costMethod" :extra="$t('wms.material.costMethodTip')">
+            <a-select v-model:value="form.costMethod" :options="toOptions(dict.wms_cost_method)" :disabled="basicReadonly" />
+          </a-form-item>
+        </a-col>
+        <a-col :xs="24" :sm="12" :lg="6">
+          <a-form-item :label="$t('wms.material.refCost')" name="refCost" :extra="$t('wms.material.refCostTip')">
+            <a-input-number v-model:value="form.refCost" :min="0" :precision="4" class="full" :placeholder="$t('wms.common.optional')" :disabled="basicReadonly" />
+          </a-form-item>
+        </a-col>
+        <a-col :xs="24" :sm="12" :lg="6">
+          <a-form-item :label="$t('wms.material.defaultWarehouse')" name="defaultWarehouseId">
+            <WarehouseSelect v-model:value="form.defaultWarehouseId" :placeholder="$t('wms.common.optional')" :disabled="basicReadonly" @update:value="form.defaultLocationId = null" />
+          </a-form-item>
+        </a-col>
+        <a-col :xs="24" :sm="12" :lg="6">
+          <a-form-item :label="$t('wms.material.defaultLocation')" name="defaultLocationId" :extra="$t('wms.material.defaultLocationTip')">
+            <LocationSelect v-model:value="form.defaultLocationId" :warehouse-id="form.defaultWarehouseId" :disabled="basicReadonly" />
+          </a-form-item>
+        </a-col>
+        <a-col :xs="24" :sm="8" :lg="6">
           <a-form-item :label="$t('wms.stock.safetyStock')" name="safetyStock" :extra="$t('wms.material.safetyTip')">
             <a-input-number v-model:value="form.safetyStock" :min="0" :precision="4" class="full" :placeholder="$t('wms.material.noAlert')" :disabled="basicReadonly" />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="colSpan">
+        <a-col :xs="24" :sm="8" :lg="6">
           <a-form-item name="reorderPoint" :extra="$t('wms.material.reorderPointExtra')">
             <template #label>
               {{ $t('wms.material.reorderPoint') }}
@@ -57,48 +87,28 @@
             <a-input-number v-model:value="form.reorderPoint" :min="0" :precision="4" class="full" :placeholder="$t('wms.material.notInvolved')" :disabled="basicReadonly" />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="colSpan">
+        <a-col :xs="24" :sm="8" :lg="6">
           <a-form-item :label="$t('wms.material.reorderQty')" name="reorderQty" :extra="$t('wms.material.reorderQtyTip')">
             <a-input-number v-model:value="form.reorderQty" :min="0" :precision="4" class="full" :placeholder="$t('wms.common.optional')" :disabled="basicReadonly" />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="colSpan">
-          <a-form-item :label="$t('wms.units.barcode')" name="barcode" :extra="$t('wms.material.barcodeTip')">
-            <a-input v-model:value="form.barcode" :maxlength="64" :placeholder="$t('wms.common.optional')" allow-clear :disabled="basicReadonly" />
-          </a-form-item>
-        </a-col>
-        <a-col :xs="24" :sm="colSpan">
-          <a-form-item :label="$t('wms.material.refCost')" name="refCost" :extra="$t('wms.material.refCostTip')">
-            <a-input-number v-model:value="form.refCost" :min="0" :precision="4" class="full" :placeholder="$t('wms.common.optional')" :disabled="basicReadonly" />
-          </a-form-item>
-        </a-col>
-        <a-col :xs="24" :sm="colSpan">
-          <a-form-item :label="$t('wms.material.costMethod')" name="costMethod" :extra="$t('wms.material.costMethodTip')">
-            <a-select v-model:value="form.costMethod" :options="toOptions(dict.wms_cost_method)" :disabled="basicReadonly" />
-          </a-form-item>
-        </a-col>
-        <a-col :xs="24" :sm="colSpan">
-          <a-form-item :label="$t('wms.material.defaultWarehouse')" name="defaultWarehouseId">
-            <WarehouseSelect v-model:value="form.defaultWarehouseId" :placeholder="$t('wms.common.optional')" :disabled="basicReadonly" @update:value="form.defaultLocationId = null" />
-          </a-form-item>
-        </a-col>
-        <a-col :xs="24" :sm="colSpan">
-          <a-form-item :label="$t('wms.material.defaultLocation')" name="defaultLocationId" :extra="$t('wms.material.defaultLocationTip')">
-            <LocationSelect v-model:value="form.defaultLocationId" :warehouse-id="form.defaultWarehouseId" :disabled="basicReadonly" />
-          </a-form-item>
-        </a-col>
-        <a-col v-if="enabledLevels.length" :span="24">
-          <div class="sub-title">{{ $t('pricing.level.prices') }}</div>
-          <a-row :gutter="16">
-            <a-col v-for="l in enabledLevels" :key="l.level" :xs="12" :sm="6">
-              <a-form-item :label="l.name" :name="l.field">
-                <a-input-number v-model:value="form[l.field]" :min="0" :precision="4" class="full" :disabled="basicReadonly" />
-              </a-form-item>
-            </a-col>
-          </a-row>
-        </a-col>
+      </a-row>
+
+      <template v-if="enabledLevels.length">
+        <div class="section-title">{{ $t('pricing.level.prices') }}</div>
+        <a-row :gutter="16">
+          <a-col v-for="l in enabledLevels" :key="l.level" :xs="12" :sm="6">
+            <a-form-item :label="l.name" :name="l.field">
+              <a-input-number v-model:value="form[l.field]" :min="0" :precision="4" class="full" :disabled="basicReadonly" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+      </template>
+
+      <div class="section-title">{{ $t('wms.material.tracking') }}</div>
+      <a-row :gutter="16">
         <a-col :span="24">
-          <a-form-item :label="$t('wms.material.tracking')" :extra="$t('wms.material.trackingTip')">
+          <a-form-item :extra="$t('wms.material.trackingTip')">
             <a-space direction="vertical">
               <a-checkbox :checked="form.batchEnabled === 1" :disabled="basicReadonly" @change="(e) => (form.batchEnabled = e.target.checked ? 1 : 0)">
                 {{ $t('wms.material.batchManaged') }}<span class="option-desc">{{ $t('wms.material.batchManagedDesc') }}</span>
@@ -112,6 +122,10 @@
             </a-space>
           </a-form-item>
         </a-col>
+      </a-row>
+
+      <div class="section-title">{{ $t('wms.material.sectionOther') }}</div>
+      <a-row :gutter="16">
         <a-col :span="24">
           <a-form-item :label="$t('common.field.remark')" name="remark">
             <a-textarea v-model:value="form.remark" :rows="2" :maxlength="255" show-count :disabled="basicReadonly" />
@@ -119,7 +133,7 @@
         </a-col>
       </a-row>
 
-      <CustomFieldsForm :fields="cfFields" :values="form.cf || {}" :title="$t('wms.material.customFields')" />
+      <CustomFieldsForm :fields="cfFields" :values="form.cf || {}" :title="$t('wms.material.customFields')" :lg="6" />
     </a-form>
   </FormDrawer>
 </template>
@@ -147,7 +161,7 @@ import { useUserStore } from '@/store/user'
 import { toOptions } from '@/utils/dict'
 
 /**
- * 物料新增 / 编辑（子页）：基本资料、价格列、批次 / 序列号 / 来料检验、自定义字段。
+ * 物料新增 / 编辑（子页）：基本信息、库存与成本、价格列、管理方式（批次 / 序列号 / 来料检验）、备注与自定义字段。
  * openCreate(defaults) / openEdit(record) / copy(record)（复制物料），applyAi(data) 用智能录入的结果预填；保存后触发 saved
  */
 const emit = defineEmits(['saved'])
@@ -167,7 +181,6 @@ const rules = {
   ],
   name: [{ required: true, whitespace: true, message: t('wms.material.inputName') }]
 }
-const colSpan = 12
 const basicReadonly = computed(() => !!form.value.id && !canEdit.value)
 const MATERIAL_FIELDS = [
   'code',
@@ -270,8 +283,8 @@ defineExpose({ openCreate: drawer.openCreate, openEdit: drawer.openEdit, copy: c
   color: var(--app-text-3);
   cursor: help;
 }
-.sub-title {
-  font-weight: 500;
-  margin-bottom: 8px;
+.section-title {
+  font-weight: 600;
+  margin: 4px 0 12px;
 }
 </style>

@@ -39,15 +39,26 @@ public class SysMessageService implements MessageSender {
 
     @Override
     public void send(Collection<Long> userIds, Message message) {
+        List<Long> targets = write(userIds, message);
+        if (!targets.isEmpty()) {
+            publisher.publishEvent(new MessageSentEvent(targets, message));
+        }
+    }
+
+    /**
+     * 只写入站内消息（不发布 {@link MessageSentEvent}，不按全局设置推送到第三方平台），返回实际写入的接收人（已去掉去重键重复的）。
+     * 按渠道推送的消息（{@code SysChannelMessageSender}）使用
+     */
+    public List<Long> write(Collection<Long> userIds, Message message) {
         Set<Long> targets = new LinkedHashSet<>();
         userIds.stream().filter(Objects::nonNull).forEach(targets::add);
         if (targets.isEmpty()) {
-            return;
+            return List.of();
         }
         if (StringUtils.hasText(message.dedupKey())) {
             targets.removeAll(new HashSet<>(messageMapper.selectDedupUsers(targets, message.dedupKey())));
             if (targets.isEmpty()) {
-                return;
+                return List.of();
             }
         }
         messageMapper.insertBatch(targets.stream().map(userId -> {
@@ -60,7 +71,7 @@ public class SysMessageService implements MessageSender {
             m.setDedupKey(message.dedupKey());
             return m;
         }).toList());
-        publisher.publishEvent(new MessageSentEvent(List.copyOf(targets), message));
+        return List.copyOf(targets);
     }
 
     @Override

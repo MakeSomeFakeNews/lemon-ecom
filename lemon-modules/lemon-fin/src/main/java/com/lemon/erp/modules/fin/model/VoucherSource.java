@@ -21,9 +21,6 @@ public enum VoucherSource {
     COST,
     /** 期末结转损益（结账时自动生成并记账） */
     CLOSE,
-    /** 工资计提、发放（人力资源） */
-    SALARY,
-    PROJECT,
     EXPENSE,
     /** 预收预付及冲抵 */
     ADVANCE,
@@ -39,8 +36,6 @@ public enum VoucherSource {
     LOAN,
     /** 期末调汇 */
     FX,
-    /** 票据贴现、托收、拒付、兑付 */
-    NOTE,
     /** 账户调拨 */
     TRANSFER,
     /** 其他收支单（其他收入、费用支出） */

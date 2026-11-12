@@ -22,7 +22,7 @@
         </div>
         <div class="kpi danger">
           <div class="kpi-label"><DollarOutlined /> {{ $t('ecomFba.health.storageFeeCard') }}</div>
-          <div class="kpi-value">¥{{ money(nz(data.monthlyFeeBase) + nz(data.agedFeeBase)) }}</div>
+          <div class="kpi-value">{{ symMoney(nz(data.monthlyFeeBase) + nz(data.agedFeeBase)) }}</div>
           <div class="kpi-sub">{{ $t('ecomFba.health.feeBreak', { m: money(data.monthlyFeeBase ?? 0), a: money(data.agedFeeBase ?? 0) }) }}</div>
         </div>
       </div>
@@ -36,7 +36,8 @@
             {{ $t('ecomFba.health.ageDistribution') }}
             <a class="hide-link" @click="togglePanels">{{ $t('ecomFba.health.hideCharts') }} <DownOutlined class="toggle-icon up" /></a>
           </div>
-          <EChart :option="ageOption" height="136px" />
+          <!-- 面板收起（v-show 隐藏）时不初始化图表，否则 ECharts 取不到容器尺寸 -->
+          <EChart v-if="showPanels" :option="ageOption" height="136px" />
         </div>
         <div class="panel">
           <div class="panel-title">
@@ -73,7 +74,7 @@ import { DollarOutlined, DownOutlined, FieldTimeOutlined, InboxOutlined, RightOu
 import DictTag from '@/components/DictTag.vue'
 import EChart from '@/components/charts/EChart.vue'
 import { fbaHealthSummary } from '@/api/ecom/fba'
-import { money, nz } from '@/utils/number'
+import { money, nz, symMoney } from '@/utils/number'
 import { FbaHealthAdvice } from '@/constants/enums'
 import { t } from '@/locales'
 import { n0, useCan } from './fba'

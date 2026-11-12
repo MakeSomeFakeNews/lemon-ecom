@@ -32,7 +32,7 @@
           <a-descriptions-item :label="$t('ecomOwh.outbound.carrier')">{{ detail.carrierName || '-' }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOwh.outbound.trackingNo')">{{ detail.trackingNo || '-' }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOwh.outbound.estimateFee')">{{ detail.estimateFee != null ? `${detail.feeCurrency || ''} ${money(detail.estimateFee)}` : '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOwh.outbound.feeBase')">{{ detail.feeBase != null ? `¥${money(detail.feeBase)}` : '-' }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomOwh.outbound.feeBase')">{{ detail.feeBase != null ? `${symMoney(detail.feeBase)}` : '-' }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOwh.outbound.pushTime')">{{ detail.pushTime || '-' }}（{{ $t('ecomOwh.outbound.pushCount', { n: detail.pushCount || 0 }) }}）</a-descriptions-item>
         </a-descriptions>
 
@@ -64,7 +64,7 @@ import OwhFlowSteps from '@/components/ecom/owh/OwhFlowSteps.vue'
 import { CloseCircleOutlined, RedoOutlined, SyncOutlined } from '@ant-design/icons-vue'
 import { getOwhOutbound, owhOutboundItems } from '@/api/ecom/owh'
 import { useUserStore } from '@/store/user'
-import { money, qty } from '@/utils/number'
+import { money, qty, symMoney } from '@/utils/number'
 import { canCancelOutbound, canRepush, canSyncOutbound, outboundFlow } from './owh'
 
 /** 海外仓出库单详情：服务商单号与状态、运单号、费用、出库明细（物料编码即海外仓 SKU）。open(id)、reload()；操作交给页面（事件带出库单） */

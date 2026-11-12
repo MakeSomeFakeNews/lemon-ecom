@@ -204,7 +204,7 @@ const conf = computed(() => DOC_KINDS[props.kind])
 const dict = useDict('wms_in_type', 'wms_out_type', 'wms_in_category', 'wms_out_category')
 /**
  * 类型下拉列出字典中的全部类型：手工单据只能选其他出入库、寄售入库、报废出库，
- * 采购、销售、生产、项目等类型不可选，提示由哪种业务单据自动生成
+ * 采购、销售等类型不可选，提示由哪种业务单据自动生成
  */
 const typeOptions = computed(() => docTypeOptions(props.kind, dict[conf.value.typeDict]))
 /** 寄售入库：供应商的货寄售入库到供应商寄售仓（不计存货成本），只能选供应商寄售仓；其他入库不能选供应商寄售仓 */

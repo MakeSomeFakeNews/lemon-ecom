@@ -357,6 +357,8 @@ export default {
     tip: 'Sides are stored from longest to shortest; syncing the fee preview report (GET_FBA_ESTIMATED_FBA_FEES_TXT_DATA) brings in Amazon measured dimensions and weight'
   },
   tier: {
+    sectionBasic: 'Basic info',
+    sectionLimits: 'Size & weight limits',
     marketplace: 'Marketplace',
     code: 'Code',
     name: 'Name',

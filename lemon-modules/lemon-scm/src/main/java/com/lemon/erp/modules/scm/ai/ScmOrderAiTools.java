@@ -346,10 +346,12 @@ public final class ScmOrderAiTools {
 
         private final ScmPlanningService planningService;
         private final ScmAiLookup lookup;
+        private final PermissionService permissionService;
 
-        public BackordersTool(ScmPlanningService planningService, ScmAiLookup lookup) {
+        public BackordersTool(ScmPlanningService planningService, ScmAiLookup lookup, PermissionService permissionService) {
             this.planningService = planningService;
             this.lookup = lookup;
+            this.permissionService = permissionService;
         }
 
         public String name() {
@@ -364,8 +366,9 @@ public final class ScmOrderAiTools {
             return "scm.ai.tool.backorders.desc";
         }
 
+        /** 欠交清单没有单独的页面和菜单：按采购订单查看权限提供，客户欠交（SALES）另需销售订单查看权限（见 execute） */
         public String permission() {
-            return "scm:backorder:list";
+            return "scm:purchase:list";
         }
 
         public Map<String, Object> parameters() {
@@ -380,6 +383,9 @@ public final class ScmOrderAiTools {
 
         public Object execute(AiToolArgs args) {
             OrderKind kind = OrderKind.valueOf(args.getString("kind"));
+            if (!permissionService.hasPerm("scm:" + kind.path() + ":list")) {
+                throw new BizException("scm.error.aiNoPermission", Messages.get(kind.getLabelKey()));
+            }
             LocalDate today = LocalDate.now();
             PageResult<BackorderRow> page = planningService.backorders(1, limit(args), kind,
                     Boolean.TRUE.equals(args.getBoolean("overdueOnly")), args.getString("keyword"),

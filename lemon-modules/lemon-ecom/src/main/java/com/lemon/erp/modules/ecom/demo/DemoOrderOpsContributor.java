@@ -8,7 +8,9 @@ import com.lemon.erp.modules.ecom.entity.EcomStore;
 import com.lemon.erp.modules.ecom.mapper.EcomOrderMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomPackageMapper;
 import com.lemon.erp.modules.ecom.model.EcomPackageStatus;
+import com.lemon.erp.modules.ecom.model.FulfillmentType;
 import com.lemon.erp.modules.ecom.service.EcomOrderOpsService;
+import com.lemon.erp.modules.ecom.service.EcomOrderService;
 import com.lemon.erp.modules.ecom.service.EcomPackageService;
 import com.lemon.erp.modules.ecom.service.EcomStoreService;
 import lombok.RequiredArgsConstructor;
@@ -23,15 +25,19 @@ import java.util.Objects;
 
 /**
  * 演示数据 · 订单作业（order 55）：近三天的自发货订单走真实的作业流程——审核（按可用库存生成包裹或缺货）、填写运单号（待发货）、
- * 包裹发货（逐单生成销售出库、回传发货）、人工挂起，最后整理订单操作日志（{@link DemoOrderLogs}）；每一步在独立事务中执行，一单失败不影响其他
+ * 包裹发货（逐单生成销售出库、回传发货）、人工挂起、几张待审核订单直接出库（已出库待填写物流，订单页可打开「发货」），
+ * 最后整理订单操作日志（{@link DemoOrderLogs}）；每一步在独立事务中执行，一单失败不影响其他
  */
 @Component
 @RequiredArgsConstructor
 public class DemoOrderOpsContributor implements DemoContributor {
 
+    /** 直接出库、等待发货的订单数 */
+    private static final int DIRECT_OUTBOUND = 6;
     private static final String[] HOLD_REASONS = {"买家留言要求修改收货地址", "买家要求合并下一单一起发货", "疑似刷单，等待风控确认"}; // i18n-ignore 演示数据存库
 
     private final EcomOrderOpsService opsService;
+    private final EcomOrderService orderService;
     private final EcomPackageService packageService;
     private final EcomPackageMapper packageMapper;
     private final EcomOrderMapper orderMapper;
@@ -97,6 +103,20 @@ public class DemoOrderOpsContributor implements DemoContributor {
             Long id = hold.get(i);
             String reason = HOLD_REASONS[i % HOLD_REASONS.length];
             tx.run("hold", () -> opsService.hold(new HoldRequest(List.of(id), reason)));
+        }
+        // 直接出库（不经过包裹）：几张待审核的自发货订单生成销售出库，停在「已出库」等待填写物流发货
+        int outbound = 0;
+        for (DemoOrderPlan.Order o : plan.orders) {
+            if (outbound >= DIRECT_OUTBOUND) {
+                break;
+            }
+            if (o.id == null || o.stage != DemoOrderPlan.Stage.PENDING || o.fulfillment != FulfillmentType.SELLER
+                    || o.lines.stream().anyMatch(l -> !l.listing().mapped() || DemoOrderPlan.SHORT_MATERIAL.equals(l.listing().productCode()))) {
+                continue;
+            }
+            if (tx.run("direct-outbound", () -> orderService.outboundOne(o.id, null, null))) {
+                outbound++;
+            }
         }
         // 操作日志：近期订单按下单时间重排，最近已发货的历史订单补写日志
         List<Long> recentIds = plan.orders.stream().filter(DemoOrderPlan.Order::recent).map(o -> o.id).filter(Objects::nonNull).toList();

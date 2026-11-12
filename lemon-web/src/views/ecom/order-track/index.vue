@@ -74,24 +74,7 @@
       </a-table>
     </a-card>
 
-    <a-drawer v-model:open="detailOpen" :title="detail ? `${detail.pkg.packageNo} · ${detail.pkg.trackingNo}` : ''" width="min(640px, 100vw)">
-      <a-skeleton v-if="detailLoading && !detail" active :paragraph="{ rows: 8 }" />
-      <template v-if="detail">
-        <a-descriptions :column="2" size="small" class="block">
-          <a-descriptions-item :label="$t('ecomOrder.common.store')">{{ detail.pkg.storeName }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.common.channel')">{{ detail.pkg.channelName || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrd.track.shipTime')">{{ detail.pkg.shipTime }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrd.track.firstTime')">{{ detail.pkg.trackFirstTime || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrd.track.deliveredTime')">{{ detail.pkg.trackDeliveredTime || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrd.track.receiver')">{{ detail.pkg.shipName }} {{ detail.pkg.shipCountry }}</a-descriptions-item>
-        </a-descriptions>
-        <TrackTimeline :pkg="detail.pkg" :events="detail.events">
-          <template #extra>
-            <a v-if="can('ecom:track:sync')" @click="pullOne(detail.pkg.id)">{{ $t('ecomOrd.track.pull') }}</a>
-          </template>
-        </TrackTimeline>
-      </template>
-    </a-drawer>
+    <TrackDetail ref="detailRef" @changed="reload" />
     <TrackSettingModal ref="settingModal" />
   </div>
 </template>
@@ -110,13 +93,12 @@ import StoreSelect from '@/components/ecom/StoreSelect.vue'
 import TableActions from '@/components/common/TableActions.vue'
 import BatchActionBar from '@/components/ecom/BatchActionBar.vue'
 import { actionColumn } from '@/components/common/tableActions'
-import TrackTimeline from './TrackTimeline.vue'
+import TrackDetail from './TrackDetail.vue'
 import TrackSettingModal from './TrackSettingModal.vue'
-import { getPackageTracks, pageTrack, pullPackageTracks, pullTracks, trackCounts } from '@/api/ecom/orderEnhance'
+import { pageTrack, pullPackageTracks, pullTracks, trackCounts } from '@/api/ecom/orderEnhance'
 import { useColumns } from '@/composables/useColumns'
 import { useDict } from '@/composables/useDict'
 import { useTable } from '@/composables/useTable'
-import { useUserStore } from '@/store/user'
 import { toOptions } from '@/utils/dict'
 import { EcomTrackStatus } from '@/constants/enums'
 import { ORDER_RESULT_KEYS, showBatchResult } from '../order/order'
@@ -126,8 +108,6 @@ import { ORDER_RESULT_KEYS, showBatchResult } from '../order/order'
  * 定时任务每 2 小时自动拉取，也可选中后手工拉取。右上角「跟踪设置」配置 17TRACK 密钥、预警时限与审核前地址校验
  */
 const { t } = useI18n()
-const userStore = useUserStore()
-const can = (perm) => userStore.hasPerm(perm)
 const dict = useDict('ecom_track_status', 'ecom_track_alert')
 const ALERT_TAB = 'alert'
 
@@ -201,19 +181,8 @@ onMounted(reload)
 
 const daysOf = (r) => (r.shipTime ? dayjs(r.trackDeliveredTime || undefined).diff(dayjs(r.shipTime), 'day') : '-')
 
-const detailOpen = ref(false)
-const detailLoading = ref(false)
-const detail = ref()
-async function openDetail(record) {
-  detail.value = undefined
-  detailOpen.value = true
-  detailLoading.value = true
-  try {
-    detail.value = await getPackageTracks(record.id)
-  } finally {
-    detailLoading.value = false
-  }
-}
+const detailRef = ref()
+const openDetail = (record) => detailRef.value.open(record)
 const batchActions = computed(() => [
   { key: 'pull', label: t('ecomOrd.track.pullSelected'), icon: SyncOutlined, perm: 'ecom:track:sync', primary: true, loading: pulling.value, run: pullSelected }
 ])
@@ -233,7 +202,7 @@ async function pullSelected() {
 async function pullOne(id) {
   const res = await pullPackageTracks(id)
   message.success(t('ecomOrd.track.pulled'))
-  if (detailOpen.value && detail.value?.pkg.id === id) detail.value = res
+  detailRef.value?.update(res)
   reload()
 }
 
@@ -293,8 +262,5 @@ const settingModal = ref()
 }
 .alert-tab {
   color: var(--ant-color-error, #ff4d4f);
-}
-.block {
-  margin-bottom: 16px;
 }
 </style>

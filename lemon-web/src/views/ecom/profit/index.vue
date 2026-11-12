@@ -35,7 +35,7 @@
         <div v-else class="kpi-value" :class="k.tone ? k.tone(total[k.key]) : ''">
           <template v-if="k.kind === 'percent'">{{ percent(total[k.key]) }}</template>
           <template v-else-if="k.kind === 'int'">{{ num(total[k.key]) }}</template>
-          <template v-else><span class="kpi-unit">¥</span>{{ money(total[k.key]) }}</template>
+          <template v-else><template v-if="nz(total[k.key]) < 0">-</template><span class="kpi-unit">¥</span>{{ money(Math.abs(nz(total[k.key]))) }}</template>
         </div>
         <div v-if="k.sub" class="kpi-sub">{{ k.sub() }}</div>
       </div>
@@ -65,7 +65,7 @@ import ProfitTable from './ProfitTable.vue'
 import { reportFees, reportProfit } from '@/api/ecom/report'
 import { useDict } from '@/composables/useDict'
 import { findDict } from '@/utils/dict'
-import { money, num, nz } from '@/utils/number'
+import { money, num, nz, symMoney } from '@/utils/number'
 import { percent, shortMoney } from '@/components/charts/charts'
 import { ProfitBasis, ProfitDimension, SettlementItemType } from '@/constants/enums'
 import { t } from '@/locales'
@@ -119,8 +119,8 @@ const METRICS = [
 /** 毛利率着色：亏损红色、低于 10% 橙色、其余绿色 */
 const marginTone = (v) => (v == null ? '' : nz(v) < 0 ? 'bad' : nz(v) < 10 ? 'warn' : 'good')
 const KPIS = [
-  { key: 'salesNet', label: t('ecomProfit.col.salesNet'), sub: () => `${t('ecomProfit.col.salesGross')} ¥${shortMoney(total.value.salesGross)}` },
-  { key: 'profit', label: t('ecomProfit.col.profit'), tone: (v) => (nz(v) < 0 ? 'bad' : ''), sub: () => `${t('ecomDat.profit.perOrder')} ¥${money(ratio(total.value.profit, total.value.orders) / 100)}` },
+  { key: 'salesNet', label: t('ecomProfit.col.salesNet'), sub: () => `${t('ecomProfit.col.salesGross')} ${symMoney(total.value.salesGross, '¥', shortMoney)}` },
+  { key: 'profit', label: t('ecomProfit.col.profit'), tone: (v) => (nz(v) < 0 ? 'bad' : ''), sub: () => `${t('ecomDat.profit.perOrder')} ${symMoney(ratio(total.value.profit, total.value.orders) / 100)}` },
   { key: 'margin', label: t('ecomProfit.col.margin'), kind: 'percent', tone: marginTone, sub: () => `${t('ecomProfit.col.roi')} ${percent(total.value.roi)}` },
   { key: 'adSpend', label: t('ecomReport.common.adSpend'), sub: () => `${t('ecomDat.profit.ofSales')} ${percent(ratio(total.value.adSpend, total.value.salesNet))}` },
   { key: 'refund', label: t('ecomReport.common.refund'), sub: () => `${t('ecomDat.profit.ofSales')} ${percent(ratio(Math.abs(nz(total.value.refund)), total.value.salesNet))}` },

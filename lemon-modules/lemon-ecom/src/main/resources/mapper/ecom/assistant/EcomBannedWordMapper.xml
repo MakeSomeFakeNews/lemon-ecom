@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.assistant.mapper.EcomBannedWordMapper">
+
+    <insert id="insertBatch">
+        INSERT INTO ecom_banned_word (word, word_type, level, match_mode, platform, marketplace, suggestion, builtin, status, remark, create_by,
+                                      create_time, update_time)
+        VALUES
+        <foreach collection="items" item="i" separator=",">
+            (#{i.word}, #{i.wordType}, #{i.level}, #{i.matchMode}, #{i.platform}, #{i.marketplace}, #{i.suggestion}, #{i.builtin}, #{i.status},
+             #{i.remark}, #{i.createBy}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        </foreach>
+    </insert>
+</mapper>

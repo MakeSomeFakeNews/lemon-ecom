@@ -32,9 +32,9 @@
             <div>{{ record.accountCode }} {{ record.accountName }}</div>
             <div class="sub-text">{{ record.deptName }}</div>
           </template>
-          <template v-else-if="column.key === 'totalBudget'">¥{{ formatMoney(record.totalBudget) }}</template>
+          <template v-else-if="column.key === 'totalBudget'">{{ symMoney(record.totalBudget) }}</template>
           <template v-else-if="column.key === 'totalActual'">
-            <span :class="{ over: overBudget(record) }">¥{{ formatMoney(record.totalActual) }}</span>
+            <span :class="{ over: overBudget(record) }">{{ symMoney(record.totalActual) }}</span>
           </template>
           <template v-else-if="column.key === 'rate'">
             <a-progress
@@ -72,7 +72,7 @@
             <div>{{ record.accountCode }} {{ record.accountName }}</div>
             <div class="sub-text">{{ record.deptId === 0 ? $t('fin.budget.company') : record.deptName }}</div>
           </template>
-          <template v-else-if="column.key === 'total'">¥{{ formatMoney(record.total) }}</template>
+          <template v-else-if="column.key === 'total'">{{ symMoney(record.total) }}</template>
           <template v-else-if="column.key === 'controlMode'"><DictTag type="fin_budget_control" :value="record.controlMode || 'NONE'" /></template>
           <template v-else-if="column.key === 'months'">
             <span class="sub-text">{{ MONTH_KEYS.map((k) => short(record[k])).join(' · ') }}</span>
@@ -156,6 +156,7 @@ import { formatMoney } from '@/components/fin/fin'
 import { useAction } from '@/composables/useAction'
 
 import { BudgetControl } from '@/constants/enums'
+import { symMoney } from '@/utils/number'
 const { t } = useI18n()
 const dict = useDict('fin_budget_control')
 

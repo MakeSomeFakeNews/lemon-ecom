@@ -47,7 +47,7 @@
           </template>
           <template v-else-if="column.key === 'seller'">{{ record.sellerName || record.sellerLoginId || '-' }}</template>
           <template v-else-if="column.key === 'amount'">
-            <b>¥ {{ money(record.totalAmount) }}</b>
+            <b>{{ symMoney(record.totalAmount) }}</b>
             <div class="sub-text">{{ $t('ecomDev.order.amountText', { product: money(record.productAmount), fee: money(record.shippingFee) }) }}</div>
           </template>
           <template v-else-if="column.key === 'logistics'">
@@ -89,7 +89,7 @@ import { useRouteOpen } from '@/composables/useRouteOpen'
 import { useTable } from '@/composables/useTable'
 import { useUserStore } from '@/store/user'
 import { toOptions } from '@/utils/dict'
-import { money } from '@/utils/number'
+import { money, symMoney, qty } from '@/utils/number'
 
 /**
  * 1688 采购单：采购订单一键下单到 1688 生成（按卖家拆单），同步交易状态、实付金额（含运费）、物流单号与轨迹（定时任务每小时同步），
@@ -108,7 +108,7 @@ const columns = [
   { title: t('ecomDev.order.po'), key: 'po', dataIndex: 'scmOrderNo', width: 180 },
   { title: t('ecomDev.order.seller'), key: 'seller', dataIndex: 'sellerName', width: 180, ellipsis: true },
   { title: t('ecomDev.order.itemCount'), dataIndex: 'itemCount', width: 70, align: 'right' },
-  { title: t('ecomDev.order.totalQty'), dataIndex: 'totalQty', width: 90, align: 'right' },
+  { title: t('ecomDev.order.totalQty'), dataIndex: 'totalQty', width: 90, align: 'right', customRender: ({ text }) => qty(text) },
   { title: t('ecomDev.order.totalAmount'), key: 'amount', dataIndex: 'totalAmount', width: 190, align: 'right' },
   { title: t('ecomDev.order.logistics'), key: 'logistics', dataIndex: 'logisticsNo', width: 170 },
   { title: t('ecomDev.order.syncTime'), dataIndex: 'syncTime', width: 165 },

@@ -18,8 +18,6 @@ public enum AccountRole {
     PAYABLE("fin.label.receivablesPayables", "fin.label.accountsPayable", "2202"),
     ADVANCE_RECEIVED("fin.label.receivablesPayables", "fin.label.advancesCustomers", "2203"),
     PREPAYMENT("fin.label.receivablesPayables", "fin.label.prepayments", "1123"),
-    NOTES_RECEIVABLE("fin.label.receivablesPayables", "fin.label.notesReceivable", "1121"),
-    NOTES_PAYABLE("fin.label.receivablesPayables", "fin.label.notesPayable", "2201"),
     OTHER_RECEIVABLE("fin.label.receivablesPayables", "fin.label.otherReceivablesEmployeeLoans", "1221"),
     OTHER_PAYABLE("fin.label.receivablesPayables", "fin.label.otherPayablesExpensesWithholdings", "2241"),
     /** 代垫运费（客户承担的发运运费）：付承运商时 借 该科目 / 贷 应付账款，向客户收取时 借 应收账款 / 贷 该科目，两边相抵 */
@@ -28,8 +26,6 @@ public enum AccountRole {
     /** 默认：低值易耗品 → 周转材料，半成品、成品 → 库存商品，其余 → 原材料 */
     INVENTORY("fin.label.inventoryCost", "fin.label.inventories", "1403", Dimension.MATERIAL_CATEGORY,
             Map.of(FinConstants.LOW_VALUE_CATEGORY, "1411", FinConstants.CATEGORY_SEMI, "1405", FinConstants.CATEGORY_FINISHED, "1405")),
-    OUTSOURCE_MATERIAL("fin.label.inventoryCost", "fin.label.materialsSubcontracting", "1408"),
-    CONTRACT_COST("fin.label.inventoryCost", "fin.label.contractPerformanceCostProjects", "5401"),
     PENDING_LOSS("fin.label.inventoryCost", "fin.label.pendingPropertyGainsLossesCountSurplus", "1901"),
     /** 其他入库（按入库类别）的对方科目：成本结转凭证 借 存货 / 贷 该科目；未设置时同待处理财产损溢 */
     OTHER_IN_OFFSET("fin.label.inventoryCost", "fin.label.otherInOffset", "1901", Dimension.IN_CATEGORY),
@@ -38,8 +34,6 @@ public enum AccountRole {
 
     REVENUE("fin.label.revenueExpenses", "fin.label.mainOperatingRevenue", "6001", Dimension.MATERIAL_CATEGORY),
     COST_OF_SALES("fin.label.revenueExpenses", "fin.label.mainOperatingCost", "6401", Dimension.MATERIAL_CATEGORY),
-    OTHER_REVENUE("fin.label.revenueExpenses", "fin.label.otherOperatingRevenueServiceFees", "6051"),
-    CONTRACT_LIABILITY("fin.label.revenueExpenses", "fin.label.contractLiabilitiesProjectInvoicing", "2205"),
     SELLING_EXPENSE("fin.label.revenueExpenses", "fin.label.sellingExpensesFreightAfterSalesParts", "6601"),
     /** 销售运费（本公司承担的发运运费）：借 该科目 / 贷 应付账款-承运商 */
     SALES_FREIGHT("fin.label.revenueExpenses", "fin.label.salesFreight", "6601"),
@@ -59,8 +53,11 @@ public enum AccountRole {
     OFFSET_AR("fin.label.revenueExpenses", "fin.label.offsetArAccount", "6601"),
     /** 应付冲账（供应商返利、赔偿等抵扣欠供应商的款）：借 应付账款 / 贷 该科目（默认冲减主营业务成本），冲账单上可另选科目 */
     OFFSET_AP("fin.label.revenueExpenses", "fin.label.offsetApAccount", "6401"),
-    /** 采购返利（供应商给我方的返利，结算生成红字应付单）：借 应付账款 / 贷 该科目（默认冲减主营业务成本）、进项税额 */
-    PURCHASE_REBATE("fin.label.revenueExpenses", "fin.label.purchaseRebateAccount", "6401"),
+    /**
+     * 电商平台费用（平台结算确认时按费用类型生成费用确认：借 该科目 / 贷 应收账款-店铺客户，日期为结算周期结束日）：
+     * 按结算明细类型（佣金、配送费、仓储费、广告费、退货处理费等）分别设置，默认销售费用
+     */
+    PLATFORM_FEE("fin.label.revenueExpenses", "fin.label.platformFee", "6601", Dimension.PLATFORM_FEE_TYPE),
 
     INPUT_VAT("fin.label.taxes", "fin.label.inputVat", "222101"),
     OUTPUT_VAT("fin.label.taxes", "fin.label.outputVat", "222102"),
@@ -69,7 +66,6 @@ public enum AccountRole {
     EDU_SURCHARGE("fin.label.taxes", "fin.label.educationSurchargePayable", "222106"),
     LOCAL_EDU_SURCHARGE("fin.label.taxes", "fin.label.localEducationSurchargePayable", "222107"),
     TAX_SURCHARGE("fin.label.taxes", "fin.label.taxesSurcharges", "6403"),
-    INCOME_TAX("fin.label.taxes", "fin.label.individualIncomeTaxPayable", "222103"),
 
     FIXED_ASSET("fin.label.assets", "fin.label.fixedAssets", "1601"),
     DEPRECIATION("fin.label.assets", "fin.label.accumulatedDepreciation", "1602"),
@@ -86,7 +82,9 @@ public enum AccountRole {
         /** 字典 wms_in_category：入库类别 */
         IN_CATEGORY("wms_in_category"),
         /** 字典 wms_out_category：出库类别 */
-        OUT_CATEGORY("wms_out_category");
+        OUT_CATEGORY("wms_out_category"),
+        /** 字典 ecom_settlement_item_type：电商平台结算明细类型（订单收入、退款不是费用，不使用） */
+        PLATFORM_FEE_TYPE("ecom_settlement_item_type");
 
         private final String dictType;
 

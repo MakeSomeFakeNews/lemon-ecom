@@ -50,7 +50,7 @@
         {{ $t('fin.settlementForm.settledTotal') }} <b class="total">{{ foreign ? settleCurrency + ' ' : '¥' }}{{ formatMoney(total) }}</b>
         <template v-if="advanceTotal"> · {{ conf.advanceOffsetLabel }} <b>{{ foreign ? settleCurrency + ' ' : '¥' }}{{ formatMoney(advanceTotal) }}</b> · {{ conf.paidLabel }} <b>{{ foreign ? settleCurrency + ' ' : '¥' }}{{ formatMoney(cash) }}</b></template>
         <template v-if="discountTotal"> · {{ $t('fin.settlementForm.discountTotal') }} <b>{{ foreign ? settleCurrency + ' ' : '¥' }}{{ formatMoney(discountTotal) }}</b></template>
-        <template v-if="foreign"> · {{ conf.foreignTotal(settleCurrency, formatMoney(total)) }} <b>¥{{ formatMoney(baseTotal) }}</b></template>
+        <template v-if="foreign"> · {{ conf.foreignTotal(settleCurrency, formatMoney(total)) }} <b>{{ symMoney(baseTotal) }}</b></template>
       </span>
     </div>
     <a-alert v-if="cash < 0" type="error" show-icon class="block" :message="$t('fin.settlementForm.advanceTooMuch', { amount: formatMoney(-cash) })" />
@@ -88,7 +88,7 @@
         <template v-else-if="column.key === 'amount'">
           <template v-if="isForeign(record.currency)">
             <div>{{ record.currency }} {{ formatMoney(record.amountFc) }}</div>
-            <div class="sub-text">¥{{ formatMoney(record.amount) }} @{{ Number(record.exchangeRate) }}</div>
+            <div class="sub-text">{{ symMoney(record.amount) }} @{{ Number(record.exchangeRate) }}</div>
           </template>
           <template v-else>{{ formatMoney(record.amount) }}</template>
         </template>
@@ -151,7 +151,7 @@ import { addSettlement, getSettlement, settlementAdvances, unsettledBills, updat
 import { useDict } from '@/composables/useDict'
 import { useBizRules } from '@/composables/useBizRules'
 import { toOptions } from '@/utils/dict'
-import { nz, round2 } from '@/utils/number'
+import { nz, round2, symMoney } from '@/utils/number'
 import { today } from '@/components/wms/wms'
 import { allocateSettle, formatMoney, settleAllAmounts } from './fin'
 import { BASE_CURRENCY, currencySymbol, fetchRate, isForeign, useCurrencies } from './currency'
@@ -171,10 +171,7 @@ const { rules } = useBizRules({ 'fin.settlement.draft': false })
 const draftMode = computed(() => rules['fin.settlement.draft'] === true)
 
 const dict = useDict('fin_settle_method', 'fin_bill_source')
-// 票据结算由票据业务（收票、背书、开票）自动生成，手工收付款时显示为禁用并说明
-const methodOptions = computed(() =>
-  toOptions(dict.fin_settle_method).map((o) => (o.value !== 'NOTE' ? o : { ...o, label: t('fin.settlementPage.noteMethodHint', { label: o.label }), disabled: true }))
-)
+const methodOptions = computed(() => toOptions(dict.fin_settle_method))
 
 const billColumns = [
   { title: t('fin.settlementPage.no'), dataIndex: 'billNo', width: 150 },

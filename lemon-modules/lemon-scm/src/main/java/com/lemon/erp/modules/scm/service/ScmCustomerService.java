@@ -115,13 +115,6 @@ public class ScmCustomerService {
         return customer;
     }
 
-    /** 校验客户的渠道为经销商（开通经销商门户账号前） */
-    public void requireDealer(Long id) {
-        if (get(id).getChannel() != SalesChannel.DEALER) {
-            throw new BizException("scm.error.onlyCustomersDealerChannelHaveDealer");
-        }
-    }
-
     /**
      * 按税号精确匹配客户（不限状态），供财务模块的发票导入等识别往来单位
      *

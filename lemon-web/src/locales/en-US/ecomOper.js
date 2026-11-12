@@ -24,6 +24,8 @@ export default {
     add: 'Add Monitor',
     addTitle: 'Add Monitor',
     editTitle: 'Edit Monitor',
+    sectionTarget: 'Monitored Item',
+    sectionAlert: 'Fetching & Alerts',
     fetch: 'Fetch via API',
     fetchSelected: 'Fetch ({n})',
     fetchSelect: 'Select the monitors to fetch first',

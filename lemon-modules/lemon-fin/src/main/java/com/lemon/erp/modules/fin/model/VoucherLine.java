@@ -74,7 +74,6 @@ public record VoucherLine(String summary, Long accountId, Long deptId, BigDecima
             case DEPT -> deptId != null;
             case CUSTOMER -> customerId != null;
             case SUPPLIER -> supplierId != null;
-            case PROJECT -> projectId != null;
             case MATERIAL -> materialId != null;
         };
     }

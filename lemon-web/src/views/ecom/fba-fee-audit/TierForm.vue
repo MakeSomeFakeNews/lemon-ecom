@@ -1,53 +1,57 @@
 <template>
-  <FormDrawer :drawer="drawer" width="min(900px, 100vw)" :create-title="$t('ecomFba.tier.add')" :edit-title="$t('ecomFba.tier.editTitle', { code: form.code || '' })">
+  <FormDrawer page :drawer="drawer" :create-title="$t('ecomFba.tier.add')" :edit-title="$t('ecomFba.tier.editTitle', { code: form.code || '' })">
     <a-form ref="formRef" :model="form" :rules="rules" layout="vertical">
-      <a-row :gutter="12">
-        <a-col :xs="12" :sm="6">
+      <div class="section-title section-gap">{{ $t('ecomFba.tier.sectionBasic') }}</div>
+      <a-row :gutter="16">
+        <a-col :xs="12" :sm="8" :lg="4">
           <a-form-item :label="$t('ecomFba.tier.marketplace')" name="marketplace">
             <a-select v-model:value="form.marketplace" :options="toOptions(dict.ecom_marketplace)" />
           </a-form-item>
         </a-col>
-        <a-col :xs="12" :sm="6">
+        <a-col :xs="12" :sm="8" :lg="4">
           <a-form-item :label="$t('ecomFba.tier.code')" name="code"><a-input v-model:value="form.code" :maxlength="32" /></a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="12">
+        <a-col :xs="24" :sm="8" :lg="7">
           <a-form-item :label="$t('ecomFba.tier.name')" name="name"><a-input v-model:value="form.name" :maxlength="64" /></a-form-item>
         </a-col>
-        <a-col :xs="12" :sm="6">
+        <a-col :xs="12" :sm="8" :lg="3">
           <a-form-item :label="$t('ecomFba.tier.sizeCategory')" name="sizeCategory">
             <a-select v-model:value="form.sizeCategory" :options="toOptions(dict.ecom_fba_size_category)" />
           </a-form-item>
         </a-col>
-        <a-col :xs="12" :sm="6">
+        <a-col :xs="12" :sm="8" :lg="3">
           <a-form-item :label="$t('ecomFba.tier.unitSystem')" name="unitSystem">
             <a-select v-model:value="form.unitSystem" :options="unitOptions" />
           </a-form-item>
         </a-col>
-        <a-col :xs="12" :sm="6">
+        <a-col :xs="12" :sm="8" :lg="3">
           <a-form-item :label="$t('ecomFba.tier.sort')"><a-input-number v-model:value="form.sort" :min="0" class="full" /></a-form-item>
         </a-col>
-        <a-col :xs="12" :sm="6">
-          <a-form-item :label="$t('ecomFba.tier.dimDivisor')" :tooltip="$t('ecomFba.tier.dimDivisorTip')">
-            <a-input-number v-model:value="form.dimDivisor" :min="0" class="full" />
-          </a-form-item>
-        </a-col>
-        <a-col v-for="k in LIMITS" :key="k" :xs="12" :sm="6">
-          <a-form-item :label="`${$t(`ecomFba.tier.${k}`)} (${unitLabel(k)})`">
-            <a-input-number v-model:value="form[k]" :min="0" class="full" />
-          </a-form-item>
-        </a-col>
       </a-row>
+
+      <div class="section-title section-gap">{{ $t('ecomFba.tier.sectionLimits') }}</div>
+      <div class="limits">
+        <a-form-item :label="$t('ecomFba.tier.dimDivisor')" :tooltip="$t('ecomFba.tier.dimDivisorTip')">
+          <a-input-number v-model:value="form.dimDivisor" :min="0" class="full" />
+        </a-form-item>
+        <a-form-item v-for="k in LIMITS" :key="k" :label="`${$t(`ecomFba.tier.${k}`)} (${unitLabel(k)})`">
+          <a-input-number v-model:value="form[k]" :min="0" class="full" />
+        </a-form-item>
+      </div>
+
       <div class="items-head">
         <span class="section-title">{{ $t('ecomFba.tier.rates') }}</span>
         <a-button size="small" @click="lines.addRow()"><template #icon><PlusOutlined /></template>{{ $t('common.action.addRow') }}</a-button>
       </div>
       <a-form-item name="rates" :rules="rateRules" class="items-item">
+        <a-form-item-rest>
         <LineItemsTable :items="form.rates" :columns="rateColumns" :min-rows="0">
           <template #cell="{ column, record }">
             <a-input v-if="column.key === 'currency'" v-model:value="record.currency" :maxlength="8" />
             <a-input-number v-else v-model:value="record[column.key]" :min="0" :precision="column.key.includes('ee') ? 2 : 3" class="full" />
           </template>
         </LineItemsTable>
+        </a-form-item-rest>
       </a-form-item>
     </a-form>
   </FormDrawer>
@@ -65,7 +69,7 @@ import { toOptions } from '@/utils/dict'
 import { FbaSizeCategory, FbaUnitSystem } from '@/constants/enums'
 import { t } from '@/locales'
 
-/** 尺寸分段与重量段费率表单：ref 调用 openCreate(marketplace?)、openEdit(tier)；@success */
+/** 尺寸分段与重量段费率表单（子页）：ref 调用 openCreate(marketplace?)、openEdit(tier)；@success */
 const emit = defineEmits(['success'])
 const dict = useDict('ecom_marketplace', 'ecom_fba_size_category')
 const LIMITS = ['maxLong', 'maxMedian', 'maxShort', 'maxGirth', 'maxSidesSum', 'maxWeight']
@@ -177,6 +181,15 @@ defineExpose({ openCreate, openEdit })
 }
 .section-title {
   font-weight: 600;
+}
+.section-gap {
+  margin: 4px 0 12px;
+}
+.limits {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
+  column-gap: 16px;
+  margin-bottom: 8px;
 }
 .items-item :deep(.ant-form-item-control-input) {
   min-height: 0;

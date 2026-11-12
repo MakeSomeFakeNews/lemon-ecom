@@ -134,7 +134,7 @@ const rowKey = (r) => (isDetail.value ? `${r.docId}-${r.materialCode}-${r.qty}-$
 
 const cards = computed(() => {
   const x = total.value
-  const yuan = (key, titleKey) => ({ key, title: t(titleKey), value: Number(x[key] || 0), precision: 2, prefix: '¥', neg: Number(x[key]) < 0 })
+  const yuan = (key, titleKey) => ({ key, title: t(titleKey), value: Math.abs(Number(x[key] || 0)), precision: 2, prefix: Number(x[key]) < 0 ? '-¥' : '¥', neg: Number(x[key]) < 0 })
   const list = [yuan('revenue', 'fin.analysis.salesRevenue'), yuan('salesAmount', 'fin.analysis.salesAmount'), yuan('cost', 'fin.analysis.salesCost'),
     yuan('profit', 'fin.analysis.grossProfit'),
     { key: 'margin', title: t('fin.analysis.grossMargin'), value: x.margin ?? '-', precision: x.margin == null ? undefined : 2,

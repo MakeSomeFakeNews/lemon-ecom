@@ -116,6 +116,7 @@ import { useUserStore } from '@/store/user'
 import { locationText, rowKey, today } from '@/components/wms/wms'
 import { ORDER_KINDS, TRADE_KINDS, formatMoney, freightForm, freightPayload, grossPrice, netQty, newTradeRow, remainingQty } from './scm'
 import { OrderSource, OrderStatus, PurchaseFreightCost } from '@/constants/enums'
+import { symMoney } from '@/utils/number'
 
 /**
  * 采购入库 / 采购退货 / 销售出库 / 销售退货，保存即审核（更新库存）。
@@ -262,8 +263,8 @@ const executable = [OrderStatus.APPROVED, OrderStatus.PARTIAL]
 const sourceOptions = computed(() =>
   sources.value.map((s) =>
     sourceByDoc.value
-      ? { value: s.id, label: `${s.docNo}　${s.partnerName}　${s.bizDate}　¥${formatMoney(s.totalAmount)}` }
-      : { value: s.id, label: `${s.orderNo}　${s.partnerName}　¥${formatMoney(s.totalAmount)}` }
+      ? { value: s.id, label: `${s.docNo}　${s.partnerName}　${s.bizDate}　${symMoney(s.totalAmount)}` }
+      : { value: s.id, label: `${s.orderNo}　${s.partnerName}　${symMoney(s.totalAmount)}` }
   )
 )
 let timer

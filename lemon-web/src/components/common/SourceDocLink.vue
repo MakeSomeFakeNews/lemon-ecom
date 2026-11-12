@@ -13,7 +13,7 @@ import { useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { sourceTarget } from './sourceDocs'
 
-/** 应收应付单等的来源单据链接：type 为来源类型（BillSource），id 为来源单据 ID，billKind 区分应收 / 应付（返利、订单尾差） */
+/** 应收应付单等的来源单据链接：type 为来源类型（BillSource），id 为来源单据 ID，billKind 区分应收 / 应付（订单尾差） */
 const props = defineProps({
   type: { type: String, default: undefined },
   id: { type: Number, default: undefined },

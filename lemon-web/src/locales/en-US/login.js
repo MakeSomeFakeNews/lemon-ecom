@@ -9,7 +9,7 @@ export default {
   brandLine1: 'Keep your business',
   brandLine2: 'fresh as a lemon, ',
   brandHighlight: 'clean and efficient',
-  brandDesc: 'From purchasing, production and warehousing to finance, HR, customers and projects, one system connects the entire business with real-time data that always matches the books.',
+  brandDesc: 'From multi-platform stores, orders and listings to purchasing and replenishment, first-mile shipping, overseas warehouses and settlements, one system connects the entire cross-border e-commerce business with real-time data that always matches the books.',
   tagWorkflow: 'Approval Workflow',
   tagDataPerm: 'Data Permission',
   tagCurrency: 'Multi-currency',

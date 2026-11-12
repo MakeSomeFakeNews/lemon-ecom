@@ -9,7 +9,7 @@
     :disabled="disabled"
     option-filter-prop="label"
     :dropdown-match-select-width="280"
-    @change="(v) => emit('update:value', v ?? null)"
+    @change="(v, option) => { emit('update:value', v ?? null); emit('change', v ?? null, option) }"
   />
 </template>
 
@@ -27,7 +27,8 @@ const props = defineProps({
   types: Array,
   excludeTypes: Array
 })
-const emit = defineEmits(['update:value'])
+// change 声明为自身事件，避免父组件的 @change 透传到 a-select 后与内部监听合并成数组（antd 报 prop 类型警告）
+const emit = defineEmits(['update:value', 'change'])
 
 const list = ref([])
 const loading = ref(false)

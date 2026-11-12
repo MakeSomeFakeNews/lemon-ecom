@@ -1,55 +1,55 @@
 <template>
-  <FormDrawer :drawer="drawer" :create-title="$t('ecomPublish.price.add')" :edit-title="$t('ecomPublish.price.edit')" width="min(760px, 100vw)">
+  <FormDrawer page :drawer="drawer" :create-title="$t('ecomPublish.price.add')" :edit-title="$t('ecomPublish.price.edit')">
     <a-form ref="formRef" :model="form" :rules="rules" layout="vertical">
-      <a-divider orientation="left" orientation-margin="0" class="first-divider">{{ $t('ecomPublish.item.secBasic') }}</a-divider>
+      <div class="section-title">{{ $t('ecomPublish.item.secBasic') }}</div>
       <a-row :gutter="16">
-        <a-col :xs="24" :sm="12">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('ecomPublish.price.name')" name="name"><a-input v-model:value="form.name" :maxlength="64" /></a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="12">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('ecomPublish.common.platform')" name="platform">
             <a-select v-model:value="form.platform" allow-clear :options="toOptions(dict.ecom_platform)" :placeholder="$t('ecomPublish.price.anyPlatform')" />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="6">
+        <a-col :xs="24" :sm="12" :lg="4">
           <a-form-item :label="$t('common.field.status')" name="status">
             <a-switch v-model:checked="form.status" :checked-value="STATUS_ENABLED" :un-checked-value="STATUS_DISABLED" />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="18">
+        <a-col :xs="24" :lg="8">
           <a-form-item :label="$t('common.field.remark')" name="remark"><a-input v-model:value="form.remark" :maxlength="255" /></a-form-item>
         </a-col>
       </a-row>
 
-      <a-divider orientation="left" orientation-margin="0">{{ $t('ecomPublish.price.params') }}</a-divider>
+      <div class="section-title">{{ $t('ecomPublish.price.params') }}</div>
       <a-alert type="info" show-icon class="block" :message="$t('ecomPublish.price.formula')" />
       <a-row :gutter="16">
-        <a-col v-for="f in fields" :key="f.key" :xs="12" :sm="6">
+        <a-col v-for="f in fields" :key="f.key" :xs="12" :sm="6" :lg="6" :xl="3">
           <a-form-item :label="$t(`ecomPublish.price.${f.key}`)" :name="f.key" :extra="f.extra ? $t(f.extra) : undefined">
             <a-input-number v-model:value="form[f.key]" :min="f.min ?? 0" :max="f.max" :precision="f.precision ?? 2" class="full" :addon-after="f.unit" />
           </a-form-item>
         </a-col>
       </a-row>
 
-      <a-divider orientation="left" orientation-margin="0">{{ $t('ecomPublish.price.calculator') }}</a-divider>
+      <div class="section-title">{{ $t('ecomPublish.price.calculator') }}</div>
       <a-row :gutter="16" align="bottom">
-        <a-col :xs="12" :sm="6">
+        <a-col :xs="12" :sm="6" :lg="4">
           <a-form-item :label="$t('ecomPublish.price.calcCurrency')">
             <a-select v-model:value="calc.currency" :options="currencyOptions" show-search />
           </a-form-item>
         </a-col>
-        <a-col :xs="12" :sm="6">
+        <a-col :xs="12" :sm="6" :lg="4">
           <a-form-item :label="$t('ecomPublish.price.calcCost')"><a-input-number v-model:value="calc.cost" :min="0" :precision="2" class="full" /></a-form-item>
         </a-col>
-        <a-col :xs="12" :sm="6">
+        <a-col :xs="12" :sm="6" :lg="4">
           <a-form-item :label="$t('ecomPublish.price.calcPrice')"><a-input-number v-model:value="calc.price" :min="0" :precision="2" class="full" /></a-form-item>
         </a-col>
-        <a-col :xs="12" :sm="6">
+        <a-col :xs="12" :sm="6" :lg="4">
           <a-form-item><a-button :loading="calcLoading" :disabled="!form.id" @click="runCalc">{{ $t('ecomPublish.price.calc') }}</a-button></a-form-item>
         </a-col>
       </a-row>
       <div v-if="!form.id" class="sub-text">{{ $t('ecomPublish.price.calcSaveFirst') }}</div>
-      <a-descriptions v-if="quote" size="small" bordered :column="2">
+      <a-descriptions v-if="quote" size="small" bordered :column="{ xs: 1, sm: 2, lg: 4 }" class="block">
         <a-descriptions-item :label="$t('ecomPublish.price.rate')">{{ quote.rate }}</a-descriptions-item>
         <a-descriptions-item :label="$t('ecomPublish.price.suggested')"><b>{{ quote.currency }} {{ price(quote.suggestedPrice) }}</b></a-descriptions-item>
         <a-descriptions-item :label="$t('ecomPublish.price.fees')">{{ money(quote.fees) }}</a-descriptions-item>
@@ -137,8 +137,9 @@ defineExpose({
 </script>
 
 <style scoped>
-.first-divider {
-  margin-top: 0;
+.section-title {
+  font-weight: 600;
+  margin: 4px 0 12px;
 }
 .block {
   margin-bottom: 12px;

@@ -46,7 +46,7 @@
               :message="$t('fin.report.cashMismatch', { amount: formatMoney(cash.closingBalance) })" />
 
             <a-table
-              :row-key="(r, i) => i"
+              row-key="key"
               size="small"
               bordered
               :columns="tableColumns"
@@ -110,6 +110,7 @@ import { useUserStore } from '@/store/user'
 import { writeExcel } from '@/utils/excel'
 import { defaultCompanyName, printDocs } from '@/utils/print'
 import { useI18n } from 'vue-i18n'
+import { symMoney } from '@/utils/number'
 
 /**
  * 财务报表：资产负债表（左右两栏）、利润表（本月、本年累计、上年同期）、现金流量表（直接法）。
@@ -158,12 +159,13 @@ const isZeroRow = (r) => !r.title && r.level > 0 && !r.bold && (r.values || []).
 const visible = (rows) => (hideZero.value ? rows.filter((r) => !isZeroRow(r)) : rows)
 
 const tableRows = computed(() => {
-  if (type.value === 'cash') return cashRows.value.map((r) => ({ l: r }))
+  // 行号作为 rowKey（a-table 的 rowKey 函数不再支持 index 参数）
+  if (type.value === 'cash') return cashRows.value.map((r, i) => ({ key: i, l: r }))
   if (!report.value) return []
   const left = visible(report.value.rows)
-  if (type.value !== 'balance') return left.map((r) => ({ l: r }))
+  if (type.value !== 'balance') return left.map((r, i) => ({ key: i, l: r }))
   const right = visible(report.value.right)
-  return Array.from({ length: Math.max(left.length, right.length) }, (_, i) => ({ l: left[i], r: right[i] }))
+  return Array.from({ length: Math.max(left.length, right.length) }, (_, i) => ({ key: i, l: left[i], r: right[i] }))
 })
 
 const amountColumns = (side, names) => names.map((c, i) => ({ title: c, key: `${side}${i}`, side, index: i, width: 150, align: 'right' }))
@@ -205,7 +207,7 @@ function openDrill(row) {
 // ---------------------------------------------------------------- 利润趋势
 
 const trendOption = computed(() => ({
-  tooltip: { trigger: 'axis', valueFormatter: (v) => `¥${formatMoney(v)}` },
+  tooltip: { trigger: 'axis', valueFormatter: (v) => `${symMoney(v)}` },
   legend: { top: 0 },
   grid: { left: 8, right: 20, top: 36, bottom: 8, containLabel: true },
   xAxis: { type: 'category', data: trend.value.map((x) => t('fin.report.monthLabel', { m: Number(String(x.period).slice(4)) })) },

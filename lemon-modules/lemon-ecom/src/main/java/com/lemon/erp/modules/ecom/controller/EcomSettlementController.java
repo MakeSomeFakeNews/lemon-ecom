@@ -66,6 +66,14 @@ public class EcomSettlementController {
         return R.ok();
     }
 
+    /** 已确认但没有收款单（收款单已在财务中删除，或确认时没有生成）的结算单补生成收款单 */
+    @PostMapping("/{id}/receipt")
+    @PreAuthorize("@ss.hasPerm('ecom:settlement:confirm')")
+    @OperLog(title = "平台结算生成收款单", type = OperType.INSERT) // i18n-ignore 操作日志标题存库
+    public R<Long> createReceipt(@PathVariable Long id, @RequestParam Long accountId) {
+        return R.ok(settlementService.createReceipt(id, accountId));
+    }
+
     /** 不挂订单费用的分摊结果 */
     @GetMapping("/{id}/allocations")
     @PreAuthorize("@ss.hasPerm('ecom:settlement:list')")

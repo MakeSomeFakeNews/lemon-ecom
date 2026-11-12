@@ -18,6 +18,6 @@ public interface FinFundPlanMapper extends BaseMapper<FinFundPlanItem> {
      */
     BigDecimal selectCashBalance(@Param("cashCodes") List<String> cashCodes);
 
-    /** 到期日不晚于 end 的预计收支：未核销应收应付、持有的应收票据、未兑付的应付票据、待付款报销、手工计划项 */
+    /** 到期日不晚于 end 的预计收支：未核销应收应付、待付款报销、手工计划项 */
     List<FundPlanEntry> selectEntries(@Param("end") LocalDate end);
 }

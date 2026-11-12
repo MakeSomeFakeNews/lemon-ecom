@@ -10,7 +10,7 @@
           <a-button v-perm="'ecom:fbaClaim:add'" type="primary" @click="detect(storeId)">
             <template #icon><ThunderboltOutlined /></template>{{ $t('ecomFba.claim.detect') }}
           </a-button>
-          <a-dropdown v-perm="'ecom:fbaClaim:sync'">
+          <a-dropdown v-if="userStore.hasPerm('ecom:fbaClaim:sync')">
             <a-button><template #icon><CloudSyncOutlined /></template>{{ $t('ecomFba.claim.dataOps') }} <DownOutlined /></a-button>
             <template #overlay>
               <a-menu @click="onDataMenu">
@@ -28,12 +28,12 @@
         <div class="kpis">
           <div class="kpi ok">
             <div class="kpi-label"><SafetyCertificateOutlined /> {{ $t('ecomFba.claim.summaryClaimable') }}</div>
-            <div class="kpi-value">¥{{ money(summary.claimableBase ?? 0) }}</div>
+            <div class="kpi-value">{{ symMoney(summary.claimableBase ?? 0) }}</div>
             <div class="kpi-sub">{{ $t('ecomFba.claim.openCount', { p: statusCount(FbaClaimStatus.PENDING), s: statusCount(FbaClaimStatus.SUBMITTED) }) }}</div>
           </div>
           <div class="kpi">
             <div class="kpi-label"><CheckCircleOutlined /> {{ $t('ecomFba.claim.summaryPaid') }}</div>
-            <div class="kpi-value">¥{{ money(summary.paidBase ?? 0) }}</div>
+            <div class="kpi-value">{{ symMoney(summary.paidBase ?? 0) }}</div>
             <div class="kpi-sub">{{ $t('ecomFba.claim.paidCount', { n: statusCount(FbaClaimStatus.PAID), r: statusCount(FbaClaimStatus.REJECTED) }) }}</div>
           </div>
           <div class="kpi warn clickable" :class="{ hot: summary.expiringSoon > 0 }" @click="filterExpiring(nearest.count30 && !summary.expiringSoon ? 30 : 7)">
@@ -52,7 +52,7 @@
             <div class="types">
               <div v-for="r in byType" :key="r.claimType" class="type-row">
                 <DictTag type="ecom_fba_claim_type" :value="r.claimType" />
-                <span class="type-num">{{ r.cnt }} · ¥{{ money(r.amountBase) }}</span>
+                <span class="type-num">{{ r.cnt }} · {{ symMoney(r.amountBase) }}</span>
               </div>
               <span v-if="!byType.length" class="sub-text">-</span>
             </div>
@@ -93,10 +93,14 @@ import ReimbursementList from './ReimbursementList.vue'
 import ReceiptList from './ReceiptList.vue'
 import { claimSummary, detectClaims, matchReimbursements, pageClaim, syncClaims } from '@/api/ecom/fba'
 import { useAction } from '@/composables/useAction'
-import { money } from '@/utils/number'
+import { money, symMoney } from '@/utils/number'
 import { AmzReportType, EcomPlatform, FbaClaimStatus } from '@/constants/enums'
 import { useCan } from '../fba-health/fba'
 import { t } from '@/locales'
+import { useUserStore } from '@/store/user'
+
+/** a-dropdown 的根不是元素，v-perm 不生效，改用 v-if 判断权限 */
+const userStore = useUserStore()
 
 /**
  * FBA 索赔：汇总（可索赔、已赔付、即将到期、按类型）+ 索赔清单 / 库存流水 / 赔偿记录 / 货件对账。店铺筛选对各标签页共用

@@ -25,6 +25,7 @@ import com.lemon.erp.modules.fin.dto.SettlementItemRequest;
 import com.lemon.erp.modules.fin.dto.SettlementRequest;
 import com.lemon.erp.modules.fin.entity.FinBill;
 import com.lemon.erp.modules.fin.model.BillKind;
+import com.lemon.erp.modules.fin.model.BillSource;
 import com.lemon.erp.modules.fin.model.SettleKind;
 import com.lemon.erp.modules.fin.service.FinBillService;
 import com.lemon.erp.modules.fin.service.FinSettlementService;
@@ -64,6 +65,7 @@ public class EcomSettlementService {
     private final EcomFeeMappingService feeMappingService;
     private final EcomFeeAllocationService allocationService;
     private final EcomPayoutService payoutService;
+    private final EcomSettlementFees settlementFees;
     private final Validator validator;
     private final TransactionTemplate transactionTemplate;
 
@@ -218,7 +220,8 @@ public class EcomSettlementService {
 
     /**
      * 确认：按平台订单号把佣金、配送费、退款回写到订单；传入收款账户时按结算净额生成收款单，
-     * 先到期的应收先核销，平台费用（订单收入 − 退款 − 净额）作为折让；净额超过未核销应收的部分转预收
+     * 平台费用（订单收入 − 退款 − 净额）按凭证科目设置生成红字应收（借 费用 / 贷 应收账款，日期为结算周期结束日，见 EcomSettlementFees）并在收款单中冲抵，
+     * 先到期的应收先核销；净额超过未核销应收的部分转预收
      *
      * @param accountId 收款账户（现金 / 银行末级科目），为空只回写费用不生成收款
      */
@@ -283,8 +286,6 @@ public class EcomSettlementService {
         }
         BigDecimal rate = Decimals.nz(s.getExchangeRate());
         BigDecimal grossBase = Decimals.money(Decimals.nz(s.getSalesAmount()).add(Decimals.nz(s.getRefundAmount())).multiply(rate));
-        BigDecimal discount = grossBase.subtract(s.getNetBase()).max(BigDecimal.ZERO);
-        BigDecimal remaining = s.getNetBase();
         List<FinBill> bills = billService.unsettled(BillKind.AR, store.getCustomerId()).stream()
                 .filter(b -> Decimals.nz(b.getAmount()).signum() > 0)
                 .sorted(Comparator.comparing(FinBill::getBillDate, Comparator.nullsLast(Comparator.naturalOrder())).thenComparing(FinBill::getId))
@@ -292,23 +293,33 @@ public class EcomSettlementService {
         if (bills.isEmpty()) {
             throw new BizException("ecom.error.noOpenReceivable", store.getName());
         }
+        // 平台费用确认为红字应收（借 费用科目 / 贷 应收账款，见 EcomSettlementFees），收款只按净额收款并用它们冲抵应收
+        BigDecimal blueOpen = Decimals.sum(bills, b -> Decimals.nz(b.getAmount()).subtract(Decimals.nz(b.getSettledAmount())).max(BigDecimal.ZERO));
+        // 重新生成收款单（原收款单已删除）时沿用之前生成、没能随收款单删除的平台费用应收（已生成凭证等），只冲抵其未核销部分
+        List<FinBill> feeBills = billService.listBySource(BillSource.PLATFORM_FEE, s.getId());
+        if (feeBills.isEmpty()) {
+            feeBills = settlementFees.createFeeBills(s, store, grossBase.subtract(s.getNetBase()).max(BigDecimal.ZERO));
+        }
+        feeBills = feeBills.stream().filter(b -> openOf(b).signum() < 0).toList();
+        BigDecimal feeTotal = Decimals.sum(feeBills, b -> openOf(b).negate());
         List<SettlementItemRequest> items = new ArrayList<>();
+        BigDecimal remaining = s.getNetBase();
+        // 应收不够冲抵时（如应收已在别处核销）费用红字应收留待以后的收款冲抵
+        if (feeTotal.signum() > 0 && blueOpen.compareTo(remaining.add(feeTotal)) >= 0) {
+            feeBills.forEach(b -> items.add(new SettlementItemRequest(b.getId(), openOf(b))));
+            remaining = remaining.add(feeTotal);
+        }
         for (FinBill b : bills) {
             BigDecimal open = Decimals.nz(b.getAmount()).subtract(Decimals.nz(b.getSettledAmount()));
             if (open.signum() <= 0) {
                 continue;
             }
             BigDecimal amount = remaining.min(open);
-            BigDecimal disc = discount.min(open.subtract(amount));
-            if (amount.signum() == 0 && disc.signum() == 0) {
+            if (amount.signum() == 0) {
                 break;
             }
-            items.add(new SettlementItemRequest(b.getId(), amount, disc.signum() > 0 ? disc : null));
+            items.add(new SettlementItemRequest(b.getId(), amount));
             remaining = remaining.subtract(amount);
-            discount = discount.subtract(disc);
-            if (remaining.signum() == 0 && discount.signum() == 0) {
-                break;
-            }
         }
         if (items.isEmpty()) {
             throw new BizException("ecom.error.noOpenReceivable", store.getName());
@@ -318,6 +329,54 @@ public class EcomSettlementService {
                 Messages.get("ecom.text.settlementReceiptRemark", store.getName(), s.getSettlementNo()), items, null,
                 toAdvance ? s.getNetBase() : null, toAdvance ? Boolean.TRUE : null, null, Boolean.TRUE);
         return finSettlementService.create(req);
+    }
+
+    /** 单据的未核销余额（红字单据为负数） */
+    private static BigDecimal openOf(FinBill b) {
+        return Decimals.nz(b.getAmount()).subtract(Decimals.nz(b.getSettledAmount()));
+    }
+
+    /**
+     * 已确认、收款单已删除（或确认时没有生成收款单）的结算单补生成收款单：规则同确认时生成
+     *
+     * @param accountId 收款账户（现金 / 银行末级科目）
+     */
+    @Transactional
+    public Long createReceipt(Long id, Long accountId) {
+        EcomSettlement s = get(id);
+        if (s.getStatus() != SettlementStatus.CONFIRMED) {
+            throw new BizException("ecom.error.fixa.settlementNotConfirmed", s.getSettlementNo());
+        }
+        if (s.getFinSettlementId() != null) {
+            throw new BizException("ecom.error.fixa.settlementHasReceipt", s.getSettlementNo());
+        }
+        Long finId = receipt(s, accountId);
+        int n = settlementMapper.update(Wrappers.<EcomSettlement>lambdaUpdate().set(EcomSettlement::getFinSettlementId, finId)
+                .eq(EcomSettlement::getId, id).isNull(EcomSettlement::getFinSettlementId));
+        if (n == 0) {
+            throw new BizException("ecom.error.fixa.settlementHasReceipt", s.getSettlementNo());
+        }
+        payoutService.afterSettlementConfirmed(id);
+        return finId;
+    }
+
+    /**
+     * 结算单生成的收款单在财务中被删除后（同一事务）：回款对账已生成差额凭证的不允许删除（先撤销到账）；
+     * 删除该结算单生成、未核销且凭证未审核的平台费用应收（其他的保留，补生成收款单时继续冲抵），清空收款单关联。
+     * 结算单保持已确认（费用已回写订单），可在结算单中重新生成收款单
+     */
+    @Transactional
+    public void onReceiptDeleted(Long finSettlementId, String settleNo) {
+        List<EcomSettlement> list = settlementMapper.selectList(Wrappers.<EcomSettlement>lambdaQuery()
+                .eq(EcomSettlement::getFinSettlementId, finSettlementId));
+        for (EcomSettlement s : list) {
+            payoutService.checkReceiptDeletable(s, settleNo);
+            for (FinBill b : billService.listBySource(BillSource.PLATFORM_FEE, s.getId())) {
+                billService.deleteGeneratedIfUnused(b.getId());
+            }
+            settlementMapper.update(Wrappers.<EcomSettlement>lambdaUpdate().set(EcomSettlement::getFinSettlementId, null)
+                    .eq(EcomSettlement::getId, s.getId()));
+        }
     }
 
     private static BigDecimal dec(Object v) {

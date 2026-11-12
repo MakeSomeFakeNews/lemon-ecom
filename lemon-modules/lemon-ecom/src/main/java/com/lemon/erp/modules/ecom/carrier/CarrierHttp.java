@@ -1,6 +1,7 @@
 package com.lemon.erp.modules.ecom.carrier;
 
 import com.lemon.erp.common.exception.BizException;
+import com.lemon.erp.modules.ecom.connector.HttpJson;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -56,10 +57,10 @@ public final class CarrierHttp {
             }
             data = resp.body();
         } catch (IOException e) {
-            throw new BizException("ecom.error.ops.carrierIoError", carrier, e.getMessage());
+            throw new BizException("ecom.error.ops.carrierIoError", carrier, HttpJson.abbreviate(e.getMessage()));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new BizException("ecom.error.ops.carrierIoError", carrier, e.getMessage());
+            throw new BizException("ecom.error.ops.carrierIoError", carrier, HttpJson.abbreviate(e.getMessage()));
         }
         if (!isPdf(data) || data.length > MAX_LABEL_BYTES) {
             throw new BizException("ecom.error.ops.carrierLabelInvalid", carrier);
@@ -80,11 +81,9 @@ public final class CarrierHttp {
         return v == null || v.isNull() || v.isMissingNode() ? null : v.asString();
     }
 
+    /** 前 300 个字符，令牌、密钥等敏感值遮盖为 ***（规则同 HttpJson） */
     public static String abbreviate(String s) {
-        if (s == null) {
-            return "";
-        }
-        return s.length() <= 300 ? s : s.substring(0, 300) + "...";
+        return HttpJson.abbreviate(s);
     }
 
     private static URI uri(String url, String carrier) {
@@ -106,10 +105,10 @@ public final class CarrierHttp {
             }
             return resp.body();
         } catch (IOException e) {
-            throw new BizException("ecom.error.ops.carrierIoError", carrier, e.getMessage());
+            throw new BizException("ecom.error.ops.carrierIoError", carrier, HttpJson.abbreviate(e.getMessage()));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new BizException("ecom.error.ops.carrierIoError", carrier, e.getMessage());
+            throw new BizException("ecom.error.ops.carrierIoError", carrier, HttpJson.abbreviate(e.getMessage()));
         }
     }
 

@@ -1,10 +1,10 @@
 <template>
-  <a-drawer :open="open" :title="$t('ecomFba.rate.title')" width="min(980px, 100vw)" @close="open = false">
-    <a-alert type="info" show-icon :message="$t('ecomFba.rate.tip')" class="block" />
-    <div class="toolbar">
+  <SubPage :open="open" :title="$t('ecomFba.rate.title')" @close="open = false">
+    <template #extra>
       <a-select v-model:value="marketplace" allow-clear :placeholder="$t('ecomFba.common.marketplace')" :options="toOptions(dict.ecom_marketplace)" class="market" @change="load" />
       <a-button v-perm="'ecom:fbaHealth:rate'" type="primary" @click="edit()"><template #icon><PlusOutlined /></template>{{ $t('ecomFba.rate.add') }}</a-button>
-    </div>
+    </template>
+    <a-alert type="info" show-icon :message="$t('ecomFba.rate.tip')" class="block" />
     <a-table row-key="id" size="small" :columns="columns" :data-source="list" :loading="loading" :pagination="false" :scroll="{ x: 860 }">
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'feeType'"><DictTag type="ecom_fba_storage_fee_type" :value="record.feeType" /></template>
@@ -77,7 +77,7 @@
         </a-row>
       </a-form>
     </a-modal>
-  </a-drawer>
+  </SubPage>
 </template>
 
 <script setup>
@@ -85,6 +85,7 @@ import { ref } from 'vue'
 import { message } from 'ant-design-vue'
 import { PlusOutlined } from '@ant-design/icons-vue'
 import DictTag from '@/components/DictTag.vue'
+import SubPage from '@/components/SubPage.vue'
 import TableActions from '@/components/common/TableActions.vue'
 import { actionColumn } from '@/components/common/tableActions'
 import { addStorageRate, deleteStorageRate, listStorageRates, updateStorageRate } from '@/api/ecom/fba'
@@ -94,7 +95,7 @@ import { toOptions } from '@/utils/dict'
 import { FbaSizeCategory, FbaStorageFeeType, FbaVolumeUnit } from '@/constants/enums'
 import { t } from '@/locales'
 
-/** 仓储费费率维护（按站点）：ref 调用 open() */
+/** 仓储费费率维护（按站点，子页）：ref 调用 open() */
 const dict = useDict('ecom_marketplace', 'ecom_fba_storage_fee_type', 'ecom_fba_size_category')
 const volumeOptions = Object.values(FbaVolumeUnit).map((v) => ({ value: v, label: t(`ecomFba.volumeUnit.${v}`) }))
 const columns = [
@@ -158,13 +159,6 @@ defineExpose({ open: show })
 <style scoped>
 .block {
   margin-bottom: 12px;
-}
-.toolbar {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
 }
 .market {
   width: 160px;

@@ -188,10 +188,10 @@ public class FinVoucherService {
         voucherMapper.deleteById(id);
     }
 
-    /** 预收预付、坏账、报销、借款、票据、调拨、其他收支、应收应付对冲生成的凭证与业务单据联动，不能直接删除 */
+    /** 预收预付、坏账、报销、借款、调拨、其他收支、应收应付对冲生成的凭证与业务单据联动，不能直接删除 */
     private static final java.util.Set<VoucherSource> UNDELETABLE_SOURCES = java.util.EnumSet.of(VoucherSource.ADVANCE,
             VoucherSource.BAD_DEBT, VoucherSource.CLAIM, VoucherSource.LOAN,
-            VoucherSource.NOTE, VoucherSource.TRANSFER, VoucherSource.INCOME_EXPENSE, VoucherSource.NETTING);
+            VoucherSource.TRANSFER, VoucherSource.INCOME_EXPENSE, VoucherSource.NETTING);
 
     private static String sourceLabel(VoucherSource source) {
         return switch (source) {
@@ -199,7 +199,6 @@ public class FinVoucherService {
             case BAD_DEBT -> "fin.label.badDebtWriteOff";
             case CLAIM -> "fin.label.expenseClaim";
             case LOAN -> "fin.label.employeeLoan";
-            case NOTE -> "fin.label.note";
             case TRANSFER -> "fin.label.fundTransfer";
             case INCOME_EXPENSE -> "fin.label.incomeExpenseDoc";
             case NETTING -> "fin.label.nettingDoc";

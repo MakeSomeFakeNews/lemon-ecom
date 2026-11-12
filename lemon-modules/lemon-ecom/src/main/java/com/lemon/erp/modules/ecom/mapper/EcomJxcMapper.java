@@ -36,9 +36,6 @@ public interface EcomJxcMapper {
     /** 预收 / 预付款按月 */
     List<JxcViews.CashRow> selectAdvanceByMonth(@Param("begin") LocalDate begin, @Param("end") LocalDate end);
 
-    /** 票据托收、贴现（收款）与应付票据兑付（付款）按月 */
-    List<JxcViews.CashRow> selectNoteCashByMonth(@Param("begin") LocalDate begin, @Param("end") LocalDate end);
-
     /** 截至 asOf（含）的库存数量与金额，按仓库、物料分类 */
     List<JxcViews.InventoryRow> selectInventory(@Param("asOf") LocalDate asOf);
 

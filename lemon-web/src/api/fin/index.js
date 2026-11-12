@@ -243,6 +243,8 @@ export const getStatement = (id) => request.get(`/fin/statement/${id}`)
 /** 生成：data { supplierId, beginDate, endDate, remark } */
 export const generateStatement = (data) => request.post('/fin/statement', data)
 export const sendStatement = (id) => request.post(`/fin/statement/${id}/send`)
+/** 登记供应商对账结果：{ status: CONFIRMED | DISPUTED, supplierRemark, confirmDate, invoiceNo, invoiceAmount, invoiceDate } */
+export const registerStatementResult = (id, data) => request.post(`/fin/statement/${id}/result`, data)
 export const deleteStatement = (id) => request.delete(`/fin/statement/${id}`)
 
 /** 凭证科目设置：[{ role, group, label, dimension, dictType, defaultCode, dimensionDefaults, accountId, items }] */

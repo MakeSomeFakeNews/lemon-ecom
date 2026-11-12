@@ -281,6 +281,12 @@ export default {
     picker: 'Picker'
   },
   rule: {
+    sectionBasic: 'Basic info',
+    groupScope: 'Order scope',
+    groupProduct: 'Products',
+    groupValue: 'Amount & weight',
+    groupAssign: 'Warehouse & shipping',
+    groupAudit: 'Review & tags',
     title: 'Order rules',
     add: 'Add rule',
     edit: 'Edit rule',
@@ -424,7 +430,7 @@ export default {
     totalCost: 'Total Costs',
     totalQty: 'Total Qty',
     unitLanded: 'Landed Cost per Unit',
-    unitLandedHint: '(inbound freight + duty + other costs) ÷ total quantity, added to platform warehouse stock cost on receipt',
+    unitLandedHint: '(inbound freight + duty + other costs) ÷ total quantity (averaged per unit across materials). Calculated on shipping and recalculated when costs are updated; not added to stock cost (the transfer is received at the outgoing cost). When a platform-fulfilled order is shipped out, the latest shipment\'s landed cost per unit of each material in the store × quantity is charged to the order as inbound cost',
     transferDoc: 'Transfer Document',
     items: 'Shipment Lines',
     noItems: 'Please add line items',

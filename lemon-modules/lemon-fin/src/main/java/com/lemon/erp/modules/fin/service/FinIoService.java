@@ -24,7 +24,6 @@ import com.lemon.erp.modules.fin.model.FundDirection;
 import com.lemon.erp.modules.fin.model.IoCategoryCode;
 import com.lemon.erp.modules.fin.model.IoPartnerType;
 import com.lemon.erp.modules.fin.model.IoStatus;
-import com.lemon.erp.modules.fin.model.SettleMethods;
 import com.lemon.erp.modules.fin.model.VoucherLine;
 import com.lemon.erp.modules.fin.model.VoucherSource;
 import com.lemon.erp.modules.fin.model.VoucherStatus;
@@ -295,9 +294,6 @@ public class FinIoService {
     private List<FinIoDocItem> validate(IoRequests.Save req) {
         accountService.requireCashAccount(req.accountId());
         periodGuard.checkOpen(req.docDate(), "fin.label.incomeExpenseDoc");
-        if (SettleMethods.NOTE.equals(req.settleMethod())) {
-            throw new BizException("fin.error.ioNoteSettleMethod");
-        }
         dictLookup.check(SETTLE_METHOD_DICT, req.settleMethod(), "fin.label.settleMethod");
         if (req.partnerType() == IoPartnerType.CUSTOMER || req.partnerType() == IoPartnerType.SUPPLIER) {
             if (req.partnerId() == null) {

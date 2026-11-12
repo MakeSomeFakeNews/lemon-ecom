@@ -17,7 +17,7 @@ import static com.lemon.erp.modules.scm.model.ScmConstants.amount;
 import static com.lemon.erp.modules.scm.model.ScmConstants.tax;
 
 /**
- * 订单价格：采购订单按采购合同价下单并校验合同占用，销售订单应用促销和返利抵扣，保存前按限价校验。
+ * 订单价格：采购订单按采购合同价下单并校验合同占用，销售订单应用促销，保存前按限价校验。
  * 在调用方（{@link ScmOrderService}）的事务中执行
  */
 @Service
@@ -26,7 +26,6 @@ public class ScmOrderPricingService {
 
     private final ScmContractUsageService contractUsage;
     private final ScmPromotionService promotionService;
-    private final ScmRebateService rebateService;
     private final ScmPriceControlService priceControl;
     private final ScmCustomerService customerService;
     private final ScmTaxRates taxRates;
@@ -53,9 +52,11 @@ public class ScmOrderPricingService {
         }
     }
 
-    /** 应用促销、返利抵扣，并按调整后的单价重算金额 */
+    /** 应用促销，并按调整后的单价重算金额；没有返利协议，客户的返利余额总是 0，不能使用返利抵扣 */
     public ScmPromotionService.Applied promote(OrderRequest req, List<ScmOrderItem> items, Long orderId) {
-        rebateService.checkBalance(req.partnerId(), req.rebateAmount(), orderId);
+        if (req.rebateAmount() != null && req.rebateAmount().signum() > 0) {
+            throw new BizException("scm.error.rebateDeductionExceedsCustomerSRebate", req.rebateAmount().stripTrailingZeros().toPlainString(), "0");
+        }
         ScmPromotionService.Applied applied = promotionService.apply(customerService.get(req.partnerId()), req.orderDate(), items,
                 req.rebateAmount(), taxRates.fallback(req.invoiceKind()));
         for (ScmOrderItem item : applied.items()) {

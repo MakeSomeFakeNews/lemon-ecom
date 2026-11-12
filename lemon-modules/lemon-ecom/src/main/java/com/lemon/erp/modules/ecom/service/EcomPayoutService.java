@@ -141,6 +141,14 @@ public class EcomPayoutService {
         }
     }
 
+    /** 结算单生成的收款单被删除前：已匹配到账并生成了差额凭证的（凭证引用收款账户）要先撤销到账 */
+    public void checkReceiptDeletable(EcomSettlement s, String settleNo) {
+        if (payoutMapper.exists(Wrappers.<EcomPayout>lambdaQuery().eq(EcomPayout::getSettlementId, s.getId())
+                .isNotNull(EcomPayout::getVoucherId))) {
+            throw new BizException("ecom.error.fixa.receiptPayoutVoucher", settleNo, s.getSettlementNo());
+        }
+    }
+
     /** 结算单确认（生成收款单）后：已经匹配到账的补生成差额凭证 */
     public void afterSettlementConfirmed(Long settlementId) {
         for (EcomPayout p : payoutMapper.selectList(Wrappers.<EcomPayout>lambdaQuery().eq(EcomPayout::getSettlementId, settlementId)

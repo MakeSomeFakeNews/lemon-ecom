@@ -11,5 +11,7 @@ public enum PriceChangeSource {
     /** 自动调价 */
     REPRICER,
     /** 刊登 */
-    PUBLISH
+    PUBLISH,
+    /** 自动化规则 */
+    AUTOMATION
 }

@@ -26,6 +26,19 @@ export function money(n, empty = '-') {
   return formatDecimal(n, { min: 2, max: 2 })
 }
 
+/**
+ * 带货币符号的金额，负号放在符号前：-¥0.36（而不是 ¥-0.36）；空值显示 -。
+ * symbol 默认 ¥，fmt 为数字部分的格式化（默认 money，也可传 price、shortMoney 等）
+ */
+export function symMoney(n, symbol = '¥', fmt = money) {
+  if (isBlank(n)) return '-'
+  const v = Number(n)
+  if (Number.isNaN(v)) return '-'
+  const text = fmt(Math.abs(v))
+  // 舍入后为 0 的负数（如 -0.001）不显示负号
+  return `${v < 0 && /[1-9]/.test(text) ? '-' : ''}${symbol}${text}`
+}
+
 /** 金额为 0 或空时显示为空，账簿中更易读 */
 export function moneyOrBlank(n) {
   if (n === null || n === undefined || Number(n) === 0) return ''

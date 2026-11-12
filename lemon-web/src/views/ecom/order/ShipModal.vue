@@ -59,7 +59,7 @@
             <div>{{ record.channelName }}</div>
             <div class="sub-text">{{ record.channelCode }}</div>
           </template>
-          <template v-else-if="column.key === 'fee'"><b>¥{{ money(record.fee) }}</b></template>
+          <template v-else-if="column.key === 'fee'"><b>{{ symMoney(record.fee) }}</b></template>
           <template v-else-if="column.key === 'days'">
             {{ record.daysMin != null || record.daysMax != null ? $t('ecomOrder.order.estDaysValue', { min: record.daysMin ?? '', max: record.daysMax ?? '' }) : '-' }}
           </template>
@@ -77,7 +77,7 @@ import dayjs from 'dayjs'
 import ChannelSelect from '@/components/ecom/ChannelSelect.vue'
 import { estimateFreight } from '@/api/ecom/logistics'
 import { shipEcomOrder } from '@/api/ecom/order'
-import { money } from '@/utils/number'
+import { money, symMoney } from '@/utils/number'
 
 /**
  * 订单发货：填写承运商、运单号、发货时间，可选物流渠道并按重量「试算运费」（GET /ecom/logistics/estimate）列出各渠道运费，

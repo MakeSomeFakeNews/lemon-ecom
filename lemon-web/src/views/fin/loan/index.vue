@@ -47,7 +47,7 @@
             <div>{{ record.userName }}</div>
             <div class="sub-text">{{ record.deptName || '-' }}</div>
           </template>
-          <template v-else-if="column.key === 'amount'">¥{{ formatMoney(record.amount) }}</template>
+          <template v-else-if="column.key === 'amount'">{{ symMoney(record.amount) }}</template>
           <template v-else-if="column.key === 'repaid'">
             <div>{{ formatMoney(record.repaidAmount) }}</div>
             <div v-if="record.status === LoanStatus.PAID" class="sub-text">{{ $t('fin.loan.outstanding') }} <b class="warn">{{ formatMoney(outstanding(record)) }}</b></div>
@@ -134,7 +134,7 @@
           <a-descriptions-item :label="$t('common.field.dept')">{{ detail.deptName || '-' }}</a-descriptions-item>
           <a-descriptions-item :label="$t('fin.loan.loanDate')">{{ detail.loanDate }}</a-descriptions-item>
           <a-descriptions-item :label="$t('common.field.status')"><DictTag type="fin_loan_status" :value="detail.status" /></a-descriptions-item>
-          <a-descriptions-item :label="$t('common.field.amount')"><b>¥{{ formatMoney(detail.amount) }}</b></a-descriptions-item>
+          <a-descriptions-item :label="$t('common.field.amount')"><b>{{ symMoney(detail.amount) }}</b></a-descriptions-item>
           <a-descriptions-item :label="$t('fin.loan.repaid')">{{ $t('fin.loan.repaidDetail', { repaid: formatMoney(detail.repaidAmount), outstanding: formatMoney(outstanding(detail)) }) }}</a-descriptions-item>
           <a-descriptions-item :label="$t('fin.loan.payVoucher')">{{ detail.voucherNo || '-' }}</a-descriptions-item>
           <a-descriptions-item :label="$t('fin.loan.purpose')">{{ detail.purpose || '-' }}</a-descriptions-item>
@@ -178,6 +178,7 @@ import { useI18n } from 'vue-i18n'
 import { useAction } from '@/composables/useAction'
 
 import { LoanRepayMethod, LoanStatus } from '@/constants/enums'
+import { symMoney } from '@/utils/number'
 const { t } = useI18n()
 const dict = useDict('fin_loan_status')
 const outstanding = (l) => Math.round((Number(l.amount || 0) - Number(l.repaidAmount || 0)) * 100) / 100

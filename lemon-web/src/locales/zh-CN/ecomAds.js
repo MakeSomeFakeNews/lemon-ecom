@@ -78,6 +78,9 @@ export default {
     baseCurrency: '金额为本位币'
   },
   campaign: {
+    sectionBasic: '基本信息',
+    sectionSetting: '投放设置',
+    sectionOther: '标签与备注',
     add: '新建活动',
     edit: '编辑活动',
     name: '活动名称',
@@ -201,6 +204,12 @@ export default {
     selectCampaign: '选择活动'
   },
   rule: {
+    sectionBasic: '基本信息',
+    summaryTitle: '规则摘要',
+    conditionsShort: '条件',
+    suggestOnly: '只生成建议',
+    previewSavedTip: '按已保存的规则和当前数据计算命中的对象，修改后请先保存再预览',
+    previewAfterSave: '保存后可预览按当前数据命中的对象',
     title: '广告规则',
     add: '新建规则',
     edit: '编辑规则',

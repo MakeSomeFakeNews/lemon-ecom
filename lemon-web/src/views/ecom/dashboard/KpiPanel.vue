@@ -7,7 +7,7 @@
       </div>
       <div class="kpi-main">
         <div class="kpi-label">{{ $t('ecomFix.dash.sales') }}</div>
-        <div class="kpi-value" :title="money(p.current.sales)"><span class="unit">¥</span>{{ shortMoney(p.current.sales) }}</div>
+        <div class="kpi-value" :title="money(p.current.sales)"><template v-if="Number(p.current.sales) < 0">-</template><span class="unit">¥</span>{{ shortMoney(Math.abs(Number(p.current.sales) || 0)) }}</div>
         <div class="compare">
           <span class="cmp">{{ $t(`ecomFix.dash.mom.${p.key}`) }} <Growth :value="p.mom.sales" /></span>
           <span class="cmp">{{ $t('ecomFix.dash.yoy') }} <Growth :value="p.yoy.sales" /></span>

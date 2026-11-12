@@ -29,7 +29,7 @@
 
     <a-card :bordered="false" class="page-card table-card">
       <TableToolbar :exporter="exportAll" v-model:size="size" v-model:checked="checked" v-model:show-search="showSearch" :columns="columns" @refresh="refresh">
-        <a-dropdown v-perm="'ecom:fbaHealth:sync'">
+        <a-dropdown v-if="userStore.hasPerm('ecom:fbaHealth:sync')">
           <a-button type="primary">
             <template #icon><CloudSyncOutlined /></template>{{ $t('ecomFba.health.dataUpdate') }} <DownOutlined />
           </a-button>
@@ -129,6 +129,10 @@ import { money } from '@/utils/number'
 import { AmzReportType, EcomPlatform } from '@/constants/enums'
 import { t } from '@/locales'
 import { n0 } from './fba'
+import { useUserStore } from '@/store/user'
+
+/** a-dropdown 的根不是元素，v-perm 不生效，改用 v-if 判断权限 */
+const userStore = useUserStore()
 
 /**
  * FBA 库存健康：可售 / 在途 / 预留 / 不可售 / 调查中、库龄分段、日均与可售天数、冗余、预估仓储费与处理建议（金额为店铺币种，汇总为本位币）

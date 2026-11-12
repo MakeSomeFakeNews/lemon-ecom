@@ -91,8 +91,7 @@
             :maxlength="2000"
             :auto-size="{ minRows: 3, maxRows: 8 }"
             :placeholder="$t('ecomCs.message.replyPh')"
-            @keydown.enter.ctrl.prevent="send"
-            @keydown.enter.meta.prevent="send"
+            @keydown="onKeydown"
           />
           <div class="send-row">
             <span class="sub-text">{{ $t('ecomCs.message.sendHint') }}</span>
@@ -212,6 +211,14 @@ async function translateMessage(m) {
     translations[m.id] = r?.text || ''
   } finally {
     delete translating[m.id]
+  }
+}
+
+/** Ctrl / ⌘ + Enter 发送（合并成一个监听：两个 @keydown 会合并成数组，antd 的 onKeydown 只接受函数会报警告） */
+function onKeydown(e) {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault()
+    send()
   }
 }
 

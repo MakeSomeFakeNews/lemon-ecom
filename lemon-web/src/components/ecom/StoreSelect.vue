@@ -73,7 +73,8 @@ const props = defineProps({
   allowClear: { type: Boolean, default: true },
   disabled: Boolean
 })
-const emit = defineEmits(['update:value', 'select'])
+// change 声明为自身事件，避免父组件的 @change 透传到 a-select 后与内部监听合并成数组（antd 报 prop 类型警告）
+const emit = defineEmits(['update:value', 'select', 'change'])
 
 const list = useStores()
 const loading = storesLoading
@@ -99,8 +100,9 @@ function filterOption(input, option) {
   return !kw || option.label.toLowerCase().includes(kw) || (option.code || '').toLowerCase().includes(kw)
 }
 
-function onChange(v) {
+function onChange(v, option) {
   emit('update:value', v ?? null)
+  emit('change', v ?? null, option)
   const store = v == null ? undefined : list.value.find((s) => s.id === v)
   if (store) emit('select', store)
 }

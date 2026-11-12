@@ -69,7 +69,7 @@
       <div class="items-head">
         <span class="section-title">
           {{ $t('scm.orderForm.itemsTitle', { n: form.items.length, qty: formatQty(totalQty), amount: symbol + formatMoney(totalAmount) }) }}
-          <span v-if="foreign && Number(form.exchangeRate)" class="sub-text">≈ ¥{{ formatMoney(totalAmount * Number(form.exchangeRate)) }}</span>
+          <span v-if="foreign && Number(form.exchangeRate)" class="sub-text">≈ {{ symMoney(totalAmount * Number(form.exchangeRate)) }}</span>
         </span>
         <a-space>
           <a-button @click="matrixOpen = true">
@@ -205,6 +205,7 @@ import CustomFieldsForm from '@/components/common/CustomFieldsForm.vue'
 import AiPrefillAlert from '@/components/ai/AiPrefillAlert.vue'
 import { useCustomFields } from '@/composables/useCustomFields'
 import { OrderKind, SupplierLevel } from '@/constants/enums'
+import { symMoney } from '@/utils/number'
 /**
  * 新增 / 编辑采购、销售订单（草稿）。采购订单选择供应商后，按供货价格自动带出单价、税率；
  * 销售订单选择客户和物料后按开单默认价（客户执行价 → 价格等级价 → 零售价 → 最近售价，/scm/pricing/default）

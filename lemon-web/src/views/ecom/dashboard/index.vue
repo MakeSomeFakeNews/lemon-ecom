@@ -21,13 +21,13 @@
         <a-card :bordered="false" class="page-card month-card" :title="$t('ecomDat.dash.monthTitle')">
           <template #extra>
             <span class="sub-text">{{ $t('ecomReport.dashboard.monthSales') }}
-              <b class="month-sales">¥{{ shortMoney(overview.monthSales) }}</b></span>
+              <b class="month-sales">{{ symMoney(overview.monthSales, '¥', shortMoney) }}</b></span>
           </template>
           <div class="month-grid">
             <div v-for="c in METRICS" :key="c.key" class="month-item">
               <div class="stat-label">{{ $t(`ecomReport.dashboard.${c.key}`) }}</div>
               <div class="stat-value" :class="{ neg: nz(overview[c.key]) < 0 }" :title="money(overview[c.key])">
-                <span class="stat-unit">¥</span>{{ shortMoney(overview[c.key]) }}
+                <template v-if="nz(overview[c.key]) < 0">-</template><span class="stat-unit">¥</span>{{ shortMoney(Math.abs(nz(overview[c.key]))) }}
               </div>
               <div class="ratio">
                 <span class="sub-text">{{ $t(`ecomDat.dash.ratio.${c.key}`) }}</span>
@@ -92,7 +92,7 @@ import { useDict } from '@/composables/useDict'
 import { useUserStore } from '@/store/user'
 import { useAppStore } from '@/store/app'
 import { findDict } from '@/utils/dict'
-import { money, nz } from '@/utils/number'
+import { money, nz, symMoney } from '@/utils/number'
 import { SettlementItemType } from '@/constants/enums'
 import { t } from '@/locales'
 import KpiPanel from './KpiPanel.vue'

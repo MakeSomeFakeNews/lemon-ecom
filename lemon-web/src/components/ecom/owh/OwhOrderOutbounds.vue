@@ -20,7 +20,7 @@
           <div>{{ record.trackingNo || '-' }}</div>
           <div v-if="record.carrierName" class="sub-text">{{ record.carrierName }}</div>
         </template>
-        <template v-else-if="column.key === 'feeBase'">{{ record.feeBase != null ? `¥${money(record.feeBase)}` : '-' }}</template>
+        <template v-else-if="column.key === 'feeBase'">{{ record.feeBase != null ? `${symMoney(record.feeBase)}` : '-' }}</template>
       </template>
     </a-table>
   </div>
@@ -34,7 +34,7 @@ import { ExclamationCircleOutlined } from '@ant-design/icons-vue'
 import DictTag from '@/components/DictTag.vue'
 import { owhByOrder } from '@/api/ecom/owh'
 import { useUserStore } from '@/store/user'
-import { money } from '@/utils/number'
+import { money, symMoney } from '@/utils/number'
 
 /** 订单详情中的海外仓出库单（发货仓是海外仓的包裹推送后才有）：状态、服务商单号、运单号、费用；没有时不显示 */
 const props = defineProps({ orderId: Number, refreshKey: { type: [Number, String], default: 0 } })

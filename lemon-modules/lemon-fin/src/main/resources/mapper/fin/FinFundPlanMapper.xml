@@ -15,7 +15,7 @@
     </select>
 
     <!-- 预计收支：应收应付按未核销金额（坏账核销已计入已核销；红字单据为负数，冲减同方向）和到期日，
-         票据按到期日，报销按待付款，计划项按预计日期 -->
+         报销按待付款，计划项按预计日期 -->
     <select id="selectEntries" resultType="com.lemon.erp.modules.fin.dto.FundPlanEntry">
         SELECT CASE WHEN b.kind = 'AR' THEN 'IN' ELSE 'OUT' END AS direction, b.kind AS source, b.id AS ref_id,
                b.bill_no AS ref_no, COALESCE(c.name, s.name) AS partner_name, b.due_date,
@@ -24,14 +24,6 @@
         LEFT JOIN scm_customer c ON b.kind = 'AR' AND c.id = b.partner_id
         LEFT JOIN scm_supplier s ON b.kind = 'AP' AND s.id = b.partner_id
         WHERE b.amount &lt;&gt; b.settled_amount AND b.due_date &lt;= #{end}
-        UNION ALL
-        SELECT CASE WHEN n.kind = 'RECEIVABLE' THEN 'IN' ELSE 'OUT' END, CASE WHEN n.kind = 'RECEIVABLE' THEN 'NOTE_IN' ELSE 'NOTE_OUT' END,
-               n.id, n.note_no, COALESCE(nc.name, ns.name), n.due_date, n.amount
-        FROM fin_note n
-        LEFT JOIN scm_customer nc ON n.kind = 'RECEIVABLE' AND nc.id = n.partner_id
-        LEFT JOIN scm_supplier ns ON n.kind = 'PAYABLE' AND ns.id = n.partner_id
-        WHERE ((n.kind = 'RECEIVABLE' AND n.status = 'HELD') OR (n.kind = 'PAYABLE' AND n.status = 'ISSUED'))
-          AND n.due_date &lt;= #{end}
         UNION ALL
         SELECT 'OUT', 'CLAIM', ec.id, ec.claim_no, u.nickname, ec.claim_date, ec.amount
         FROM fin_expense_claim ec

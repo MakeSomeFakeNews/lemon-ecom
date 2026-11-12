@@ -1,129 +1,155 @@
 <template>
-  <FormDrawer :drawer="drawer" :create-title="$t('ecomOrder.rule.add')" :edit-title="$t('ecomOrder.rule.edit')" width="min(760px, 100vw)">
+  <FormDrawer page :drawer="drawer" :create-title="$t('ecomOrder.rule.add')" :edit-title="$t('ecomOrder.rule.edit')">
     <a-form ref="formRef" :model="form" :rules="rules" layout="vertical">
+      <div class="section-title">{{ $t('ecomOrder.rule.sectionBasic') }}</div>
       <a-row :gutter="16">
-        <a-col :xs="24" :sm="16">
+        <a-col :xs="24" :sm="16" :lg="8">
           <a-form-item :label="$t('ecomOrder.rule.name')" name="name">
             <a-input v-model:value="form.name" :maxlength="64" :placeholder="$t('ecomOrder.rule.namePh')" />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="8">
+        <a-col :xs="24" :sm="8" :lg="4">
           <a-form-item :label="$t('ecomOrder.rule.priority')" name="priority" :extra="$t('ecomOrder.rule.priorityHint')">
             <a-input-number v-model:value="form.priority" :min="0" :max="9999" :precision="0" class="full" />
+          </a-form-item>
+        </a-col>
+        <a-col :xs="24" :lg="12">
+          <a-form-item :label="$t('common.field.remark')" name="remark">
+            <a-input v-model:value="form.remark" :maxlength="255" />
           </a-form-item>
         </a-col>
       </a-row>
 
       <div class="section-title">{{ $t('ecomOrder.rule.conditions') }}</div>
-      <a-row :gutter="16">
-        <a-col :xs="24" :sm="12">
-          <a-form-item :label="$t('ecomOrder.rule.stores')" name="storeIds">
-            <a-select v-model:value="form.storeIds" mode="multiple" allow-clear :options="storeOptions" option-filter-prop="label" :placeholder="$t('ecomOrder.rule.any')" />
-          </a-form-item>
+      <a-row :gutter="[16, 16]" class="groups">
+        <a-col :xs="24" :xl="12">
+          <section class="group">
+            <div class="group-title">{{ $t('ecomOrder.rule.groupScope') }}</div>
+            <a-row :gutter="16">
+              <a-col :span="24">
+                <a-form-item :label="$t('ecomOrder.rule.stores')" name="storeIds">
+                  <a-select v-model:value="form.storeIds" mode="multiple" allow-clear :options="storeOptions" option-filter-prop="label" :placeholder="$t('ecomOrder.rule.any')" />
+                </a-form-item>
+              </a-col>
+              <a-col :xs="24" :sm="8">
+                <a-form-item :label="$t('ecomOrder.rule.platforms')" name="platforms">
+                  <a-select v-model:value="form.platforms" mode="multiple" allow-clear :options="toOptions(dict.ecom_platform)" :placeholder="$t('ecomOrder.rule.any')" />
+                </a-form-item>
+              </a-col>
+              <a-col :xs="24" :sm="8">
+                <a-form-item :label="$t('ecomOrder.rule.fulfillment')" name="fulfillment">
+                  <a-select v-model:value="form.fulfillment" allow-clear :options="toOptions(dict.ecom_fulfillment)" :placeholder="$t('ecomOrder.rule.any')" />
+                </a-form-item>
+              </a-col>
+              <a-col :xs="24" :sm="8">
+                <a-form-item :label="$t('ecomOrder.rule.countries')" name="countries">
+                  <a-select v-model:value="form.countries" mode="tags" :token-separators="[',', ' ']" :open="false" :placeholder="$t('ecomOrder.rule.countriesPh')" @change="upperCountries" />
+                </a-form-item>
+              </a-col>
+            </a-row>
+          </section>
         </a-col>
-        <a-col :xs="24" :sm="12">
-          <a-form-item :label="$t('ecomOrder.rule.platforms')" name="platforms">
-            <a-select v-model:value="form.platforms" mode="multiple" allow-clear :options="toOptions(dict.ecom_platform)" :placeholder="$t('ecomOrder.rule.any')" />
-          </a-form-item>
+        <a-col :xs="24" :xl="12">
+          <section class="group">
+            <div class="group-title">{{ $t('ecomOrder.rule.groupProduct') }}</div>
+            <a-form-item :label="$t('ecomOrder.rule.skus')" name="skus">
+              <a-select v-model:value="form.skus" mode="tags" :token-separators="[',', ' ']" :open="false" :placeholder="$t('ecomOrder.rule.skusPh')" />
+            </a-form-item>
+            <a-form-item :label="$t('ecomOrder.rule.materials')" name="materials">
+              <div class="material-tags">
+                <a-tag v-for="m in form.materials" :key="m.id" closable @close="removeMaterial(m.id)">{{ m.label }}</a-tag>
+                <MaterialSelect :value="undefined" :placeholder="$t('ecomOrder.rule.addMaterial')" class="material-select" @select="addMaterial" />
+              </div>
+            </a-form-item>
+          </section>
         </a-col>
-        <a-col :xs="24" :sm="12">
-          <a-form-item :label="$t('ecomOrder.rule.fulfillment')" name="fulfillment">
-            <a-select v-model:value="form.fulfillment" allow-clear :options="toOptions(dict.ecom_fulfillment)" :placeholder="$t('ecomOrder.rule.any')" />
-          </a-form-item>
+        <a-col :xs="24" :xl="12">
+          <section class="group">
+            <div class="group-title">{{ $t('ecomOrder.rule.groupValue') }}</div>
+            <a-row :gutter="16">
+              <a-col :xs="24" :sm="12">
+                <a-form-item :label="$t('ecomOrder.rule.amount')">
+                  <a-space-compact class="full">
+                    <a-input-number v-model:value="form.amountMin" :min="0" :precision="2" :placeholder="$t('ecomOrder.rule.min')" class="half" />
+                    <a-input-number v-model:value="form.amountMax" :min="0" :precision="2" :placeholder="$t('ecomOrder.rule.max')" class="half" />
+                  </a-space-compact>
+                </a-form-item>
+              </a-col>
+              <a-col :xs="24" :sm="12">
+                <a-form-item :label="$t('ecomOrder.rule.weightRange')">
+                  <a-space-compact class="full">
+                    <a-input-number v-model:value="form.weightMin" :min="0" :precision="3" :placeholder="$t('ecomOrder.rule.min')" class="half" />
+                    <a-input-number v-model:value="form.weightMax" :min="0" :precision="3" :placeholder="$t('ecomOrder.rule.max')" class="half" />
+                  </a-space-compact>
+                </a-form-item>
+              </a-col>
+              <a-col :xs="24" :sm="12">
+                <a-form-item :label="$t('ecomOrd.rule.profitRateMax')" name="profitRateMax" :extra="$t('ecomOrd.rule.profitRateHint')">
+                  <a-input-number v-model:value="form.profitRateMax" :precision="2" :min="-1000" :max="1000" addon-after="%" class="full" />
+                </a-form-item>
+              </a-col>
+            </a-row>
+          </section>
         </a-col>
-        <a-col :xs="24" :sm="12">
-          <a-form-item :label="$t('ecomOrder.rule.countries')" name="countries">
-            <a-select v-model:value="form.countries" mode="tags" :token-separators="[',', ' ']" :open="false" :placeholder="$t('ecomOrder.rule.countriesPh')" @change="upperCountries" />
-          </a-form-item>
-        </a-col>
-        <a-col :span="24">
-          <a-form-item :label="$t('ecomOrder.rule.skus')" name="skus">
-            <a-select v-model:value="form.skus" mode="tags" :token-separators="[',', ' ']" :open="false" :placeholder="$t('ecomOrder.rule.skusPh')" />
-          </a-form-item>
-        </a-col>
-        <a-col :span="24">
-          <a-form-item :label="$t('ecomOrder.rule.materials')" name="materials">
-            <div class="material-tags">
-              <a-tag v-for="m in form.materials" :key="m.id" closable @close="removeMaterial(m.id)">{{ m.label }}</a-tag>
-              <MaterialSelect :value="undefined" :placeholder="$t('ecomOrder.rule.addMaterial')" class="material-select" @select="addMaterial" />
-            </div>
-          </a-form-item>
-        </a-col>
-        <a-col :xs="24" :sm="12">
-          <a-form-item :label="$t('ecomOrder.rule.amount')">
-            <a-space-compact class="full">
-              <a-input-number v-model:value="form.amountMin" :min="0" :precision="2" :placeholder="$t('ecomOrder.rule.min')" class="half" />
-              <a-input-number v-model:value="form.amountMax" :min="0" :precision="2" :placeholder="$t('ecomOrder.rule.max')" class="half" />
-            </a-space-compact>
-          </a-form-item>
-        </a-col>
-        <a-col :xs="24" :sm="12">
-          <a-form-item :label="$t('ecomOrder.rule.weightRange')">
-            <a-space-compact class="full">
-              <a-input-number v-model:value="form.weightMin" :min="0" :precision="3" :placeholder="$t('ecomOrder.rule.min')" class="half" />
-              <a-input-number v-model:value="form.weightMax" :min="0" :precision="3" :placeholder="$t('ecomOrder.rule.max')" class="half" />
-            </a-space-compact>
-          </a-form-item>
-        </a-col>
-      </a-row>
-
-      <a-row :gutter="16">
-        <a-col :xs="24" :sm="12">
-          <a-form-item :label="$t('ecomOrd.rule.profitRateMax')" name="profitRateMax" :extra="$t('ecomOrd.rule.profitRateHint')">
-            <a-input-number v-model:value="form.profitRateMax" :precision="2" :min="-1000" :max="1000" addon-after="%" class="full" />
-          </a-form-item>
-        </a-col>
-        <a-col :xs="24" :sm="12">
-          <a-form-item :label="$t('ecomOrd.rule.checks')" name="checks">
-            <div class="flags">
-              <a-checkbox v-model:checked="form.blacklistHit">{{ $t('ecomOrd.rule.blacklistHit') }}</a-checkbox>
-              <a-checkbox v-model:checked="form.addressIssue">{{ $t('ecomOrd.rule.addressIssue') }}</a-checkbox>
-              <a-checkbox v-model:checked="form.remoteArea">{{ $t('ecomOrd.rule.remoteArea') }}</a-checkbox>
-            </div>
-          </a-form-item>
+        <a-col :xs="24" :xl="12">
+          <section class="group">
+            <div class="group-title">{{ $t('ecomOrd.rule.checks') }}</div>
+            <a-form-item name="checks">
+              <a-form-item-rest>
+                <div class="flags">
+                  <a-checkbox v-model:checked="form.blacklistHit">{{ $t('ecomOrd.rule.blacklistHit') }}</a-checkbox>
+                  <a-checkbox v-model:checked="form.addressIssue">{{ $t('ecomOrd.rule.addressIssue') }}</a-checkbox>
+                  <a-checkbox v-model:checked="form.remoteArea">{{ $t('ecomOrd.rule.remoteArea') }}</a-checkbox>
+                </div>
+              </a-form-item-rest>
+            </a-form-item>
+          </section>
         </a-col>
       </a-row>
 
       <div class="section-title">{{ $t('ecomOrder.rule.actions') }}</div>
-      <a-row :gutter="16">
-        <a-col :xs="24" :sm="12">
-          <a-form-item :label="$t('ecomOrder.rule.warehouse')" name="warehouseId">
-            <WarehouseSelect v-model:value="form.warehouseId" />
-          </a-form-item>
+      <a-row :gutter="[16, 16]" class="groups">
+        <a-col :xs="24" :xl="12">
+          <section class="group">
+            <div class="group-title">{{ $t('ecomOrder.rule.groupAssign') }}</div>
+            <a-row :gutter="16">
+              <a-col :xs="24" :sm="12">
+                <a-form-item :label="$t('ecomOrder.rule.warehouse')" name="warehouseId">
+                  <WarehouseSelect v-model:value="form.warehouseId" />
+                </a-form-item>
+              </a-col>
+              <a-col :xs="24" :sm="12">
+                <a-form-item :label="$t('ecomOrder.rule.channel')" name="channelId">
+                  <ChannelSelect v-model:value="form.channelId" :label="form.channelName" />
+                </a-form-item>
+              </a-col>
+              <a-col :xs="24" :sm="12">
+                <a-form-item :label="$t('ecomOrder.rule.cutoffTime')" name="cutoffTime" :extra="$t('ecomOrder.rule.cutoffHint')">
+                  <a-time-picker v-model:value="form.cutoffTime" format="HH:mm" value-format="HH:mm" class="full" />
+                </a-form-item>
+              </a-col>
+            </a-row>
+          </section>
         </a-col>
-        <a-col :xs="24" :sm="12">
-          <a-form-item :label="$t('ecomOrder.rule.channel')" name="channelId">
-            <ChannelSelect v-model:value="form.channelId" :label="form.channelName" />
-          </a-form-item>
-        </a-col>
-        <a-col :xs="24" :sm="12">
-          <a-form-item :label="$t('ecomOrder.rule.cutoffTime')" name="cutoffTime" :extra="$t('ecomOrder.rule.cutoffHint')">
-            <a-time-picker v-model:value="form.cutoffTime" format="HH:mm" value-format="HH:mm" class="full" />
-          </a-form-item>
-        </a-col>
-        <a-col :xs="24" :sm="12">
-          <a-form-item name="flags">
-            <div class="flags">
-              <a-checkbox v-model:checked="form.holdOrder" @change="() => form.holdOrder && (form.autoAudit = false)">{{ $t('ecomOrder.rule.holdOrder') }}</a-checkbox>
-              <a-checkbox v-model:checked="form.autoAudit" @change="() => form.autoAudit && (form.holdOrder = false)">{{ $t('ecomOrder.rule.autoAudit') }}</a-checkbox>
-              <a-checkbox v-model:checked="form.stopOnMatch">{{ $t('ecomOrder.rule.stopOnMatch') }}</a-checkbox>
-            </div>
-          </a-form-item>
-        </a-col>
-        <a-col :span="24">
-          <a-form-item :label="$t('ecomOrd.rule.tags')" name="tagIds" :extra="$t('ecomOrd.rule.tagsHint')">
-            <a-select v-model:value="form.tagIds" mode="multiple" allow-clear :options="tagOptions" option-filter-prop="label" />
-          </a-form-item>
-        </a-col>
-        <a-col v-if="form.holdOrder" :span="24">
-          <a-form-item :label="$t('ecomOrder.rule.holdReason')" name="holdReason">
-            <a-input v-model:value="form.holdReason" :maxlength="255" :placeholder="$t('ecomOrder.ops.holdReasonPh')" />
-          </a-form-item>
-        </a-col>
-        <a-col :span="24">
-          <a-form-item :label="$t('common.field.remark')" name="remark">
-            <a-input v-model:value="form.remark" :maxlength="255" />
-          </a-form-item>
+        <a-col :xs="24" :xl="12">
+          <section class="group">
+            <div class="group-title">{{ $t('ecomOrder.rule.groupAudit') }}</div>
+            <a-form-item name="flags">
+              <a-form-item-rest>
+                <div class="flags">
+                  <a-checkbox v-model:checked="form.holdOrder" @change="() => form.holdOrder && (form.autoAudit = false)">{{ $t('ecomOrder.rule.holdOrder') }}</a-checkbox>
+                  <a-checkbox v-model:checked="form.autoAudit" @change="() => form.autoAudit && (form.holdOrder = false)">{{ $t('ecomOrder.rule.autoAudit') }}</a-checkbox>
+                  <a-checkbox v-model:checked="form.stopOnMatch">{{ $t('ecomOrder.rule.stopOnMatch') }}</a-checkbox>
+                </div>
+              </a-form-item-rest>
+            </a-form-item>
+            <a-form-item v-if="form.holdOrder" :label="$t('ecomOrder.rule.holdReason')" name="holdReason">
+              <a-input v-model:value="form.holdReason" :maxlength="255" :placeholder="$t('ecomOrder.ops.holdReasonPh')" />
+            </a-form-item>
+            <a-form-item :label="$t('ecomOrd.rule.tags')" name="tagIds" :extra="$t('ecomOrd.rule.tagsHint')">
+              <a-select v-model:value="form.tagIds" mode="multiple" allow-clear :options="tagOptions" option-filter-prop="label" />
+            </a-form-item>
+          </section>
         </a-col>
       </a-row>
     </a-form>
@@ -146,7 +172,7 @@ import { useFormDrawer } from '@/composables/useFormDrawer'
 import { toOptions } from '@/utils/dict'
 
 /**
- * 审单规则新增 / 编辑（抽屉）：条件（店铺、平台、配送方式、收件国家、平台 SKU、物料、金额与重量区间，留空不限）和动作
+ * 审单规则新增 / 编辑（子页）：条件（店铺、平台、配送方式、收件国家、平台 SKU、物料、金额与重量区间，留空不限）和动作
  * （指定发货仓、物流渠道、截单时间、人工审核或自动审核、命中后停止）。多值条件在后端存为逗号分隔的字符串。
  * openCreate() / openEdit(record) 打开，保存后触发 success
  */
@@ -289,6 +315,20 @@ defineExpose({ openCreate: drawer.openCreate, openEdit: drawer.openEdit })
   margin: 4px 0 12px;
   font-weight: 600;
 }
+.groups {
+  margin-bottom: 20px;
+}
+.group {
+  height: 100%;
+  padding: 14px 16px 0;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+}
+.group-title {
+  margin-bottom: 12px;
+  color: var(--app-text-2);
+  font-weight: 500;
+}
 .flags {
   display: flex;
   flex-direction: column;
@@ -303,5 +343,6 @@ defineExpose({ openCreate: drawer.openCreate, openEdit: drawer.openEdit })
 }
 .material-select {
   min-width: 260px;
+  max-width: 100%;
 }
 </style>

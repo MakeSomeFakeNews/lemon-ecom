@@ -48,9 +48,8 @@ public final class CostCalculator {
 
     /** 中间计算（按比例分摊）的小数位 */
     private static final int RATIO_SCALE = 10;
-    /** 不计入其他入库的入库类型：退料、销售退货、委外收回冲减对应的出库；组装拆卸按子件成本计价 */
-    private static final Set<StockInType> NOT_OTHER_IN = EnumSet.of(StockInType.PRODUCTION_RETURN, StockInType.SALES_RETURN,
-            StockInType.OUTSOURCE_RETURN, StockInType.ASSEMBLY);
+    /** 不计入其他入库的入库类型：销售退货冲减对应的出库；组装拆卸按子件成本计价 */
+    private static final Set<StockInType> NOT_OTHER_IN = EnumSet.of(StockInType.SALES_RETURN, StockInType.ASSEMBLY);
 
     private final CostSource src;
     private final int period;

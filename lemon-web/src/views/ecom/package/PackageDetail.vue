@@ -21,7 +21,7 @@
           <a-descriptions-item :label="$t('ecomOrder.common.trackingNo')">{{ detail.trackingNo || '-' }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOrder.pkg.carrierOrderNo')">{{ detail.carrierOrderNo || '-' }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOrder.pkg.weight')">{{ detail.weight != null ? Number(detail.weight) : '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.pkg.shippingCost')">{{ detail.shippingCost != null ? `¥${money(detail.shippingCost)}` : '-' }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomOrder.pkg.shippingCost')">{{ detail.shippingCost != null ? `${symMoney(detail.shippingCost)}` : '-' }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOrder.pkg.labelTime')">{{ detail.labelTime || '-' }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOrder.pkg.printCount')">{{ detail.printCount ?? 0 }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOrder.pkg.shipTime')">{{ detail.shipTime || '-' }}</a-descriptions-item>
@@ -40,7 +40,7 @@
             </template>
             <template v-else-if="column.key === 'qty'">{{ qty(record.qty) }}</template>
             <template v-else-if="column.key === 'materialQty'">{{ `${qty(record.materialQty)} ${record.unit || ''}` }}</template>
-            <template v-else-if="column.key === 'cost'">{{ record.cost != null ? `¥${money(record.cost)}` : '-' }}</template>
+            <template v-else-if="column.key === 'cost'">{{ record.cost != null ? `${symMoney(record.cost)}` : '-' }}</template>
           </template>
         </a-table>
 
@@ -79,7 +79,7 @@ import SubPage from '@/components/SubPage.vue'
 import DictTag from '@/components/DictTag.vue'
 import { getEcomPackage, trackEcomPackage } from '@/api/ecom/package'
 import { useUserStore } from '@/store/user'
-import { money, qty } from '@/utils/number'
+import { money, qty, symMoney } from '@/utils/number'
 import { canCancelPackage, canEditPackage, canLabel, canRefetch, canShipPackage, canTrack, canTracking } from './package'
 
 /**

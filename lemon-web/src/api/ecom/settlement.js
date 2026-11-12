@@ -10,6 +10,8 @@ export const getSettlement = (id) => request.get(`/ecom/settlement/${id}`)
 export const importSettlements = (data) => request.post('/ecom/settlement/import', data)
 /** 确认：佣金 / 配送费 / 退款回写订单；accountId 不为空时按净额生成收款单核销店铺客户的应收 */
 export const confirmSettlement = (id, accountId) => request.post(`/ecom/settlement/${id}/confirm`, null, { params: { accountId } })
+/** 已确认、没有收款单（收款单已在财务中删除，或确认时没有生成）的结算单补生成收款单 */
+export const createSettlementReceipt = (id, accountId) => request.post(`/ecom/settlement/${id}/receipt`, null, { params: { accountId } })
 export const deleteSettlement = (id) => request.delete(`/ecom/settlement/${ids(id)}`)
 /** 不挂订单费用的分摊结果 */
 export const settlementAllocations = (id) => request.get(`/ecom/settlement/${id}/allocations`)

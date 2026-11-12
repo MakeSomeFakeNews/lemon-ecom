@@ -38,6 +38,7 @@ import { useColumns } from '@/composables/useColumns'
 import { useTable } from '@/composables/useTable'
 import { t } from '@/locales'
 import { n0 } from '../fba-health/fba'
+import { qty } from '@/utils/number'
 
 /** 库存流水（库存分类账明细报告） */
 const props = defineProps({ storeId: Number })
@@ -56,7 +57,7 @@ const columns = [
   { title: t('ecomFba.ledger.fc'), dataIndex: 'fulfillmentCenter', width: 90 },
   { title: t('ecomFba.ledger.disposition'), dataIndex: 'disposition', width: 130 },
   { title: t('ecomFba.ledger.reason'), key: 'reason', dataIndex: 'reason', width: 70 },
-  { title: t('ecomFba.ledger.unreconciled'), dataIndex: 'unreconciledQty', width: 80, align: 'right' }
+  { title: t('ecomFba.ledger.unreconciled'), dataIndex: 'unreconciledQty', width: 80, align: 'right', customRender: ({ text }) => qty(text) }
 ]
 const { checked, visibleColumns, scrollX } = useColumns(columns, 'ecom-fba-ledger')
 const query = reactive({ eventType: undefined, range: undefined, keyword: undefined })

@@ -44,7 +44,7 @@
             <div class="sub-text">{{ record.partnerCode }}</div>
           </template>
           <template v-else-if="column.key === 'item'"><DictTag type="fin_offset_item" :value="record.item" /></template>
-          <template v-else-if="column.key === 'amount'">¥{{ formatMoney(record.amount) }}</template>
+          <template v-else-if="column.key === 'amount'">{{ symMoney(record.amount) }}</template>
           <template v-else-if="column.key === 'period'">
             <span v-if="record.beginDate || record.endDate">{{ record.beginDate || '' }} ~ {{ record.endDate || '' }}</span>
           </template>
@@ -143,7 +143,7 @@
         <a-descriptions-item :label="$t('fin.offset.partner')">{{ viewing.partnerCode }} {{ viewing.partnerName }}</a-descriptions-item>
         <a-descriptions-item :label="$t('fin.offset.date')">{{ viewing.offsetDate }}</a-descriptions-item>
         <a-descriptions-item :label="$t('fin.offset.item')"><DictTag type="fin_offset_item" :value="viewing.item" /></a-descriptions-item>
-        <a-descriptions-item :label="$t('fin.offset.amount')"><b>¥{{ formatMoney(viewing.amount) }}</b></a-descriptions-item>
+        <a-descriptions-item :label="$t('fin.offset.amount')"><b>{{ symMoney(viewing.amount) }}</b></a-descriptions-item>
         <a-descriptions-item :label="$t('fin.offset.period')">{{ viewing.beginDate || '' }} ~ {{ viewing.endDate || '' }}</a-descriptions-item>
         <a-descriptions-item :label="$t('fin.offset.ticketNo')">{{ viewing.ticketNo || '-' }}</a-descriptions-item>
         <a-descriptions-item :label="$t('fin.offset.handler')">{{ viewing.handlerName || '-' }}</a-descriptions-item>
@@ -184,6 +184,7 @@ import { useTable } from '@/composables/useTable'
 import { useRouteOpen } from '@/composables/useRouteOpen'
 import { toOptions } from '@/utils/dict'
 import { BillKind, OffsetStatus, VoucherStatus } from '@/constants/enums'
+import { symMoney } from '@/utils/number'
 
 /** 冲账单：垫付运费、销售返利、三包赔偿等抵扣往来款，复核后生成红字应收 / 应付单，收付款时与欠款冲抵 */
 const { t } = useI18n()

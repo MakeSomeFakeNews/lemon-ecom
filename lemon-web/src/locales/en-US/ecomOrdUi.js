@@ -48,6 +48,11 @@ export default {
     noHistory: 'No scans yet'
   },
   track: {
+    package: 'Package',
+    order: 'Order',
+    receiver: 'Recipient',
+    daysDelivered: 'Shipped to delivered',
+    daysToNow: 'Since shipped',
     hint: 'Select packages to pull tracking in batch; tracking is pulled automatically every 2 hours',
     empty: 'No matching packages'
   },
@@ -64,6 +69,7 @@ export default {
     filter: 'Filters'
   },
   edit: {
+    title: 'Edit order · {no}',
     shipping: 'Shipping & remarks'
   },
   logAction: {
