@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomOrderNoteMapper">
+
+    <select id="selectByOrderId" resultType="com.lemon.erp.modules.ecom.entity.EcomOrderNote">
+        SELECT n.*, u.nickname AS create_by_name
+        FROM ecom_order_note n
+        LEFT JOIN sys_user u ON u.id = n.create_by
+        WHERE n.order_id = #{orderId}
+        ORDER BY n.id DESC
+    </select>
+
+</mapper>

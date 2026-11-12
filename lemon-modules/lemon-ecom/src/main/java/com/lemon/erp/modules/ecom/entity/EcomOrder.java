@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.lemon.erp.common.base.BaseEntity;
 import com.lemon.erp.modules.ecom.model.EcomLocalStatus;
 import com.lemon.erp.modules.ecom.model.EcomOrderStatus;
+import com.lemon.erp.modules.ecom.model.EcomOrderType;
 import com.lemon.erp.modules.ecom.model.EcomPlatform;
 import com.lemon.erp.modules.ecom.model.FulfillmentType;
 import com.lemon.erp.modules.ecom.model.TaxType;
@@ -140,6 +141,52 @@ public class EcomOrder extends BaseEntity {
     private Long deptId;
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private Long createBy;
+
+    // ---------------------------------------------------------------- 订单增强（类型与来源、地址校验、黑名单、利润预估）
+
+    /** 订单类型：平台 / 手工 / 补发 */
+    private EcomOrderType orderType;
+    /** 补发单的原订单 */
+    private Long sourceOrderId;
+    /** 补发单关联的售后工单 */
+    private Long sourceTicketId;
+    /** 补发单关联的退货退款单 */
+    private Long sourceReturnId;
+    /** 地址校验发现的问题（为空表示通过），偏远地区等提示也记在这里 */
+    private String addressIssue;
+    /** 地址校验不通过 1是 0否（必填缺失、邮编 / 电话格式、PO Box），审核时进入异常 */
+    private Integer addressInvalid;
+    /** 偏远地区 1是 0否 */
+    private Integer remoteArea;
+    /** 命中的买家黑名单 */
+    private Long blacklistId;
+    /** 利润预估使用的物流渠道 */
+    private Long estChannelId;
+    /** 利润预估使用的重量（kg） */
+    private BigDecimal estWeight;
+    /** 预估运费（本位币） */
+    private BigDecimal estShipping;
+    /** 预估平台费用（本位币） */
+    private BigDecimal estFee;
+    /** 预估商品成本（本位币） */
+    private BigDecimal estCost;
+    /** 预估利润（本位币） */
+    private BigDecimal estProfit;
+    /** 预估利润率（%） */
+    private BigDecimal estProfitRate;
+
+    /** 原订单号（补发单） */
+    @TableField(exist = false)
+    private String sourceOrderNo;
+    /** 预估渠道名称 */
+    @TableField(exist = false)
+    private String estChannelName;
+    /** 标签 */
+    @TableField(exist = false)
+    private List<EcomOrderTag> tags;
+    /** 按包裹回传平台（部分发货）时的包裹号，连接器作为平台的包裹参考号（如亚马逊 packageReferenceId），为空表示整单回传 */
+    @TableField(exist = false)
+    private String shipPackageRef;
 
     @TableField(exist = false)
     private String storeName;

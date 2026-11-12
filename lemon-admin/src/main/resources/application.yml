@@ -48,6 +48,14 @@ lemon:
   demo:
     # 演示模式：开启后所有用户只能查看，不能新增、修改、删除（登录、退出、查询类接口不受影响）
     enabled: ${LEMON_DEMO_ENABLED:false}
+  ecom:
+    demo-data:
+      # 电商演示数据：true 时应用启动完成后自动给平台租户（单租户模式即当前库）生成一个跨境卖家的完整业务数据（已生成过则跳过），
+      # 也可以在「电商看板」没有数据时点击「生成演示数据」；./gradlew bootTestRun 默认开启
+      auto-generate: ${LEMON_ECOM_DEMO_DATA:false}
+    # 后端外网地址（含 /api，如 https://erp.example.com/api）：OAuth 回调地址、刊登时把系统内图片（/api/files/...）转为平台能访问的公网地址；
+    # 为空时回调地址按请求推算，刊登页面提示图片无法被平台访问
+    public-url: ${LEMON_ECOM_PUBLIC_URL:}
   # 以下登录、密码相关配置是「系统管理 - 参数设置」中对应参数的默认值，在页面中修改后以页面为准
   jwt:
     expire-hours: 12

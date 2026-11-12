@@ -6,6 +6,8 @@
         p.id, p.package_no, p.store_id, p.warehouse_id, p.channel_id, p.carrier, p.carrier_name, p.carrier_order_no, p.tracking_no,
         p.label_time, p.print_count, p.weight, p.shipping_cost, p.status, p.ship_time, p.ship_name, p.ship_country, p.error_msg, p.remark,
         p.create_by, p.create_time, p.update_time,
+        p.track_status, p.track_alert, p.track_source, p.track_first_time, p.track_last_time, p.track_last_event, p.track_delivered_time,
+        p.track_pull_time, p.track_error, p.ship_confirm, p.ship_confirm_msg,
         CASE WHEN p.label_file IS NULL THEN 0 ELSE 1 END AS has_label,
         s.name AS store_name, w.name AS warehouse_name, ch.name AS channel_name,
         (SELECT COUNT(DISTINCT pi.order_id) FROM ecom_package_item pi WHERE pi.package_id = p.id) AS order_count,

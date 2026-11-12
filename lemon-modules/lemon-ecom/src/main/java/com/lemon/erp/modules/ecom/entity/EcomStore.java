@@ -109,6 +109,9 @@ public class EcomStore extends BaseEntity {
     /** 自动回传可售库存（自发货）1 是 0 否 */
     private Integer inventorySync;
 
+    /** 演示店铺 1 是 0 否：由演示数据生成，不调用平台接口，定时任务跳过 */
+    private Integer demo;
+
     /** 回传库存时保留的安全数量（件） */
     @jakarta.validation.constraints.DecimalMin(value = "0", message = "{ecom.valid.countCannotNegative}")
     private BigDecimal inventoryBuffer;
@@ -170,4 +173,9 @@ public class EcomStore extends BaseEntity {
     /** 授权状态（列表、渠道接入按授权信息与最近一次授权日志计算） */
     @TableField(exist = false)
     private com.lemon.erp.modules.ecom.model.StoreAuthStatus authStatus;
+
+    /** 是否演示店铺（不调用平台接口） */
+    public boolean demoStore() {
+        return Integer.valueOf(1).equals(demo);
+    }
 }

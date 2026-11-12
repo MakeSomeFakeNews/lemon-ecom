@@ -15,4 +15,7 @@ public interface EcomReturnItemMapper extends BaseMapper<EcomReturnItem> {
 
     /** 订单各行已登记（未关闭）的退货数量：orderItemId → qty */
     List<Map<String, Object>> selectReturnedQty(@Param("orderId") Long orderId);
+
+    /** 订单已入库（生成了销售退货）的退货数量：[{ orderItemId, packageId, qty }]，不含 excludeId */
+    List<Map<String, Object>> selectReceivedQty(@Param("orderId") Long orderId, @Param("excludeId") Long excludeId);
 }

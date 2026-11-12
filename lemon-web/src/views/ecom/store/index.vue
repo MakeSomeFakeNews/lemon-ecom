@@ -33,7 +33,7 @@
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'name'">
-            <div>{{ record.name }}</div>
+            <div>{{ record.name }}<a-tag v-if="record.demo === 1" color="purple" class="demo-tag" :title="$t('ecom.store.demoTip')">{{ $t('ecom.store.demo') }}</a-tag></div>
             <div class="sub-text">{{ record.code }}</div>
           </template>
           <template v-else-if="column.key === 'platform'">
@@ -304,6 +304,9 @@ const rowActions = (record) => {
 </script>
 
 <style scoped>
+.demo-tag {
+  margin-left: 6px;
+}
 .sub-text {
   color: var(--app-text-3);
   font-size: 12px;

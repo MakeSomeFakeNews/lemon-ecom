@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.owh.mapper.EcomOwhOutboundMapper">
+
+    <sql id="columns">
+        o.*, p.package_no, p.status AS package_status, p.ship_name, p.ship_country, s.name AS store_name, a.name AS account_name, a.provider,
+        m.owh_code, w.name AS warehouse_name,
+        (SELECT MAX(pr.product_name) FROM ecom_owh_product pr WHERE pr.account_id = o.account_id AND pr.product_code = o.product_code) AS product_name,
+        (SELECT SUM(f.amount_base) FROM ecom_owh_fee f WHERE f.outbound_id = o.id) AS fee_base
+    </sql>
+
+    <sql id="joins">
+        FROM ecom_owh_outbound o
+        JOIN ecom_package p ON p.id = o.package_id
+        LEFT JOIN ecom_store s ON s.id = o.store_id
+        LEFT JOIN ecom_owh_account a ON a.id = o.account_id
+        LEFT JOIN ecom_owh_warehouse m ON m.id = o.mapping_id
+        LEFT JOIN wms_warehouse w ON w.id = o.warehouse_id
+    </sql>
+
+    <sql id="filters">
+        <if test="accountId != null">AND o.account_id = #{accountId}</if>
+        <if test="warehouseId != null">AND o.warehouse_id = #{warehouseId}</if>
+        <if test="storeId != null">AND o.store_id = #{storeId}</if>
+        <if test="keyword != null and keyword != ''">
+            AND (o.outbound_no LIKE CONCAT('%', #{keyword}, '%') OR o.owh_order_no LIKE CONCAT('%', #{keyword}, '%')
+                 OR o.tracking_no LIKE CONCAT('%', #{keyword}, '%')
+                 OR EXISTS (SELECT 1 FROM ecom_package px WHERE px.id = o.package_id AND px.package_no LIKE CONCAT('%', #{keyword}, '%'))
+                 OR EXISTS (SELECT 1 FROM ecom_package_item pi JOIN ecom_order eo ON eo.id = pi.order_id
+                            WHERE pi.package_id = o.package_id AND eo.platform_order_no LIKE CONCAT('%', #{keyword}, '%')))
+        </if>
+    </sql>
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhOutbound">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        <where>
+            <include refid="filters"/>
+            <if test="status != null">AND o.status = #{status}</if>
+        </where>
+        ORDER BY o.id DESC
+    </select>
+
+    <select id="countByStatus" resultType="map">
+        SELECT o.status AS "status", COUNT(*) AS "cnt"
+        FROM ecom_owh_outbound o
+        <where>
+            <include refid="filters"/>
+        </where>
+        GROUP BY o.status
+    </select>
+
+    <sql id="pendingWhere">
+        WHERE p.status = 'WAIT_LABEL' AND m.status = 1
+          AND NOT EXISTS (SELECT 1 FROM ecom_owh_outbound x WHERE x.package_id = p.id AND x.status IN ('PUSHED', 'INTERCEPTING', 'OUTBOUND', 'SHIPPED'))
+        <if test="accountId != null">AND m.account_id = #{accountId}</if>
+        <if test="warehouseId != null">AND p.warehouse_id = #{warehouseId}</if>
+        <if test="storeId != null">AND p.store_id = #{storeId}</if>
+        <if test="keyword != null and keyword != ''">
+            AND (p.package_no LIKE CONCAT('%', #{keyword}, '%') OR p.ship_name LIKE CONCAT('%', #{keyword}, '%')
+                 OR EXISTS (SELECT 1 FROM ecom_package_item pi JOIN ecom_order eo ON eo.id = pi.order_id
+                            WHERE pi.package_id = p.id AND eo.platform_order_no LIKE CONCAT('%', #{keyword}, '%')))
+        </if>
+    </sql>
+
+    <select id="selectPending" resultType="com.lemon.erp.modules.ecom.entity.EcomPackage">
+        SELECT p.id, p.package_no, p.store_id, p.warehouse_id, p.channel_id, p.weight, p.shipping_cost, p.status, p.ship_name, p.ship_country,
+               p.remark, p.create_time, p.update_time, s.name AS store_name, w.name AS warehouse_name, ch.name AS channel_name,
+               (SELECT COUNT(DISTINCT pi.order_id) FROM ecom_package_item pi WHERE pi.package_id = p.id) AS order_count,
+               (SELECT SUM(CASE WHEN pi.part_main = 1 THEN pi.qty ELSE 0 END) FROM ecom_package_item pi WHERE pi.package_id = p.id) AS total_qty,
+               (SELECT MAX(x.error_msg) FROM ecom_owh_outbound x WHERE x.package_id = p.id AND x.status = 'FAILED') AS error_msg
+        FROM ecom_package p
+        JOIN ecom_owh_warehouse m ON m.warehouse_id = p.warehouse_id
+        JOIN ecom_store s ON s.id = p.store_id
+        LEFT JOIN wms_warehouse w ON w.id = p.warehouse_id
+        LEFT JOIN ecom_logistics_channel ch ON ch.id = p.channel_id
+        <include refid="pendingWhere"/>
+        ORDER BY p.id
+    </select>
+
+    <select id="countPending" resultType="long">
+        SELECT COUNT(*)
+        FROM ecom_package p
+        JOIN ecom_owh_warehouse m ON m.warehouse_id = p.warehouse_id
+        <include refid="pendingWhere"/>
+    </select>
+
+    <select id="selectAutoPushPackageIds" resultType="long">
+        SELECT p.id
+        FROM ecom_package p
+        JOIN ecom_owh_warehouse m ON m.warehouse_id = p.warehouse_id
+        JOIN ecom_owh_account a ON a.id = m.account_id
+        WHERE p.status = 'WAIT_LABEL' AND m.status = 1 AND m.auto_push = 1 AND a.status = 1 AND a.auto_sync = 1
+          AND NOT EXISTS (SELECT 1 FROM ecom_owh_outbound x WHERE x.package_id = p.id)
+        ORDER BY p.id
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectDetail" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhOutbound">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        WHERE o.id = #{id}
+    </select>
+
+    <select id="selectForUpdate" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhOutbound">
+        SELECT * FROM ecom_owh_outbound WHERE id = #{id} FOR UPDATE
+    </select>
+
+    <select id="selectByPackageIds" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhOutbound">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        WHERE o.package_id IN <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        ORDER BY o.id DESC
+    </select>
+
+    <select id="selectByOrderId" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhOutbound">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        WHERE EXISTS (SELECT 1 FROM ecom_package_item pi WHERE pi.package_id = o.package_id AND pi.order_id = #{orderId})
+        ORDER BY o.id DESC
+    </select>
+
+    <select id="selectSyncingIds" resultType="long">
+        SELECT o.id FROM ecom_owh_outbound o
+        JOIN ecom_owh_account a ON a.id = o.account_id
+        WHERE a.status = 1 AND a.auto_sync = 1 AND o.status IN <foreach collection="statuses" item="s" open="(" separator="," close=")">#{s}</foreach>
+        ORDER BY o.id
+    </select>
+
+    <select id="selectOrderNos" resultType="map">
+        SELECT DISTINCT pi.package_id AS "packageId", eo.platform_order_no AS "orderNo"
+        FROM ecom_package_item pi
+        JOIN ecom_order eo ON eo.id = pi.order_id
+        WHERE pi.package_id IN <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </select>
+</mapper>

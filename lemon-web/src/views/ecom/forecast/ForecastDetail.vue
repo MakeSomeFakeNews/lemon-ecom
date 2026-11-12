@@ -19,7 +19,22 @@
           <a-descriptions-item :label="$t('ecomAnalytics.forecast.params')">
             {{ $t('ecomAnalytics.forecast.paramsText', { alpha: detail.setting.alpha, beta: detail.setting.beta, window: detail.setting.windowDays, weeks: detail.setting.seasonWeeks }) }}
           </a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomFix.stockout.days')">
+            <a-tag v-if="stockoutCount" color="red" :bordered="false">{{ $t('ecomFix.stockout.daysN', { n: stockoutCount }) }}</a-tag>
+            <span v-else>0</span>
+            <span class="sub-text">{{ excludeOn ? $t('ecomFix.stockout.excludeOn') : $t('ecomFix.stockout.excludeOff') }}</span>
+          </a-descriptions-item>
         </a-descriptions>
+        <a-alert v-if="stockoutCount" type="warning" show-icon class="stockout-alert">
+          <template #message>
+            {{ excludeOn ? $t('ecomFix.stockout.detailTip', { n: stockoutCount }) : $t('ecomFix.stockout.detailTipOff', { n: stockoutCount }) }}
+          </template>
+          <template #description>
+            <span class="sub-text">{{ $t('ecomFix.stockout.recent') }}:</span>
+            <a-tag v-for="d in recentStockout" :key="d" :bordered="false" class="day-tag">{{ d }}</a-tag>
+            <span v-if="stockoutCount > recentStockout.length" class="sub-text">…</span>
+          </template>
+        </a-alert>
 
         <div class="chart-head">
           <span class="chart-title">{{ $t('ecomAnalytics.forecast.chartTitle') }}</span>
@@ -94,6 +109,10 @@ const showAll = ref(false)
 const listingId = ref()
 const detail = ref(null)
 
+const stockoutCount = computed(() => detail.value?.stockoutDates?.length || 0)
+const excludeOn = computed(() => detail.value?.setting?.excludeStockout !== false)
+const recentStockout = computed(() => [...(detail.value?.stockoutDates || [])].reverse().slice(0, 20))
+
 const title = computed(() => (detail.value ? `${t('ecomAnalytics.forecast.detailTitle')} · ${detail.value.info.sellerSku}` : t('ecomAnalytics.forecast.detailTitle')))
 const methodLabel = (m) => findDict(dict.ecom_forecast_method, m)?.label || m
 const bestMethod = computed(() => {
@@ -153,15 +172,32 @@ const chartOption = computed(() => {
   const lower = d.lower.map(nz)
   const width = d.upper.map((u, i) => Math.max(0, nz(u) - lower[i]))
   const others = showAll.value ? d.methods.filter((m) => !m.selected) : []
+  // 断货日：在实际销量上标红点，补偿后的历史用虚线（只在有断货且开启排除时显示）
+  const shownDates = history.map((_, i) => histStart.add(i, 'day').format('YYYY-MM-DD'))
+  const stockSet = new Set(d.stockoutDates || [])
+  const stockPoints = shownDates.map((day, i) => (stockSet.has(day) ? history[i] : null))
+  const adjusted = (d.adjusted || []).slice(-HISTORY_SHOWN).map(nz)
+  const showAdjusted = stockSet.size > 0 && excludeOn.value && adjusted.some((v, i) => v !== history[i])
+  const extraLegend = [...(stockSet.size ? [t('ecomFix.stockout.day')] : []), ...(showAdjusted ? [t('ecomFix.stockout.adjusted')] : [])]
+  const extraSeries = [
+    ...(stockSet.size
+      ? [{ name: t('ecomFix.stockout.day'), type: 'scatter', symbolSize: 9, itemStyle: { color: '#ff4d4f' }, data: [...stockPoints, ...Array(horizon).fill(null)] }]
+      : []),
+    ...(showAdjusted
+      ? [{ name: t('ecomFix.stockout.adjusted'), type: 'line', showSymbol: false, itemStyle: { color: '#fa8c16' }, lineStyle: { type: 'dotted' },
+        data: [...adjusted, ...Array(horizon).fill(null)] }]
+      : [])
+  ]
   return {
     tooltip: { trigger: 'axis' },
-    legend: { top: 0, type: 'scroll', data: [t('ecomAnalytics.forecast.actual'), t('ecomAnalytics.forecast.backtest'), methodLabel(selected.method),
+    legend: { top: 0, type: 'scroll', data: [t('ecomAnalytics.forecast.actual'), ...extraLegend, t('ecomAnalytics.forecast.backtest'), methodLabel(selected.method),
       t('ecomAnalytics.forecast.interval'), ...others.map((m) => methodLabel(m.method))] },
     grid: { left: 16, right: 16, top: 40, bottom: 8, containLabel: true },
     xAxis: { type: 'category', data: dates, boundaryGap: false },
     yAxis: { type: 'value' },
     series: [
       { name: t('ecomAnalytics.forecast.actual'), type: 'line', showSymbol: false, data: [...history, ...Array(horizon).fill(null)] },
+      ...extraSeries,
       { name: t('ecomAnalytics.forecast.backtest'), type: 'line', showSymbol: false, lineStyle: { type: 'dashed' }, data: backtest },
       { name: 'lower', type: 'line', stack: 'band', showSymbol: false, lineStyle: { opacity: 0 }, tooltip: { show: false }, data: pad(lower, history.length) },
       {
@@ -212,5 +248,11 @@ defineExpose({ open: show })
 }
 .event {
   margin-bottom: 4px;
+}
+.stockout-alert {
+  margin-bottom: 8px;
+}
+.day-tag {
+  margin: 2px 4px 2px 0;
 }
 </style>

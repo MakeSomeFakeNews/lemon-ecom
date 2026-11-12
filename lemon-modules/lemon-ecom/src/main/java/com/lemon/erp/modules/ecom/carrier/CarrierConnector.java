@@ -28,4 +28,11 @@ public interface CarrierConnector {
 
     /** 轨迹 */
     List<CarrierTrackEvent> track(CarrierContext ctx, String trackingNo);
+
+    /**
+     * 轨迹与归一后的状态（物流跟踪定时拉取使用）：默认按最新一条轨迹的描述判断状态；物流商返回状态码时覆盖本方法
+     */
+    default CarrierTrackInfo trackInfo(CarrierContext ctx, String trackingNo) {
+        return CarrierTrackInfo.of(track(ctx, trackingNo));
+    }
 }

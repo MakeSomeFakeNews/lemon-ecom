@@ -23,6 +23,15 @@
         <a-form-item :label="$t('ecomOrder.order.country')" name="country">
           <a-input v-model:value="query.country" :placeholder="$t('ecomOrder.order.countryPh')" allow-clear :maxlength="8" @press-enter="search" />
         </a-form-item>
+        <a-form-item :label="$t('ecomOrd.order.tag')" name="tagId">
+          <a-select v-model:value="query.tagId" :placeholder="$t('common.placeholder.all')" allow-clear :options="tagOptions" option-filter-prop="label" />
+        </a-form-item>
+        <a-form-item :label="$t('ecomOrd.order.orderType')" name="orderType">
+          <a-select v-model:value="query.orderType" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_order_type)" />
+        </a-form-item>
+        <a-form-item :label="$t('ecomOrd.order.addressInvalid')" name="addressInvalid">
+          <a-switch v-model:checked="query.addressInvalid" @change="search" />
+        </a-form-item>
         <a-form-item :label="$t('ecomOrder.order.overdueOnly')" name="overdue">
           <a-switch v-model:checked="query.overdue" @change="search" />
         </a-form-item>
@@ -43,6 +52,9 @@
       <TableToolbar :exporter="exportAll" v-model:size="size" v-model:checked="checked" v-model:show-search="showSearch" :columns="columns" @refresh="reload">
         <a-button v-if="tab === 'all' || tab === 'pending'" v-perm="'ecom:order:import'" @click="importModal.open()">
           <template #icon><UploadOutlined /></template>{{ $t('ecomOrder.order.import') }}
+        </a-button>
+        <a-button v-if="tab === 'all' || tab === 'pending'" v-perm="'ecom:order:add'" @click="manualDrawer.openCreate()">
+          <template #icon><PlusOutlined /></template>{{ $t('ecomOrd.manual.add') }}
         </a-button>
         <template v-for="a in batchActions" :key="a.key">
           <a-button v-perm="a.perm" :type="a.primary ? 'primary' : 'default'" :disabled="!selectedKeys.length" @click="a.run">
@@ -71,13 +83,22 @@
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'platformOrderNo'">
             <a @click="openDetail(record)">{{ record.platformOrderNo }}</a>
+            <OrderTags :order="record" />
+          </template>
+          <template v-else-if="column.key === 'estProfit'">
+            <OrderEstimate :order="record" />
           </template>
           <template v-else-if="column.key === 'platform'">
             <DictTag type="ecom_platform" :value="record.platform" />
           </template>
           <template v-else-if="column.key === 'buyer'">
             <div>{{ record.buyerName || record.shipName || '-' }}</div>
-            <div class="sub-text">{{ record.shipCountry }}</div>
+            <div class="sub-text">
+              {{ record.shipCountry }}
+              <a-tooltip v-if="record.addressIssue" :title="record.addressIssue">
+                <EnvironmentOutlined :class="record.addressInvalid === 1 ? 'exception-icon' : 'warn-icon'" />
+              </a-tooltip>
+            </div>
           </template>
           <template v-else-if="column.key === 'paid'">
             <div class="nowrap">{{ fcMoney(record.currency, record.totalAmount) }}</div>
@@ -131,6 +152,9 @@
     <OrderImportModal ref="importModal" @success="reload" />
     <HoldModal ref="holdModal" @done="afterChange" />
     <SplitModal ref="splitModal" @done="afterChange" />
+    <ManualOrderDrawer ref="manualDrawer" @success="(id) => { reload(); id && detail.open(id) }" />
+    <TagModal ref="tagModal" @done="afterChange" />
+    <AssignModal ref="assignModal" @done="afterChange" />
   </div>
 </template>
 
@@ -142,10 +166,13 @@ import { Modal, message } from 'ant-design-vue'
 import {
   AuditOutlined,
   CarOutlined,
+  EnvironmentOutlined,
   ExclamationCircleOutlined,
   ExportOutlined,
   FilterOutlined,
   MergeCellsOutlined,
+  NodeIndexOutlined,
+  PlusOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
   PrinterOutlined,
@@ -153,6 +180,7 @@ import {
   RollbackOutlined,
   ScissorOutlined,
   SyncOutlined,
+  TagsOutlined,
   UploadOutlined
 } from '@ant-design/icons-vue'
 import SearchForm from '@/components/SearchForm.vue'
@@ -167,6 +195,12 @@ import OrderEditDrawer from './OrderEditDrawer.vue'
 import OrderImportModal from './OrderImportModal.vue'
 import HoldModal from './HoldModal.vue'
 import SplitModal from './SplitModal.vue'
+import ManualOrderDrawer from './ManualOrderDrawer.vue'
+import TagModal from './TagModal.vue'
+import AssignModal from './AssignModal.vue'
+import OrderTags from './OrderTags.vue'
+import OrderEstimate from './OrderEstimate.vue'
+import { orderTagOptions } from '@/api/ecom/orderEnhance'
 import { orderColumns } from './columns'
 import {
   applyEcomOrderRules,
@@ -215,7 +249,9 @@ import {
  */
 const { t } = useI18n()
 const router = useRouter()
-const dict = useDict('ecom_platform', 'ecom_order_status', 'ecom_local_status', 'ecom_fulfillment')
+const dict = useDict('ecom_platform', 'ecom_order_status', 'ecom_local_status', 'ecom_fulfillment', 'ecom_order_type')
+const tagOptions = ref([])
+orderTagOptions().then((list) => (tagOptions.value = (list || []).map((x) => ({ value: x.id, label: x.name }))))
 
 const columns = orderColumns()
 const { checked, visibleColumns, scrollX } = useColumns(columns, 'ecom-order')
@@ -230,7 +266,10 @@ const emptyQuery = () => ({
   country: undefined,
   range: undefined,
   overdue: false,
-  urgency: false
+  urgency: false,
+  tagId: undefined,
+  orderType: undefined,
+  addressInvalid: false
 })
 const query = reactive(emptyQuery())
 // 从看板、首页待办跳转过来时带上处理状态 / 只看逾期（?localStatus=PENDING、?overdue=1）
@@ -238,8 +277,9 @@ const route = useRoute()
 const tab = ref(route.query.localStatus ? tabOfStatus(String(route.query.localStatus)) : 'pending')
 if (route.query.overdue === '1' || route.query.overdue === 'true') query.overdue = true
 
-const baseParams = ({ range, overdue, country, urgency, ...rest }) => ({
+const baseParams = ({ range, overdue, country, urgency, addressInvalid, ...rest }) => ({
   ...rest,
+  addressInvalid: addressInvalid || undefined,
   country: country?.trim().toUpperCase() || undefined,
   beginDate: range?.[0],
   endDate: range?.[1],
@@ -283,6 +323,9 @@ const editDrawer = ref()
 const importModal = ref()
 const holdModal = ref()
 const splitModal = ref()
+const manualDrawer = ref()
+const tagModal = ref()
+const assignModal = ref()
 
 const openDetail = (record) => detail.value.open(record.id)
 /** 处理后：刷新列表、数量和打开中的详情，清掉勾选 */
@@ -329,19 +372,22 @@ const BATCH = {
       }
     })
   }),
-  outbound: () => ({ key: 'outbound', label: t('ecomOrder.order.batchOutbound'), icon: ExportOutlined, perm: 'ecom:order:outbound', run: () => outboundModal.value.open(selectedKeys.value) })
+  outbound: () => ({ key: 'outbound', label: t('ecomOrder.order.batchOutbound'), icon: ExportOutlined, perm: 'ecom:order:outbound', run: () => outboundModal.value.open(selectedKeys.value) }),
+  tag: () => ({ key: 'tag', label: t('ecomOrd.tag.batchTag'), icon: TagsOutlined, perm: 'ecom:order:tag', run: () => tagModal.value.open(selectedKeys.value, 'tag') }),
+  untag: () => ({ key: 'untag', label: t('ecomOrd.tag.batchUntag'), icon: TagsOutlined, perm: 'ecom:order:tag', run: () => tagModal.value.open(selectedKeys.value, 'untag') }),
+  assign: () => ({ key: 'assign', label: t('ecomOrd.assign.batch'), icon: NodeIndexOutlined, perm: 'ecom:order:audit', run: () => assignModal.value.open(selectedKeys.value) })
 }
 
 /** 各标签页的批量操作 */
 const batchActions = computed(() => {
   const keys = {
-    pending: ['audit', 'rules', 'hold', 'outbound'],
-    outOfStock: ['recheck', 'hold', 'outbound'],
-    toLabel: ['merge', 'recheck', 'hold'],
-    toShip: ['hold'],
-    shipped: [],
-    abnormal: ['unhold', 'rules', 'audit'],
-    all: ['outbound']
+    pending: ['audit', 'assign', 'rules', 'hold', 'outbound', 'tag', 'untag'],
+    outOfStock: ['recheck', 'assign', 'hold', 'outbound', 'tag', 'untag'],
+    toLabel: ['merge', 'assign', 'recheck', 'hold', 'tag', 'untag'],
+    toShip: ['hold', 'tag', 'untag'],
+    shipped: ['tag', 'untag'],
+    abnormal: ['unhold', 'rules', 'audit', 'assign', 'tag', 'untag'],
+    all: ['outbound', 'tag', 'untag']
   }[tab.value]
   return keys.map((k) => BATCH[k]())
 })
@@ -414,6 +460,11 @@ const rowActions = (record) => [
   margin-left: 4px;
   color: var(--app-text-3);
   font-size: 12px;
+}
+.warn-icon {
+  margin-left: 4px;
+  color: var(--ant-color-warning, #faad14);
+  cursor: help;
 }
 .exception-icon {
   margin-left: 4px;

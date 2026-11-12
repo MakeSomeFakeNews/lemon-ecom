@@ -62,6 +62,8 @@ public class EcomOrderOpsService {
     private final EcomOutboundSupport outboundSupport;
     private final EcomOrderRuleService ruleService;
     private final EcomPackageService packageService;
+    private final EcomOrderCheckService checkService;
+    private final EcomOrderTagService tagService;
     private final TransactionTemplate transactionTemplate;
 
     // ---------------------------------------------------------------- 审单规则
@@ -107,7 +109,9 @@ public class EcomOrderOpsService {
         }
         EcomStore store = storeService.get(o.getStoreId());
         List<EcomOrderItem> items = outboundSupport.attachParts(itemMapper.selectByOrderId(o.getId()));
-        EcomOrderRuleService.Outcome r = ruleService.evaluate(o, store.getPlatform(), items);
+        // 审单前检查（地址校验、黑名单、利润预估），规则可按检查结果匹配
+        EcomOrderCheckService.Facts facts = checkService.checkQuietly(o, items);
+        EcomOrderRuleService.Outcome r = ruleService.evaluate(o, store.getPlatform(), items, facts);
         LambdaUpdateWrapper<EcomOrder> u = Wrappers.<EcomOrder>lambdaUpdate().eq(EcomOrder::getId, o.getId())
                 .set(EcomOrder::getMatchedRules, r.matched().isEmpty() ? null : abbreviate(String.join(", ", r.matched())))
                 .set(EcomOrder::getPlanShipTime, r.planShipTime(o));
@@ -134,6 +138,8 @@ public class EcomOrderOpsService {
                     .set(EcomOrder::getHoldRuleId, null);
         }
         orderMapper.update(u);
+        tagService.autoTag(o.getId(), r.tagIds());
+        status = checkService.afterRules(o, status, facts);
         if (r.autoAudit() && status == EcomLocalStatus.PENDING) {
             EcomOrder fresh = orderMapper.selectById(o.getId());
             if (auditable(fresh)) {
@@ -187,6 +193,11 @@ public class EcomOrderOpsService {
             orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getLocalStatus, EcomLocalStatus.EXCEPTION)
                     .set(EcomOrder::getException, exception).eq(EcomOrder::getId, o.getId()));
             return exception;
+        }
+        // 审核前拦截：新命中黑名单挂起，地址校验不通过进入异常
+        String blocked = checkService.auditBlock(o);
+        if (blocked != null) {
+            return blocked;
         }
         Long wh = o.getWarehouseId() != null ? o.getWarehouseId() : store.getWarehouseId();
         orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getWarehouseId, wh).set(EcomOrder::getLocalStatus, EcomLocalStatus.PENDING)

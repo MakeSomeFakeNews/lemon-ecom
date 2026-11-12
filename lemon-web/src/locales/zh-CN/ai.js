@@ -13,13 +13,15 @@ export default {
     EXTRACT: '智能录入',
     CLEANSE: '数据整理',
     REPORT: '智能报告',
+    WRITE: 'AI 写作',
     TEST: '测试连接'
   },
   featureDesc: {
     CHAT: '用自然语言提问，AI 在提问人的权限范围内查询业务数据并回答',
     EXTRACT: '上传图片、PDF、Excel，识别成采购订单等单据的草稿，核对后保存',
     CLEANSE: '对物料、客户、供应商等主数据查重，给出名称、规格、分类的规范化建议',
-    REPORT: '按周、按月汇总经营指标，自动撰写经营报告'
+    REPORT: '按周、按月汇总经营指标，自动撰写经营报告',
+    WRITE: '业务文本生成：电商客服回复草拟与翻译、评价回复、刊登标题与描述的翻译和优化'
   },
   settings: {
     dataNotice: '业务数据会发送给所配置的第三方模型服务',

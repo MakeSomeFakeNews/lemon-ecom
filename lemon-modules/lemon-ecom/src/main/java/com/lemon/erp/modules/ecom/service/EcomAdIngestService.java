@@ -492,24 +492,38 @@ public class EcomAdIngestService {
             }
             seenTargets.add(t.getId());
         }
-        archiveMissing(store, campaigns, groups, seenTargets);
+        archiveMissing(store, campaigns, groups, seenTargets, s.adTypes());
         return new AdsViews.SyncResult(campaigns.size(), groups.size(), seenTargets.size(), Map.of(), null);
     }
 
-    private void archiveMissing(EcomStore store, Map<String, EcomAdCampaign> campaigns, Map<String, EcomAdGroup> groups, Set<Long> targets) {
+    /**
+     * 标记本次没有返回的对象为已归档；adTypes 不为空时只处理这些广告类型的活动及其下级（其他类型这次没有拉取，保持不变）
+     */
+    private void archiveMissing(EcomStore store, Map<String, EcomAdCampaign> campaigns, Map<String, EcomAdGroup> groups, Set<Long> targets,
+                                Set<EcomAdType> adTypes) {
         Set<Long> campaignIds = new HashSet<>();
         campaigns.values().forEach(c -> campaignIds.add(c.getId()));
         Set<Long> groupIds = new HashSet<>();
         groups.values().forEach(g -> groupIds.add(g.getId()));
+        // 没有拉取的广告类型的活动：它们及其下级都不归档
+        Set<Long> skipped = new HashSet<>();
+        if (adTypes != null) {
+            campaignMapper.selectList(Wrappers.<EcomAdCampaign>lambdaQuery().select(EcomAdCampaign::getId, EcomAdCampaign::getAdType)
+                            .eq(EcomAdCampaign::getStoreId, store.getId()))
+                    .stream().filter(c -> c.getAdType() == null || !adTypes.contains(c.getAdType())).forEach(c -> skipped.add(c.getId()));
+        }
         campaignMapper.update(Wrappers.<EcomAdCampaign>lambdaUpdate().set(EcomAdCampaign::getStatus, EcomAdStatus.ARCHIVED)
                 .eq(EcomAdCampaign::getStoreId, store.getId()).isNotNull(EcomAdCampaign::getPlatformCampaignId)
-                .ne(EcomAdCampaign::getStatus, EcomAdStatus.ARCHIVED).notIn(!campaignIds.isEmpty(), EcomAdCampaign::getId, campaignIds));
+                .ne(EcomAdCampaign::getStatus, EcomAdStatus.ARCHIVED).notIn(!campaignIds.isEmpty(), EcomAdCampaign::getId, campaignIds)
+                .notIn(!skipped.isEmpty(), EcomAdCampaign::getId, skipped));
         groupMapper.update(Wrappers.<EcomAdGroup>lambdaUpdate().set(EcomAdGroup::getStatus, EcomAdStatus.ARCHIVED)
                 .eq(EcomAdGroup::getStoreId, store.getId()).isNotNull(EcomAdGroup::getPlatformAdGroupId)
-                .ne(EcomAdGroup::getStatus, EcomAdStatus.ARCHIVED).notIn(!groupIds.isEmpty(), EcomAdGroup::getId, groupIds));
+                .ne(EcomAdGroup::getStatus, EcomAdStatus.ARCHIVED).notIn(!groupIds.isEmpty(), EcomAdGroup::getId, groupIds)
+                .notIn(!skipped.isEmpty(), EcomAdGroup::getCampaignId, skipped));
         targetMapper.update(Wrappers.<EcomAdTarget>lambdaUpdate().set(EcomAdTarget::getStatus, EcomAdStatus.ARCHIVED)
                 .eq(EcomAdTarget::getStoreId, store.getId()).isNotNull(EcomAdTarget::getPlatformTargetId)
-                .ne(EcomAdTarget::getStatus, EcomAdStatus.ARCHIVED).notIn(!targets.isEmpty(), EcomAdTarget::getId, targets));
+                .ne(EcomAdTarget::getStatus, EcomAdStatus.ARCHIVED).notIn(!targets.isEmpty(), EcomAdTarget::getId, targets)
+                .notIn(!skipped.isEmpty(), EcomAdTarget::getCampaignId, skipped));
     }
 
     /** 一批数据内的活动 / 广告组 / 投放查找缓存（找不到时建立） */
@@ -532,7 +546,8 @@ public class EcomAdIngestService {
             String key = Objects.toString(row.getCampaignPlatformId(), "") + "|" + Objects.toString(row.getCampaignName(), "");
             return campaigns.computeIfAbsent(key, k -> {
                 boolean[] created = {false};
-                EcomAdCampaign c = structureService.ensureCampaign(store, row.getCampaignPlatformId(), truncate(row.getCampaignName(), 128), adType, created);
+                EcomAdCampaign c = structureService.ensureCampaign(store, row.getCampaignPlatformId(), truncate(row.getCampaignName(), 128),
+                        row.getAdType() != null ? row.getAdType() : adType, created);
                 if (created[0]) {
                     campaignsCreated++;
                 }

@@ -199,6 +199,7 @@ public class AiConfigService {
         if (c.getExtractEnabled() == null) c.setExtractEnabled(false);
         if (c.getCleanseEnabled() == null) c.setCleanseEnabled(false);
         if (c.getReportEnabled() == null) c.setReportEnabled(false);
+        if (c.getWriteEnabled() == null) c.setWriteEnabled(false);
         if (c.getTemperature() == null) c.setTemperature(DEFAULT_TEMPERATURE);
     }
 

@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.oper.mapper.EcomOperReportMapper">
+
+    <!-- 负责人昵称来自 sys_user（只读 JOIN） -->
+    <select id="selectStores" resultType="java.util.Map">
+        SELECT s.id AS "storeId", s.code AS "code", s.name AS "name", s.platform AS "platform", s.marketplace AS "marketplace",
+               s.currency AS "currency", s.owner_id AS "ownerId", u.nickname AS "ownerName", s.status AS "status"
+        FROM ecom_store s
+        LEFT JOIN sys_user u ON u.id = s.owner_id
+        ORDER BY s.id
+    </select>
+
+    <select id="selectOwners" resultType="java.util.Map">
+        SELECT u.id AS "userId", u.nickname AS "nickname"
+        FROM sys_user u
+        WHERE EXISTS (SELECT 1 FROM ecom_store s WHERE s.owner_id = u.id)
+        ORDER BY u.id
+    </select>
+
+    <select id="selectOrderTotals" resultType="java.util.Map">
+        SELECT o.store_id AS "storeId", COUNT(*) AS "orders", COALESCE(SUM(o.total_base), 0) AS "sales", COALESCE(SUM(o.profit), 0) AS "profit"
+        FROM ecom_order o
+        WHERE o.status &lt;&gt; 'CANCELLED' AND o.order_time &gt;= #{begin} AND o.order_time &lt; #{end}
+        GROUP BY o.store_id
+    </select>
+
+    <select id="selectAdTotals" resultType="java.util.Map">
+        SELECT d.store_id AS "storeId", COALESCE(SUM(d.spend), 0) AS "spend", COALESCE(SUM(d.ad_sales), 0) AS "adSales"
+        FROM ecom_ad_daily d
+        WHERE d.ad_date &gt;= #{begin} AND d.ad_date &lt;= #{end}
+        GROUP BY d.store_id
+    </select>
+
+    <select id="selectReturnCounts" resultType="java.util.Map">
+        SELECT r.store_id AS "storeId", COUNT(*) AS "cnt"
+        FROM ecom_return r
+        WHERE r.status &lt;&gt; 'CLOSED' AND r.create_time &gt;= #{begin} AND r.create_time &lt; #{end}
+        GROUP BY r.store_id
+    </select>
+
+    <select id="selectBadReviewCounts" resultType="java.util.Map">
+        SELECT v.store_id AS "storeId", COUNT(*) AS "cnt"
+        FROM ecom_review v
+        WHERE v.rating &lt;= #{maxRating} AND v.review_date &gt;= #{begin} AND v.review_date &lt;= #{end}
+        GROUP BY v.store_id
+    </select>
+
+    <select id="selectTopSkus" resultType="java.util.Map">
+        SELECT oi.seller_sku AS "sellerSku", MAX(oi.platform_item_id) AS "platformItemId", MAX(oi.title) AS "title", SUM(oi.qty) AS "qty"
+        FROM ecom_order_item oi
+        JOIN ecom_order o ON o.id = oi.order_id
+        WHERE o.store_id = #{storeId} AND o.status &lt;&gt; 'CANCELLED' AND o.order_time &gt;= #{begin} AND o.order_time &lt; #{end}
+        GROUP BY oi.seller_sku
+        ORDER BY SUM(oi.qty) DESC, oi.seller_sku
+        LIMIT #{limit}
+    </select>
+
+</mapper>

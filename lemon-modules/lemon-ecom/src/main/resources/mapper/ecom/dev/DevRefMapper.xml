@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.dev.mapper.DevRefMapper">
+
+    <!-- 开发项目生成的物料被删除后可以重新生成，不阻止删除；货源和 1688 采购单引用时不能删除 -->
+    <select id="findMaterial" resultType="string">
+        SELECT t.label FROM (
+            SELECT 'ecom.label.dev.offer' AS label, 1 AS ord FROM ecom_1688_offer WHERE material_id = #{id}
+            UNION ALL SELECT 'ecom.label.dev.aliOrder', 2 FROM ecom_1688_order_item WHERE material_id = #{id}
+        ) t ORDER BY t.ord LIMIT 1
+    </select>
+
+    <select id="findSupplier" resultType="string">
+        SELECT t.label FROM (
+            SELECT 'ecom.label.dev.sample' AS label, 1 AS ord FROM ecom_dev_sample WHERE supplier_id = #{id}
+            UNION ALL SELECT 'ecom.label.dev.offer', 2 FROM ecom_1688_offer WHERE supplier_id = #{id}
+        ) t ORDER BY t.ord LIMIT 1
+    </select>
+
+    <select id="findUser" resultType="string">
+        SELECT 'ecom.label.dev.project' FROM ecom_dev_project WHERE owner_id = #{id} LIMIT 1
+    </select>
+
+    <select id="supplierImpacts" resultType="com.lemon.erp.framework.ref.MergeImpact">
+        SELECT 'ecom.label.dev.sample' AS label_key, COUNT(*) AS total, 0 AS conflicts FROM ecom_dev_sample WHERE supplier_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        UNION ALL
+        SELECT 'ecom.label.dev.offer', COUNT(*), 0 FROM ecom_1688_offer WHERE supplier_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </select>
+
+    <update id="mergeSampleSupplier">
+        UPDATE ecom_dev_sample SET supplier_id = #{targetId}, update_time = CURRENT_TIMESTAMP WHERE supplier_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </update>
+
+    <update id="mergeOfferSupplier">
+        UPDATE ecom_1688_offer SET supplier_id = #{targetId}, update_time = CURRENT_TIMESTAMP WHERE supplier_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </update>
+
+</mapper>

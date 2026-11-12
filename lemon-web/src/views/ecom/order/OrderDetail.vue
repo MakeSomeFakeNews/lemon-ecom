@@ -5,6 +5,8 @@
         <DictTag type="ecom_order_status" :value="detail.status" />
         <DictTag type="ecom_local_status" :value="detail.localStatus" />
         <a-tag v-if="isOverdue(detail)" color="error" :bordered="false">{{ $t('ecomOrder.order.overdue') }}</a-tag>
+        <DictTag v-if="detail.orderType && detail.orderType !== EcomOrderType.PLATFORM" type="ecom_order_type" :value="detail.orderType" />
+        <a-tag v-for="tg in detail.tags || []" :key="tg.id" :color="tg.color" :bordered="false">{{ tg.name }}</a-tag>
       </a-space>
     </template>
 
@@ -48,6 +50,9 @@
           </a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOrder.order.receiver')">{{ [detail.shipName, detail.shipPhone].filter(Boolean).join(' ') || '-' }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOrder.order.address')" :span="3">{{ address || '-' }}</a-descriptions-item>
+          <a-descriptions-item v-if="detail.sourceOrderNo" :label="$t('ecomOrd.resend.sourceOrder')">
+            <a @click="show(detail.sourceOrderId)">{{ detail.sourceOrderNo }}</a>
+          </a-descriptions-item>
           <a-descriptions-item v-if="detail.note" :label="$t('ecomOrder.order.note')" :span="3">{{ detail.note }}</a-descriptions-item>
           <a-descriptions-item v-if="detail.remark" :label="$t('common.field.remark')" :span="3">{{ detail.remark }}</a-descriptions-item>
         </a-descriptions>
@@ -108,8 +113,11 @@
           </template>
         </a-table>
 
+        <OrderEnhancePanel :detail="detail" @changed="afterEnhance" @address="(issues) => addressModal.open(detail, issues)" @open-order="show" />
+
         <div class="section-title">{{ $t('ecomOrder.ops.packages') }}</div>
         <OrderPackages :packages="detail.packages || []" class="block" />
+        <OwhOrderOutbounds :order-id="detail.id" :refresh-key="detail.updateTime" class="block" />
 
         <div class="section-title">{{ $t('ecomOrder.order.sectionShip') }}</div>
         <a-descriptions :column="{ xs: 1, sm: 2, lg: 3 }" size="small">
@@ -130,6 +138,9 @@
         </a-button>
       </div>
     </template>
+    <ResendModal ref="resendModal" @done="(id) => { emit('changed'); show(id) }" />
+    <AddressModal ref="addressModal" @done="afterEnhance" />
+    <BlacklistModal ref="blacklistModal" @done="afterEnhance" />
   </SubPage>
 </template>
 
@@ -145,19 +156,26 @@ import {
   ExportOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
+  RedoOutlined,
   ReloadOutlined,
   RollbackOutlined,
   ScissorOutlined,
   StopOutlined,
-  SyncOutlined
+  SyncOutlined,
+  UserDeleteOutlined
 } from '@ant-design/icons-vue'
 import SubPage from '@/components/SubPage.vue'
 import DictTag from '@/components/DictTag.vue'
 import OrderPackages from './OrderPackages.vue'
+import OrderEnhancePanel from './OrderEnhancePanel.vue'
+import ResendModal from './ResendModal.vue'
+import AddressModal from './AddressModal.vue'
+import BlacklistModal from './BlacklistModal.vue'
+import OwhOrderOutbounds from '@/components/ecom/owh/OwhOrderOutbounds.vue'
 import { auditEcomOrders, cancelEcomOrder, confirmEcomOrderShipment, getEcomOrder, recheckEcomOrders, rematchEcomOrder, unholdEcomOrders } from '@/api/ecom/order'
 import { useUserStore } from '@/store/user'
 import { money, price, qty } from '@/utils/number'
-import { EcomLocalStatus } from '@/constants/enums'
+import { EcomLocalStatus, EcomOrderType } from '@/constants/enums'
 import {
   ORDER_RESULT_KEYS,
   baseMoney,
@@ -207,7 +225,16 @@ const itemColumns = [
 const open = ref(false)
 const loading = ref(false)
 const detail = ref()
+const resendModal = ref()
+const addressModal = ref()
+const blacklistModal = ref()
 let currentId
+
+/** 订单增强的操作（备注、修改地址、拉黑、重新校验）后：刷新详情并通知页面 */
+async function afterEnhance() {
+  await load(currentId)
+  emit('changed')
+}
 
 const address = computed(() => {
   const d = detail.value
@@ -302,6 +329,14 @@ const actions = computed(() => {
       danger: true,
       run: () => confirmAction(t('ecomOrder.order.cancelConfirm', { no: d.platformOrderNo }), t('ecomOrder.order.cancelContent'), cancelEcomOrder, t('ecomOrder.order.cancelled'), true)
     })
+  }
+  // 补发 / 重发：已出库 / 已发货的非补发订单
+  if ([EcomLocalStatus.OUTBOUND, EcomLocalStatus.SHIPPED, EcomLocalStatus.PARTIAL].includes(d.localStatus) && d.orderType !== EcomOrderType.RESEND
+    && can('ecom:order:resend')) {
+    list.push({ key: 'resend', label: t('ecomOrd.resend.action'), icon: RedoOutlined, run: () => resendModal.value.open(d) })
+  }
+  if (can('ecom:blacklist:add')) {
+    list.push({ key: 'blacklist', label: t('ecomOrd.blacklist.action'), icon: UserDeleteOutlined, danger: true, run: () => blacklistModal.value.open(d) })
   }
   if (canRecheck(d) && can('ecom:order:audit')) {
     list.push({ key: 'recheck', label: t('ecomOrder.ops.recheck'), icon: SyncOutlined, primary: true, run: () => runOne(recheckEcomOrders) })

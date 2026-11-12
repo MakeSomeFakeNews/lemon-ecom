@@ -120,6 +120,9 @@ public class EcomListing extends BaseEntity {
     /** 最近一次回传库存的时间 */
     @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
     private java.time.LocalDateTime lastPushedTime;
+    /** 手工库存（锁定）1 是：批量改库存时设置，自动库存回传跳过它，直到在「改价记录 / 在线商品」中解除锁定 */
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private Integer stockLocked;
     /** 平台附加 ID（JSON 对象，如 Shopify 变体 ID / 库存项 ID、平台仓库 ID），由拉取在线商品写入，回传库存时交给连接器 */
     @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
     private String platformExtra;

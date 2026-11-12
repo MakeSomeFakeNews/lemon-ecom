@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.dev.mapper.Ecom1688OrderItemMapper">
+
+    <select id="selectByOrderId" resultType="com.lemon.erp.modules.ecom.dev.entity.Ecom1688OrderItem">
+        SELECT i.*, m.code AS material_code, m.name AS material_name, f.title, f.spec_text, f.image_url
+        FROM ecom_1688_order_item i
+        LEFT JOIN wms_material m ON m.id = i.material_id
+        LEFT JOIN ecom_1688_offer f ON f.material_id = i.material_id
+        WHERE i.order_id = #{orderId}
+        ORDER BY i.id
+    </select>
+
+    <insert id="insertBatch">
+        INSERT INTO ecom_1688_order_item (order_id, scm_order_item_id, material_id, offer_id, spec_id, qty, material_qty, price, amount,
+                                          create_time, update_time)
+        VALUES
+        <foreach collection="items" item="i" separator=",">
+            (#{i.orderId}, #{i.scmOrderItemId}, #{i.materialId}, #{i.offerId}, #{i.specId}, #{i.qty}, #{i.materialQty}, #{i.price}, #{i.amount},
+             CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        </foreach>
+    </insert>
+
+</mapper>

@@ -3,6 +3,7 @@
     <template #extra>
       <span class="sub-text">{{ $t('ecomAds.campaign.period', { range: `${params.beginDate || ''} ~ ${params.endDate || ''}` }) }}</span>
     </template>
+    <a-alert v-if="typeTip" type="info" show-icon :message="typeTip" class="type-tip" />
     <div class="section-head">
       <span class="section-title">{{ $t('ecomAds.campaign.groups') }}</span>
       <a-button v-perm="'ecom:ad:edit'" size="small" @click="groupFormRef.openCreate({ campaignId: campaign.id })">
@@ -67,7 +68,7 @@
       </template>
     </a-table>
 
-    <div v-if="group" class="negatives">
+    <div v-if="group && campaign?.adType !== EcomAdType.SD" class="negatives">
       <span class="section-title">{{ $t('ecomAds.enum.targetType.NEGATIVE') }}</span>
       <a-tag
         v-for="n in negatives"
@@ -97,7 +98,7 @@ import { adsHierarchy, changeAdStatus, changeBid, deleteGroup, deleteTargets, pa
 import { useAction } from '@/composables/useAction'
 import { sumWidth } from '@/composables/useColumns'
 import { useDict } from '@/composables/useDict'
-import { EcomAdLevel, EcomAdStatus, EcomAdTargetType } from '@/constants/enums'
+import { EcomAdLevel, EcomAdStatus, EcomAdTargetType, EcomAdType } from '@/constants/enums'
 import { findDict } from '@/utils/dict'
 import { useUserStore } from '@/store/user'
 import { money } from '@/utils/number'
@@ -128,6 +129,12 @@ const groupId = computed(() => group.value?.id)
 const loadingGroups = ref(false)
 const loadingTargets = ref(false)
 const targetKeyword = ref('')
+/** 品牌推广 / 展示型推广的接口限制说明（亚马逊 SB 广告组没有默认竞价，SD 没有关键词与否定关键词） */
+const typeTip = computed(() => {
+  if (campaign.value?.adType === EcomAdType.SB) return t('ecomFix.ads.sbTip')
+  if (campaign.value?.adType === EcomAdType.SD) return t('ecomFix.ads.sdTip')
+  return ''
+})
 let changed = false
 
 const groupColumns = [
@@ -240,7 +247,13 @@ const statusAction = (level, r) => ({
 })
 
 const groupActions = (r) => [
-  { type: 'setting', label: t('ecomAds.target.changeBid'), perm: 'ecom:ad:edit', show: r.status !== EcomAdStatus.ARCHIVED, onClick: () => editBid(EcomAdLevel.AD_GROUP, r) },
+  {
+    type: 'setting',
+    label: t('ecomAds.target.changeBid'),
+    perm: 'ecom:ad:edit',
+    show: r.status !== EcomAdStatus.ARCHIVED && campaign.value?.adType !== EcomAdType.SB,
+    onClick: () => editBid(EcomAdLevel.AD_GROUP, r)
+  },
   statusAction(EcomAdLevel.AD_GROUP, r),
   { type: 'edit', perm: 'ecom:ad:edit', onClick: () => groupFormRef.value.openEdit({ id: r.id, campaignId: campaign.value.id, name: r.name, platformAdGroupId: r.platformId || '' }) },
   { type: 'delete', perm: 'ecom:ad:edit', confirm: t('ecomAds.group.confirmDelete', { name: r.name }), onClick: () => removeGroup(r) }
@@ -276,6 +289,9 @@ defineExpose({ open: show })
 }
 .kw {
   width: 180px;
+}
+.type-tip {
+  margin-bottom: 12px;
 }
 .negatives {
   display: flex;

@@ -17,6 +17,14 @@
           AND listing_id IN <foreach collection="listingIds" item="id" open="(" separator="," close=")">#{id}</foreach>
     </delete>
 
+    <!-- 断货日：可售数不大于阈值的快照 -->
+    <select id="selectStockout" resultType="com.lemon.erp.modules.ecom.analytics.entity.EcomStockSnapshot">
+        SELECT listing_id, store_id, snapshot_date, sellable_qty
+        FROM ecom_stock_snapshot
+        WHERE snapshot_date &gt;= #{from} AND snapshot_date &lt;= #{to} AND sellable_qty &lt;= #{threshold}
+          AND listing_id IN <foreach collection="listingIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </select>
+
     <delete id="deleteBefore">
         DELETE FROM ecom_stock_snapshot WHERE snapshot_date &lt; #{date}
     </delete>

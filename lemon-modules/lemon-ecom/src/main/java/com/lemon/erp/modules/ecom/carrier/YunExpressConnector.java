@@ -20,7 +20,8 @@ import java.util.Map;
  *   每单返回 Success（1 成功）、WayBillNumber（云途单号）、TrackingNumber（跟踪号，可能稍后才分配，没有时用云途单号）</li>
  *   <li>面单 POST Label/Print（单号数组）：返回面单地址 Item[0].Url，再下载 PDF</li>
  *   <li>取消 POST WayBill/Delete（OrderType 1 = 云途单号）</li>
- *   <li>轨迹 GET Tracking/GetTrackInfo?OrderNumber=</li>
+ *   <li>轨迹 GET Tracking/GetTrackInfo?OrderNumber=：Item.PackageState 为包裹状态（0 未知 1 已提交 2 运输中 3 已签收 4 已收货 5 订单取消 6 投递失败 7 已退回，
+ *       取值以云途文档为准，需用真实账号核对），OrderTrackingDetails 为轨迹</li>
  * </ul>
  * 授权：customerCode（客户编号）、apiSecret；测试环境 omsapi.uat.yunexpress.com。
  * <p>
@@ -121,6 +122,12 @@ public class YunExpressConnector implements CarrierConnector {
 
     @Override
     public List<CarrierTrackEvent> track(CarrierContext ctx, String trackingNo) {
+        return trackInfo(ctx, trackingNo).events();
+    }
+
+    /** 轨迹与状态：Item.PackageState 为云途的包裹状态（见 {@link TrackStatusNormalizer#fromYunExpress}），未知时按轨迹描述判断 */
+    @Override
+    public CarrierTrackInfo trackInfo(CarrierContext ctx, String trackingNo) {
         JsonNode resp = CarrierHttp.get(ctx.endpoint(INFO) + "/Tracking/GetTrackInfo?" + CarrierSigns.query(Map.of("OrderNumber", trackingNo)),
                 headers(ctx), NAME);
         JsonNode item = check(resp);
@@ -132,7 +139,7 @@ public class YunExpressConnector implements CarrierConnector {
                         CarrierHttp.text(n, "ProcessContent")));
             }
         }
-        return out;
+        return new CarrierTrackInfo(TrackStatusNormalizer.fromYunExpress(CarrierHttp.text(item, "PackageState")), out);
     }
 
     /** 认证头：Basic Base64(客户编号&ApiSecret) */

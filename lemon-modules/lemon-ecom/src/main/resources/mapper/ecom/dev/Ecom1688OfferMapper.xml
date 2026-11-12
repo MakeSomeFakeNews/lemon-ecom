@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.dev.mapper.Ecom1688OfferMapper">
+
+    <sql id="columns">
+        o.*, m.code AS material_code, m.name AS material_name, m.spec AS material_spec, m.unit AS material_unit, m.image_url AS material_image,
+        sp.name AS supplier_name
+    </sql>
+
+    <sql id="joins">
+        FROM ecom_1688_offer o
+        LEFT JOIN wms_material m ON m.id = o.material_id
+        LEFT JOIN scm_supplier sp ON sp.id = o.supplier_id
+    </sql>
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.dev.entity.Ecom1688Offer">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        <where>
+            <if test="priceAlert != null">o.price_alert = #{priceAlert}</if>
+            <if test="supplierId != null">AND o.supplier_id = #{supplierId}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (m.code LIKE CONCAT('%', #{keyword}, '%') OR m.name LIKE CONCAT('%', #{keyword}, '%')
+                     OR o.title LIKE CONCAT('%', #{keyword}, '%') OR o.offer_id = #{keyword}
+                     OR o.seller_login_id LIKE CONCAT('%', #{keyword}, '%') OR o.seller_name LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY o.price_alert DESC, o.id DESC
+    </select>
+
+    <select id="selectByMaterials" resultType="com.lemon.erp.modules.ecom.dev.entity.Ecom1688Offer">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        WHERE o.material_id IN
+        <foreach collection="materialIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </select>
+
+</mapper>

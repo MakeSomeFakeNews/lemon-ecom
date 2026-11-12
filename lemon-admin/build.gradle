@@ -27,6 +27,11 @@ tasks.named('bootRun') {
     workingDir = rootProject.projectDir
 }
 
+// 本地体验（./gradlew bootTestRun）启动后自动生成电商演示数据；集成测试（test 任务）不自动生成
+tasks.named('bootTestRun') {
+    systemProperty 'lemon.ecom.demo-data.auto-generate', System.getenv('LEMON_ECOM_DEMO_DATA') ?: 'true'
+}
+
 tasks.named('bootJar') {
     archiveFileName = 'lemon-ecom.jar'
 }

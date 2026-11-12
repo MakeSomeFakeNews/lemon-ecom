@@ -114,6 +114,24 @@ public class EcomAdsAuthService {
                 .eq(EcomStore::getId, storeId));
     }
 
+    /** 合并写入授权字段（OAuth 回调换到的令牌），已有的其他字段保留 */
+    public void mergeCredentials(Long storeId, Map<String, String> changes) {
+        EcomStore s = storeService.get(storeId);
+        Map<String, String> merged = new java.util.HashMap<>(credentials(s).values());
+        merged.putAll(changes);
+        storeMapper.update(Wrappers.<EcomStore>lambdaUpdate()
+                .set(EcomStore::getAdsCredentials, cipher.encrypt(HttpJson.MAPPER.writeValueAsString(merged)))
+                .eq(EcomStore::getId, storeId));
+    }
+
+    /** 选择广告配置文件（亚马逊 profileId），为空清除 */
+    public void selectProfile(Long storeId, String profileId) {
+        storeService.get(storeId);
+        storeMapper.update(Wrappers.<EcomStore>lambdaUpdate()
+                .set(EcomStore::getAdsProfileId, StringUtils.hasText(profileId) ? profileId.trim() : null)
+                .eq(EcomStore::getId, storeId));
+    }
+
     /** 清除广告授权 */
     public void clear(Long storeId) {
         storeService.get(storeId);
@@ -164,6 +182,7 @@ public class EcomAdsAuthService {
 
     /** 调用广告接口的上下文：刷新令牌后加密写回 ads_credentials */
     public AdsContext context(EcomStore s) {
+        EcomStoreService.requireReal(s);
         return new AdsContext(s, credentials(s), Integer.valueOf(1).equals(s.getAdsSandbox()), s.getAdsBaseUrl(), s.getAdsProfileId(),
                 c -> storeMapper.update(Wrappers.<EcomStore>lambdaUpdate()
                         .set(EcomStore::getAdsCredentials, cipher.encrypt(HttpJson.MAPPER.writeValueAsString(c.values())))
@@ -180,7 +199,7 @@ public class EcomAdsAuthService {
     /** 有广告授权、开启自动同步的启用店铺 */
     public List<EcomStore> syncable() {
         return storeMapper.selectList(Wrappers.<EcomStore>lambdaQuery().eq(EcomStore::getStatus, EnableStatus.ENABLED)
-                .isNotNull(EcomStore::getAdsCredentials).ne(EcomStore::getAdsSync, 0).orderByAsc(EcomStore::getId))
+                .isNotNull(EcomStore::getAdsCredentials).ne(EcomStore::getAdsSync, 0).ne(EcomStore::getDemo, 1).orderByAsc(EcomStore::getId))
                 .stream().filter(s -> registry.find(s.getPlatform()).isPresent() && StringUtils.hasText(s.getAdsCredentials())).toList();
     }
 }

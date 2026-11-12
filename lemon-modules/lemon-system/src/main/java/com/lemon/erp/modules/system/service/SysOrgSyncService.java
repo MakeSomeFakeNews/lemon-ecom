@@ -3,7 +3,6 @@ package com.lemon.erp.modules.system.service;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.lemon.erp.common.enums.EnableStatus;
 import com.lemon.erp.common.exception.BizException;
-import com.lemon.erp.framework.data.Queries;
 import com.lemon.erp.framework.org.EmployeeDeptChangedEvent;
 import com.lemon.erp.framework.org.EmployeeLeftEvent;
 import com.lemon.erp.framework.org.UserAccountProvisioner;
@@ -46,6 +45,12 @@ public class SysOrgSyncService implements UserAccountProvisioner {
     @Override
     @Transactional
     public Long create(String username, String nickname, Long deptId, String phone, String email) {
+        return create(username, nickname, deptId, phone, email, List.of(STAFF_ROLE));
+    }
+
+    @Override
+    @Transactional
+    public Long create(String username, String nickname, Long deptId, String phone, String email, List<String> roleCodes) {
         tenantLookup.checkAccountLimit();
         if (userMapper.exists(Wrappers.<SysUser>lambdaQuery().eq(SysUser::getUsername, username))) {
             throw new BizException("system.error.loginNameAlreadyExists", username);
@@ -62,11 +67,11 @@ public class SysOrgSyncService implements UserAccountProvisioner {
         user.setPwdReset(1);
         user.setStatus(EnableStatus.ENABLED);
         userMapper.insert(user);
-        // 授予「普通员工」角色（租户删除或停用了该角色时不授予），其他角色由管理员在用户管理中分配
-        SysRole staff = Queries.first(roleMapper, Wrappers.<SysRole>lambdaQuery().eq(SysRole::getCode, STAFF_ROLE)
-                .eq(SysRole::getStatus, EnableStatus.ENABLED));
-        if (staff != null) {
-            userRoleMapper.insertBatch(user.getId(), List.of(staff.getId()));
+        // 授予指定角色（默认「普通员工」；租户删除或停用了该角色时不授予），其他角色由管理员在用户管理中分配
+        List<Long> roleIds = roleCodes == null || roleCodes.isEmpty() ? List.of() : roleMapper.selectList(Wrappers.<SysRole>lambdaQuery()
+                .in(SysRole::getCode, roleCodes).eq(SysRole::getStatus, EnableStatus.ENABLED)).stream().map(SysRole::getId).toList();
+        if (!roleIds.isEmpty()) {
+            userRoleMapper.insertBatch(user.getId(), roleIds);
         }
         return user.getId();
     }

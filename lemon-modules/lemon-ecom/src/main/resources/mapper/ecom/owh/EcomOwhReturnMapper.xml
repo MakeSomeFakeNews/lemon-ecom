@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.owh.mapper.EcomOwhReturnMapper">
+
+    <sql id="columns">
+        r.*, a.name AS account_name, a.provider, m.owh_code, w.name AS warehouse_name, s.name AS store_name
+    </sql>
+
+    <sql id="joins">
+        FROM ecom_owh_return r
+        JOIN ecom_owh_account a ON a.id = r.account_id
+        LEFT JOIN ecom_owh_warehouse m ON m.id = r.mapping_id
+        LEFT JOIN wms_warehouse w ON w.id = r.warehouse_id
+        LEFT JOIN ecom_store s ON s.id = r.store_id
+    </sql>
+
+    <sql id="filters">
+        <if test="accountId != null">AND r.account_id = #{accountId}</if>
+        <if test="warehouseId != null">AND r.warehouse_id = #{warehouseId}</if>
+        <if test="keyword != null and keyword != ''">
+            AND (r.return_no LIKE CONCAT('%', #{keyword}, '%') OR r.owh_order_no LIKE CONCAT('%', #{keyword}, '%')
+                 OR r.ecom_return_no LIKE CONCAT('%', #{keyword}, '%') OR r.platform_order_no LIKE CONCAT('%', #{keyword}, '%')
+                 OR r.tracking_no LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+    </sql>
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhReturn">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        <where>
+            <include refid="filters"/>
+            <if test="status != null">AND r.status = #{status}</if>
+        </where>
+        ORDER BY r.id DESC
+    </select>
+
+    <select id="countByStatus" resultType="map">
+        SELECT r.status AS "status", COUNT(*) AS "cnt"
+        FROM ecom_owh_return r
+        <where>
+            <include refid="filters"/>
+        </where>
+        GROUP BY r.status
+    </select>
+
+    <select id="selectDetail" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhReturn">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        WHERE r.id = #{id}
+    </select>
+
+    <select id="selectForUpdate" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhReturn">
+        SELECT * FROM ecom_owh_return WHERE id = #{id} FOR UPDATE
+    </select>
+
+    <select id="selectSources" resultType="map">
+        SELECT er.id AS "id", er.doc_no AS "docNo", er.platform_order_no AS "platformOrderNo", s.name AS "storeName",
+               w.name AS "warehouseName", er.reason AS "reason", er.create_time AS "createTime"
+        FROM ecom_return er
+        JOIN ecom_owh_warehouse m ON m.warehouse_id = er.warehouse_id
+        LEFT JOIN ecom_store s ON s.id = er.store_id
+        LEFT JOIN wms_warehouse w ON w.id = er.warehouse_id
+        WHERE er.return_type = 'RETURN_REFUND' AND er.status = 'PENDING'
+          AND NOT EXISTS (SELECT 1 FROM ecom_owh_return x WHERE x.ecom_return_id = er.id AND x.status &lt;&gt; 'CANCELLED')
+        <if test="keyword != null and keyword != ''">
+            AND (er.doc_no LIKE CONCAT('%', #{keyword}, '%') OR er.platform_order_no LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY er.id DESC
+        LIMIT 200
+    </select>
+
+    <select id="selectSyncingIds" resultType="long">
+        SELECT r.id FROM ecom_owh_return r
+        JOIN ecom_owh_account a ON a.id = r.account_id
+        WHERE a.status = 1 AND a.auto_sync = 1
+          AND (r.status = 'PUSHED' OR (r.status = 'RECEIVED' AND r.erp_received = 0))
+        ORDER BY r.id
+    </select>
+</mapper>

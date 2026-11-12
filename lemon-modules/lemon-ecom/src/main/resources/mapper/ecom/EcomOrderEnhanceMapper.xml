@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomOrderEnhanceMapper">
+
+    <!-- 只含一种物料的已发货包裹：重量 ÷ 物料数量，按物料平均 -->
+    <select id="selectUnitWeights" resultType="java.util.Map">
+        SELECT x.material_id AS "materialId", AVG(x.unit_weight) AS "unitWeight"
+        FROM (
+            SELECT MIN(pi.material_id) AS material_id, MAX(p.weight) / SUM(pi.material_qty) AS unit_weight
+            FROM ecom_package p
+            JOIN ecom_package_item pi ON pi.package_id = p.id
+            WHERE p.status = 'SHIPPED' AND p.weight IS NOT NULL AND p.weight &gt; 0
+            GROUP BY p.id
+            HAVING COUNT(DISTINCT pi.material_id) = 1 AND SUM(pi.material_qty) &gt; 0
+        ) x
+        WHERE x.material_id IN <foreach collection="materialIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+        GROUP BY x.material_id
+    </select>
+
+    <select id="selectResends" resultType="com.lemon.erp.modules.ecom.entity.EcomOrder">
+        SELECT o.id, o.platform_order_no, o.order_type, o.order_time, o.local_status, o.status, o.cost_amount, o.shipping_cost, o.profit,
+               o.tracking_no, o.carrier, o.ship_time, o.source_ticket_id, o.source_return_id, o.remark,
+               (SELECT COUNT(*) FROM ecom_order_item oi WHERE oi.order_id = o.id) AS item_count
+        FROM ecom_order o
+        WHERE o.source_order_id = #{orderId}
+        ORDER BY o.id
+    </select>
+
+    <sql id="trackFrom">
+        FROM ecom_package p
+        JOIN ecom_store s ON s.id = p.store_id
+        LEFT JOIN ecom_logistics_channel ch ON ch.id = p.channel_id
+        LEFT JOIN wms_warehouse w ON w.id = p.warehouse_id
+        WHERE p.status = 'SHIPPED'
+        <if test="q.storeId != null">AND p.store_id = #{q.storeId}</if>
+        <if test="q.channelId != null">AND p.channel_id = #{q.channelId}</if>
+        <if test="q.country != null and q.country != ''">AND p.ship_country = #{q.country}</if>
+        <if test="q.beginTime != null">AND p.ship_time &gt;= #{q.beginTime}</if>
+        <if test="q.endExclusive != null">AND p.ship_time &lt; #{q.endExclusive}</if>
+        <if test="q.keyword != null and q.keyword != ''">
+            AND (p.package_no LIKE CONCAT('%', #{q.keyword}, '%') OR p.tracking_no LIKE CONCAT('%', #{q.keyword}, '%')
+                 OR p.ship_name LIKE CONCAT('%', #{q.keyword}, '%')
+                 OR EXISTS (SELECT 1 FROM ecom_package_item pi JOIN ecom_order o ON o.id = pi.order_id
+                            WHERE pi.package_id = p.id AND o.platform_order_no LIKE CONCAT('%', #{q.keyword}, '%')))
+        </if>
+    </sql>
+
+    <select id="selectTrackPage" resultType="com.lemon.erp.modules.ecom.entity.EcomPackage">
+        SELECT p.id, p.package_no, p.store_id, p.warehouse_id, p.channel_id, p.carrier, p.carrier_name, p.tracking_no, p.status, p.ship_time,
+               p.ship_name, p.ship_country, p.weight, p.shipping_cost, p.track_status, p.track_alert, p.track_source, p.track_first_time,
+               p.track_last_time, p.track_last_event, p.track_delivered_time, p.track_pull_time, p.track_error, p.ship_confirm, p.ship_confirm_msg,
+               p.create_time, p.update_time,
+               s.name AS store_name, ch.name AS channel_name, w.name AS warehouse_name,
+               (SELECT MIN(o.platform_order_no) FROM ecom_package_item pi JOIN ecom_order o ON o.id = pi.order_id WHERE pi.package_id = p.id) AS order_nos,
+               (SELECT COUNT(DISTINCT pi.order_id) FROM ecom_package_item pi WHERE pi.package_id = p.id) AS order_count
+        <include refid="trackFrom"/>
+        <if test="q.trackStatus != null">
+            <choose>
+                <when test="q.trackStatus.name() == 'NOT_FOUND'">AND (p.track_status IS NULL OR p.track_status = 'NOT_FOUND')</when>
+                <otherwise>AND p.track_status = #{q.trackStatus}</otherwise>
+            </choose>
+        </if>
+        <if test="q.alert != null">AND p.track_alert = #{q.alert}</if>
+        <if test="q.alertOnly != null and q.alertOnly">AND p.track_alert IS NOT NULL</if>
+        ORDER BY p.ship_time DESC, p.id DESC
+    </select>
+
+    <select id="countTrack" resultType="java.util.Map">
+        SELECT CONCAT('S:', COALESCE(p.track_status, 'NOT_FOUND')) AS "k", COUNT(*) AS "cnt"
+        <include refid="trackFrom"/>
+        GROUP BY CONCAT('S:', COALESCE(p.track_status, 'NOT_FOUND'))
+        UNION ALL
+        SELECT CONCAT('A:', p.track_alert) AS "k", COUNT(*) AS "cnt"
+        <include refid="trackFrom"/>
+        AND p.track_alert IS NOT NULL
+        GROUP BY CONCAT('A:', p.track_alert)
+    </select>
+
+    <select id="selectDueTrackIds" resultType="java.lang.Long">
+        SELECT p.id FROM ecom_package p
+        WHERE p.status = 'SHIPPED' AND p.tracking_no IS NOT NULL AND p.ship_time &gt;= #{shippedAfter}
+          AND (p.track_status IS NULL OR p.track_status NOT IN ('DELIVERED', 'RETURNED'))
+          AND (p.track_pull_time IS NULL OR p.track_pull_time &lt; #{pulledBefore})
+        ORDER BY p.track_pull_time, p.id
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectShippedLines" resultType="java.util.Map">
+        SELECT pi.package_id AS "packageId", p.package_no AS "packageNo", pi.order_item_id AS "orderItemId", pi.part_id AS "partId",
+               pi.part_main AS "partMain", pi.qty AS "qty", pi.material_id AS "materialId", pi.material_qty AS "materialQty",
+               pi.trade_doc_id AS "tradeDocId", pi.trade_doc_no AS "tradeDocNo"
+        FROM ecom_package_item pi
+        JOIN ecom_package p ON p.id = pi.package_id
+        WHERE pi.order_id = #{orderId} AND p.status = 'SHIPPED' AND pi.trade_doc_id IS NOT NULL
+        ORDER BY p.ship_time, p.id, pi.id
+    </select>
+
+</mapper>

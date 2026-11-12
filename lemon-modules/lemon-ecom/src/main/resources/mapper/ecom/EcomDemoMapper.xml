@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomDemoMapper">
+
+    <!-- 只读关联库存流水与出入库单：在途调拨的调入流水按收货日期，其余按业务日期 -->
+    <select id="selectDailyStockChange" resultType="java.util.LinkedHashMap">
+        SELECT f.warehouse_id AS "warehouseId", f.material_id AS "materialId",
+               CASE WHEN d.in_transit = 1 AND f.warehouse_id = d.to_warehouse_id THEN d.receive_date ELSE d.biz_date END AS "bizDate",
+               SUM(f.qty) AS "qty"
+        FROM wms_stock_flow f
+        JOIN wms_stock_doc d ON d.id = f.doc_id
+        WHERE f.biz_type IN ('IN', 'OUT', 'TRANSFER')
+          AND f.warehouse_id IN
+          <foreach collection="warehouseIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+        GROUP BY f.warehouse_id, f.material_id,
+                 CASE WHEN d.in_transit = 1 AND f.warehouse_id = d.to_warehouse_id THEN d.receive_date ELSE d.biz_date END
+    </select>
+</mapper>

@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.oper.mapper.EcomPromotionMapper">
+
+    <sql id="columns">
+        p.id, p.name, p.store_id, p.promo_type, p.start_time, p.end_time, p.discount_percent, p.threshold_amount, p.reduce_amount, p.currency,
+        p.fee_amount, p.fee_base, p.budget, p.status, p.push_status, p.platform_promo_id, p.push_message, p.push_time, p.owner_id, p.remark,
+        p.create_by, p.create_time, p.update_time,
+        s.name AS store_name, s.platform, s.marketplace, u.nickname AS owner_name,
+        (SELECT COUNT(*) FROM ecom_promotion_item i WHERE i.promotion_id = p.id) AS item_count
+    </sql>
+
+    <!-- 负责人昵称来自 sys_user（只读 JOIN） -->
+    <sql id="joins">
+        FROM ecom_promotion p
+        JOIN ecom_store s ON s.id = p.store_id
+        LEFT JOIN sys_user u ON u.id = p.owner_id
+    </sql>
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.oper.entity.EcomPromotion">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        <where>
+            <if test="q.storeId != null">p.store_id = #{q.storeId}</if>
+            <if test="q.promoType != null and q.promoType != ''">AND p.promo_type = #{q.promoType}</if>
+            <if test="q.status != null">AND p.status = #{q.status}</if>
+            <if test="q.phase != null">
+                AND p.status = 'ACTIVE'
+                <choose>
+                    <when test="q.phase.name() == 'NOT_STARTED'">AND p.start_time &gt; #{q.now}</when>
+                    <when test="q.phase.name() == 'ONGOING'">AND p.start_time &lt;= #{q.now} AND p.end_time &gt;= #{q.now}</when>
+                    <otherwise>AND p.end_time &lt; #{q.now}</otherwise>
+                </choose>
+            </if>
+            <if test="q.beginDate != null">AND p.end_time &gt;= #{q.beginDate}</if>
+            <if test="q.endDate != null">AND p.start_time &lt; #{q.endNext}</if>
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (p.name LIKE CONCAT('%', #{q.keyword}, '%')
+                     OR EXISTS (SELECT 1 FROM ecom_promotion_item i WHERE i.promotion_id = p.id AND i.seller_sku LIKE CONCAT('%', #{q.keyword}, '%')))
+            </if>
+        </where>
+        ORDER BY p.start_time DESC, p.id DESC
+    </select>
+
+    <select id="selectDetail" resultType="com.lemon.erp.modules.ecom.oper.entity.EcomPromotion">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        WHERE p.id = #{id}
+    </select>
+
+    <select id="selectCalendar" resultType="com.lemon.erp.modules.ecom.oper.entity.EcomPromotion">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        WHERE p.status &lt;&gt; 'CANCELLED' AND p.start_time &lt; #{end} AND p.end_time &gt;= #{begin}
+        <if test="storeId != null">AND p.store_id = #{storeId}</if>
+        ORDER BY p.start_time, p.id
+    </select>
+
+    <sql id="skuRange">
+        o.store_id = #{storeId} AND o.status &lt;&gt; 'CANCELLED' AND o.order_time &gt;= #{begin} AND o.order_time &lt; #{end}
+        <if test="skus != null and !skus.isEmpty()">
+            AND oi.seller_sku IN
+            <foreach collection="skus" item="s" open="(" separator="," close=")">#{s}</foreach>
+        </if>
+    </sql>
+
+    <!-- 行利润 = 订单利润 × 行金额 ÷ 商品金额 -->
+    <select id="selectSkuDaily" resultType="java.util.Map">
+        SELECT CAST(o.order_time AS DATE) AS "day", COUNT(DISTINCT o.id) AS "orders", COALESCE(SUM(oi.qty), 0) AS "qty",
+               COALESCE(SUM(oi.amount * o.exchange_rate), 0) AS "sales",
+               COALESCE(SUM(CASE WHEN o.item_amount &gt; 0 THEN o.profit * oi.amount / o.item_amount ELSE 0 END), 0) AS "profit"
+        FROM ecom_order_item oi
+        JOIN ecom_order o ON o.id = oi.order_id
+        WHERE <include refid="skuRange"/>
+        GROUP BY CAST(o.order_time AS DATE)
+        ORDER BY CAST(o.order_time AS DATE)
+    </select>
+
+    <select id="selectSkuTotals" resultType="java.util.Map">
+        SELECT oi.seller_sku AS "sellerSku", MAX(oi.title) AS "title", COALESCE(SUM(oi.qty), 0) AS "qty",
+               COALESCE(SUM(oi.amount * o.exchange_rate), 0) AS "sales"
+        FROM ecom_order_item oi
+        JOIN ecom_order o ON o.id = oi.order_id
+        WHERE <include refid="skuRange"/>
+        GROUP BY oi.seller_sku
+    </select>
+
+</mapper>

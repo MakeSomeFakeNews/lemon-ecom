@@ -778,6 +778,8 @@ export default {
     'NOT_NEEDED': 'No Longer Needed', // 买家不想要
     'LATE': 'Arrived Too Late', // 送达太迟
     'OTHER': 'Other', // 其他
+    'SIZE': 'Wrong Size / Spec', // 尺寸 / 规格不合适
+    'NOT_RECEIVED': 'Item Not Received', // 未收到货
   },
   // 订单处理状态
   ecom_local_status: {
@@ -954,4 +956,345 @@ export default {
     'FAILED': 'Failed', // 发送失败
   },
   // 渠道同步类型（追加到已有的 ecom_sync_type 中）
+  // ===== 第四轮：刊登与定价（pub） =====
+  // 刊登状态
+  ecom_publish_status: {
+    'DRAFT': 'Draft', // 草稿
+    'PENDING': 'Pending', // 待发布
+    'PUBLISHING': 'Publishing', // 发布中
+    'SUCCESS': 'Published', // 成功
+    'FAILED': 'Failed', // 失败
+    'OFFLINE': 'Offline', // 已下架
+  },
+  // 刊登动作
+  ecom_publish_action: {
+    'SUBMIT': 'Submit', // 提交发布
+    'PUBLISH': 'Publish', // 发布
+    'CHECK': 'Check Result', // 查询结果
+    'OFFLINE': 'Take Offline', // 下架
+  },
+  // 改价类型
+  ecom_price_change_type: {
+    'PRICE': 'Price', // 价格
+    'STOCK': 'Stock', // 库存
+  },
+  // 改价来源
+  ecom_price_change_source: {
+    'MANUAL': 'Manual', // 手工修改
+    'BATCH': 'Bulk Change', // 批量修改
+    'REPRICER': 'Repricer', // 自动调价
+    'PUBLISH': 'Publishing', // 刊登
+  },
+  // 改价结果
+  ecom_price_change_status: {
+    'SUCCESS': 'Pushed', // 已推送
+    'FAILED': 'Push Failed', // 推送失败
+    'LOCAL': 'Local Only', // 仅本地
+  },
+  // 调整方式
+  ecom_price_adjust_mode: {
+    'FIXED': 'Fixed Value', // 固定值
+    'PERCENT': 'By Percent', // 按百分比
+    'AMOUNT': 'By Amount', // 按金额
+    'FORMULA': 'By Formula', // 按公式
+  },
+  // 调价策略
+  ecom_reprice_strategy: {
+    'MATCH_LOWEST': 'Match Lowest', // 跟随最低价
+    'BEAT_LOWEST': 'Beat Lowest', // 低于最低价
+    'MATCH_BUYBOX': 'Match Buy Box', // 跟随购物车价
+    'TARGET_MARGIN': 'Target Margin', // 按目标利润率
+    'BY_STOCK': 'By Stock / Sales', // 按库存 / 销量
+  },
+  // 底价方式
+  ecom_reprice_floor_mode: {
+    'FIXED': 'Fixed Floor', // 固定底价
+    'COST_MARGIN': 'Cost + Minimum Margin', // 成本 + 最低利润率
+  },
+  // 调价结果
+  ecom_reprice_log_status: {
+    'SUGGESTED': 'Suggested', // 建议
+    'PUSHED': 'Pushed', // 已推送
+    'FAILED': 'Push Failed', // 推送失败
+    'LOCAL': 'Local Only', // 仅本地
+    'SKIPPED': 'Skipped', // 跳过
+    'IGNORED': 'Ignored', // 已忽略
+  },
+  // 竞品价格来源
+  ecom_competitor_source: {
+    'API': 'Platform API', // 平台接口
+    'MANUAL': 'Manual Entry', // 手工录入
+    'IMPORT': 'Import', // 导入
+  },
+  // 亚马逊报告类型
+  ecom_amz_report_type: {
+    'FBA_INVENTORY_PLANNING': 'Inventory Planning (Age)', // 库存规划（库龄）
+    'FBA_MYI_INVENTORY': 'FBA Inventory', // FBA 库存
+    'LEDGER_DETAIL': 'Inventory Ledger Detail', // 库存分类账明细
+    'REIMBURSEMENTS': 'Reimbursements', // 赔偿
+    'REMOVAL_ORDERS': 'Removal Order Detail', // 移除订单详情
+    'ESTIMATED_FEES': 'Estimated FBA Fees', // 预估 FBA 费用
+  },
+  // 报告任务状态
+  ecom_amz_report_status: {
+    'SUBMITTED': 'Submitted', // 已提交
+    'PROCESSING': 'Processing', // 生成中
+    'DONE': 'Done', // 已完成
+    'FAILED': 'Failed', // 失败
+    'CANCELLED': 'Cancelled', // 已取消
+  },
+  // FBA 处理建议
+  ecom_fba_advice: {
+    'HEALTHY': 'Healthy', // 健康
+    'PROMOTE': 'Off-Amazon Promotion', // 站外推广
+    'PRICE_DOWN': 'Markdown', // 降价清仓
+    'REMOVE': 'Remove / Dispose', // 移除 / 弃置
+  },
+  // 移除类型
+  ecom_fba_removal_type: {
+    'RETURN': 'Return', // 退回
+    'DISPOSAL': 'Disposal', // 弃置
+  },
+  // 移除订单状态
+  ecom_fba_removal_status: {
+    'DRAFT': 'Draft', // 草稿
+    'SUBMITTED': 'Submitted', // 已提交
+    'PROCESSING': 'Processing', // 处理中
+    'COMPLETED': 'Completed by Amazon', // 亚马逊已完成
+    'RECEIVED': 'Received', // 已收货
+    'CANCELLED': 'Cancelled', // 已取消
+  },
+  // FBA 库存状态
+  ecom_fba_disposition: {
+    'SELLABLE': 'Sellable', // 可售
+    'UNSELLABLE': 'Unsellable', // 不可售
+  },
+  // 索赔类型
+  ecom_fba_claim_type: {
+    'LOST': 'Lost in Warehouse', // 仓库丢失
+    'DAMAGED': 'Damaged in Warehouse', // 仓库损坏
+    'INBOUND_SHORTAGE': 'Inbound Shortage', // 入库短少
+    'RETURN_NOT_RECEIVED': 'Return Not Received', // 退货未退回
+    'FEE_OVERCHARGE': 'Fulfillment Fee Overcharge', // 多收配送费
+    'OTHER': 'Other', // 其他
+  },
+  // 索赔状态
+  ecom_fba_claim_status: {
+    'PENDING': 'To Submit', // 待提交
+    'SUBMITTED': 'Submitted', // 已提交
+    'PAID': 'Reimbursed', // 已赔付
+    'REJECTED': 'Rejected', // 已驳回
+    'IGNORED': 'Ignored', // 已忽略
+  },
+  // FBA 尺寸类别
+  ecom_fba_size_category: {
+    'STANDARD': 'Standard-size', // 标准件
+    'OVERSIZE': 'Oversize', // 大件
+  },
+  // FBA 仓储费类型
+  ecom_fba_storage_fee_type: {
+    'MONTHLY': 'Monthly Storage Fee', // 月度仓储费
+    'AGED': 'Aged Inventory Surcharge', // 超龄附加费
+  },
+  // ===== 第四轮：订单增强（ord） =====
+  // 订单类型
+  ecom_order_type: {
+    'PLATFORM': 'Platform Order', // 平台订单
+    'MANUAL': 'Manual Order', // 手工订单
+    'RESEND': 'Resend', // 补发单
+  },
+  // 物流轨迹状态
+  ecom_track_status: {
+    'NOT_FOUND': 'No Tracking', // 暂无轨迹
+    'PICKED_UP': 'Picked Up', // 已揽收
+    'IN_TRANSIT': 'In Transit', // 运输中
+    'PICKUP': 'Out for Delivery / Pickup', // 到达待取
+    'DELIVERED': 'Delivered', // 已签收
+    'EXCEPTION': 'Exception', // 异常
+    'RETURNED': 'Returned', // 退回
+  },
+  // 物流轨迹预警
+  ecom_track_alert: {
+    'NO_SCAN': 'No First Scan', // 超时未上网
+    'TRANSIT_TIMEOUT': 'Transit Timeout', // 运输超时
+    'EXCEPTION': 'Tracking Exception', // 轨迹异常
+  },
+  // 黑名单匹配方式
+  ecom_blacklist_type: {
+    'BUYER': 'Buyer ID', // 买家 ID
+    'EMAIL': 'Email', // 邮箱
+    'ADDRESS': 'Address', // 地址
+    'PHONE': 'Phone', // 电话
+  },
+  // 店铺岗位（业务字典）
+  ecom_store_member_role: {
+    'OPERATOR': 'Operator', // 运营
+    'CS': 'Customer Service', // 客服
+    'ASSISTANT': 'Assistant', // 助理
+  },
+  // 监控类型
+  ecom_monitor_type: {
+    'OWN': 'Own Product', // 自己的商品
+    'COMPETITOR': 'Competitor', // 竞品
+  },
+  // 快照来源
+  ecom_monitor_source: {
+    'API': 'API', // 接口
+    'MANUAL': 'Manual', // 手工
+    'IMPORT': 'Import', // 导入
+  },
+  // 监控预警类型
+  ecom_monitor_alert_type: {
+    'RANK_DROP': 'Rank Drop', // 排名大跌
+    'RATING_DROP': 'Rating Drop', // 评分下降
+    'NEW_SELLER': 'New Hijacker', // 新增跟卖
+    'TITLE_CHANGED': 'Title Changed', // 标题被改
+    'IMAGE_CHANGED': 'Image Changed', // 主图被改
+    'BULLETS_CHANGED': 'Bullets Changed', // 五点被改
+    'DELISTED': 'Delisted', // 被下架
+  },
+  // 预警处理状态
+  ecom_monitor_alert_status: {
+    'NEW': 'Open', // 未处理
+    'HANDLED': 'Handled', // 已处理
+    'IGNORED': 'Ignored', // 已忽略
+  },
+  // 促销类型（业务字典）
+  ecom_promo_type: {
+    'COUPON': 'Coupon', // 优惠券
+    'LIGHTNING_DEAL': 'Lightning Deal', // 秒杀 / Lightning Deal
+    'PRIME_DISCOUNT': 'Prime Exclusive Discount', // Prime 专享折扣
+    'SHOPEE_DISCOUNT': 'Shopee Discount', // 虾皮折扣活动
+    'TIKTOK_FLASH_SALE': 'TikTok Flash Sale', // TikTok 闪购
+    'FULL_REDUCTION': 'Spend & Save', // 店铺满减
+    'PRICE_DISCOUNT': 'Price Markdown', // 直降
+    'OTHER': 'Other', // 其他
+  },
+  // 促销状态
+  ecom_promo_status: {
+    'DRAFT': 'Draft', // 草稿
+    'ACTIVE': 'Active', // 已生效
+    'CANCELLED': 'Cancelled', // 已取消
+  },
+  // 促销阶段
+  ecom_promo_phase: {
+    'NOT_STARTED': 'Upcoming', // 未开始
+    'ONGOING': 'Ongoing', // 进行中
+    'ENDED': 'Ended', // 已结束
+  },
+  // 促销推送状态
+  ecom_promo_push_status: {
+    'NONE': 'Not Pushed', // 未推送
+    'PUSHED': 'Pushed', // 已推送
+    'FAILED': 'Push Failed', // 推送失败
+  },
+  // 目标对象
+  ecom_ops_target_type: {
+    'STORE': 'Store', // 店铺
+    'USER': 'Operator', // 运营人员
+  },
+  // 开发状态
+  ecom_dev_status: {
+    'PENDING_RESEARCH': 'Pending Research', // 待调研
+    'RESEARCHING': 'Researching', // 调研中
+    'SAMPLING': 'Sampling', // 打样中
+    'PENDING_APPROVAL': 'Pending Approval', // 待审批
+    'APPROVED': 'Approved', // 已通过
+    'REJECTED': 'Rejected', // 已驳回
+    'ABANDONED': 'Abandoned', // 已放弃
+  },
+  // 样品结论
+  ecom_dev_sample_result: {
+    'PENDING': 'Pending', // 待评估
+    'PASSED': 'Passed', // 合格
+    'FAILED': 'Failed', // 不合格
+  },
+  // 1688 订单状态
+  ecom_1688_order_status: {
+    'WAIT_BUYER_PAY': 'Awaiting Payment', // 待付款
+    'WAIT_SELLER_SEND': 'Awaiting Shipment', // 待发货
+    'WAIT_BUYER_RECEIVE': 'In Transit', // 待收货
+    'CONFIRM_GOODS': 'Received', // 已收货
+    'SUCCESS': 'Completed', // 交易成功
+    'CANCEL': 'Cancelled', // 已取消
+    'TERMINATED': 'Terminated', // 交易终止
+  },
+  // 产品来源
+  ecom_dev_source: {
+    'ALI1688': '1688 Sourcing', // 1688 选品
+    'BESTSELLER': 'Marketplace Best Sellers', // 平台热卖
+    'FACTORY': 'Trade Show / Factory', // 展会 / 工厂
+    'DESIGN': 'Own Design', // 自主设计
+    'OTHER': 'Other', // 其他
+  },
+  // 海外仓服务商
+  ecom_owh_provider: {
+    'GOODCANG': 'Goodcang', // 谷仓
+    'WINIT': 'WINIT', // 万邑通
+    'FOURPX_FB4': '4PX Overseas Warehouse', // 递四方海外仓
+  },
+  // 海外仓入库单状态
+  ecom_owh_inbound_status: {
+    'DRAFT': 'Draft', // 草稿
+    'PUSHED': 'Pushed', // 已推送
+    'RECEIVING': 'Receiving', // 收货中
+    'RECEIVED': 'Received', // 已收货
+    'CANCELLED': 'Cancelled', // 已取消
+  },
+  // 海外仓出库单状态
+  ecom_owh_outbound_status: {
+    'FAILED': 'Push Failed', // 推送失败
+    'PUSHED': 'Pushed', // 已推送
+    'INTERCEPTING': 'Intercepting', // 截单中
+    'OUTBOUND': 'Shipped by Warehouse', // 已出库
+    'SHIPPED': 'Shipped', // 已发货
+    'CANCELLED': 'Cancelled', // 已取消
+  },
+  // 海外仓费用类型
+  ecom_owh_fee_type: {
+    'STORAGE': 'Storage', // 仓租
+    'OPERATION': 'Handling', // 操作费
+    'FREIGHT': 'Last-mile Freight', // 尾程运费
+    'INBOUND': 'Inbound', // 入库费
+    'OTHER': 'Other', // 其他
+  },
+  // 海外仓入库来源
+  ecom_owh_inbound_source: {
+    'INBOUND': 'Shipment', // 头程货件
+    'TRANSFER': 'Transfer', // 调拨单
+  },
+  // 海外仓费用入账状态
+  ecom_owh_fee_status: {
+    'PENDING': 'Pending', // 待入账
+    'POSTED': 'Posted', // 已入账
+    'UNALLOCATED': 'Unallocated', // 无法归属
+  },
+  // 海外仓退件单状态
+  ecom_owh_return_status: {
+    'DRAFT': 'Draft', // 草稿
+    'PUSHED': 'Pushed', // 已推送
+    'RECEIVED': 'Received', // 已收货
+    'CANCELLED': 'Cancelled', // 已取消
+  },
+  // 海外仓调拨单状态
+  ecom_owh_transfer_status: {
+    'DRAFT': 'Draft', // 草稿
+    'OUT_PUSHED': 'Source Processing', // 调出仓处理中
+    'IN_TRANSIT': 'In Transit', // 在途
+    'RECEIVED': 'Received', // 已收货
+    'CANCELLED': 'Cancelled', // 已取消
+  },
+  // 海外仓收货差异状态
+  ecom_owh_diff_status: {
+    'PENDING': 'Pending', // 待处理
+    'LOSS': 'Loss Confirmed', // 确认损耗
+    'FOUND': 'Found', // 找回补收
+    'ACCEPTED': 'Overage Accepted', // 确认溢收
+  },
+  // 海外仓收货差异来源
+  ecom_owh_diff_source: {
+    'INBOUND': 'Inbound', // 入库单
+    'RETURN': 'Return', // 退件单
+    'TRANSFER': 'Transfer', // 调拨单
+  },
 }

@@ -21,9 +21,11 @@ import com.lemon.erp.modules.ecom.mapper.EcomCsTicketMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomFeedbackMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomReviewMapper;
 import com.lemon.erp.modules.ecom.model.EcomOrderStatus;
+import com.lemon.erp.modules.ecom.model.EcomOrderType;
 import com.lemon.erp.modules.ecom.model.FulfillmentType;
 import com.lemon.erp.modules.ecom.model.ReturnType;
 import com.lemon.erp.modules.ecom.service.EcomOrderService;
+import com.lemon.erp.modules.ecom.service.EcomOrderManualService;
 import com.lemon.erp.modules.ecom.service.EcomReturnService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -60,6 +62,7 @@ public class EcomCsTicketService {
     private final EcomCsSupport support;
     private final EcomOrderService orderService;
     private final EcomReturnService returnService;
+    private final EcomOrderManualService manualService;
 
     public PageResult<EcomCsTicket> page(long current, long size, Long storeId, CsTicketType ticketType, CsSourceType sourceType, String keyword) {
         Page<EcomCsTicket> page = Page.of(current, size);
@@ -104,6 +107,7 @@ public class EcomCsTicketService {
             k.setReturnNo(returnService.detail(returnId).getDocNo());
         }
         ticketMapper.insert(k);
+        manualService.linkTicket(k.getResendOrderId(), k.getId());
         markProcessing(req.sourceType(), req.sourceId());
         return k.getId();
     }
@@ -131,6 +135,8 @@ public class EcomCsTicketService {
         d.setCurrency(order.getCurrency());
         d.setShippingAmount(BigDecimal.ZERO);
         d.setTaxAmount(BigDecimal.ZERO);
+        d.setOrderType(EcomOrderType.RESEND);
+        d.setSourceOrderId(order.getId());
         for (CsRequests.TicketLine l : req.items()) {
             EcomOrderItem oi = items.get(l.orderItemId());
             if (oi == null) {
@@ -145,7 +151,8 @@ public class EcomCsTicketService {
             line.setPlatformItemId(oi.getPlatformItemId());
             line.setTitle(oi.getTitle());
             line.setQty(l.qty());
-            line.setPrice(BigDecimal.ZERO);
+            // 金额为 0（不计收入），单价保留原订单零售价（申报价值）
+            line.setPrice(oi.getPrice() == null ? BigDecimal.ZERO : oi.getPrice());
             line.setAmount(BigDecimal.ZERO);
             d.getLines().add(line);
         }

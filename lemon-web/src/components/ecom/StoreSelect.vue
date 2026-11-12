@@ -16,16 +16,24 @@
 <script>
 import { ref } from 'vue'
 import { storeOptions } from '@/api/ecom/store'
+import { getToken } from '@/utils/auth'
 
 /** 启用的店铺列表：全局共享，同一时刻多个下拉只请求一次 */
 const stores = ref([])
 const storesLoading = ref(false)
 let pending = null
 let loaded = false
+/** 加载时的登录令牌：换了账号（不同用户可见的店铺不同，见店铺授权）后重新加载 */
+let loadedToken = null
 
 /** 加载（或强制刷新）店铺列表，返回 ref；加载状态见 storesLoading */
 export function useStores(force = false) {
+  if (loaded && loadedToken !== getToken()) {
+    loaded = false
+    stores.value = []
+  }
   if ((!loaded || force) && !pending) {
+    loadedToken = getToken()
     storesLoading.value = true
     pending = storeOptions()
       .then((list) => {
@@ -48,7 +56,7 @@ import { useDictStore } from '@/store/dict'
 import { findDict } from '@/utils/dict'
 
 /**
- * 店铺下拉：启用的平台店铺（GET /ecom/store/options，登录即可访问），选项显示「名称（平台 站点）」，可按名称、编码、站点搜索。
+ * 店铺下拉：当前用户可见（负责或被授权，见店铺授权）的启用店铺（GET /ecom/store/options，登录即可访问），选项显示「名称（平台 站点）」，可按名称、编码、站点搜索。
  * 列表全局共享，同一页面多个下拉只请求一次。
  * - v-model:value：店铺 ID
  * - label：当前值的显示名（店铺已停用、不在选项中时回显；不传时显示 ID）

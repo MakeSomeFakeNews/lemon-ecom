@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.fba.mapper.EcomFbaRemovalMapper">
+
+    <sql id="columns">
+        r.*, s.name AS store_name, w.name AS warehouse_name, dw.name AS defective_warehouse_name,
+        (SELECT SUM(it.shipped_qty) FROM ecom_fba_removal_item it WHERE it.removal_id = r.id) AS shipped_qty,
+        (SELECT SUM(it.disposed_qty) FROM ecom_fba_removal_item it WHERE it.removal_id = r.id) AS disposed_qty,
+        (SELECT SUM(it.received_qty + it.defective_qty) FROM ecom_fba_removal_item it WHERE it.removal_id = r.id) AS received_qty
+    </sql>
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.fba.entity.EcomFbaRemoval">
+        SELECT <include refid="columns"/>
+        FROM ecom_fba_removal r
+        LEFT JOIN ecom_store s ON s.id = r.store_id
+        LEFT JOIN wms_warehouse w ON w.id = r.warehouse_id
+        LEFT JOIN wms_warehouse dw ON dw.id = r.defective_warehouse_id
+        <where>
+            <if test="storeId != null">r.store_id = #{storeId}</if>
+            <if test="removalType != null">AND r.removal_type = #{removalType}</if>
+            <if test="status != null">AND r.status = #{status}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (r.doc_no LIKE CONCAT('%', #{keyword}, '%') OR r.platform_order_id LIKE CONCAT('%', #{keyword}, '%')
+                     OR r.tracking_no LIKE CONCAT('%', #{keyword}, '%')
+                     OR EXISTS (SELECT 1 FROM ecom_fba_removal_item it WHERE it.removal_id = r.id AND it.seller_sku LIKE CONCAT('%', #{keyword}, '%')))
+            </if>
+        </where>
+        ORDER BY r.id DESC
+    </select>
+
+    <select id="selectDetail" resultType="com.lemon.erp.modules.ecom.fba.entity.EcomFbaRemoval">
+        SELECT <include refid="columns"/>
+        FROM ecom_fba_removal r
+        LEFT JOIN ecom_store s ON s.id = r.store_id
+        LEFT JOIN wms_warehouse w ON w.id = r.warehouse_id
+        LEFT JOIN wms_warehouse dw ON dw.id = r.defective_warehouse_id
+        WHERE r.id = #{id}
+    </select>
+
+    <select id="selectForUpdate" resultType="com.lemon.erp.modules.ecom.fba.entity.EcomFbaRemoval">
+        SELECT * FROM ecom_fba_removal WHERE id = #{id} FOR UPDATE
+    </select>
+
+</mapper>

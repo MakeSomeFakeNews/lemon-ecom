@@ -11,12 +11,14 @@ import com.lemon.erp.framework.data.SearchKeys;
 import com.lemon.erp.framework.data.Searchable;
 import com.lemon.erp.framework.security.SecurityUtils;
 import com.lemon.erp.framework.security.datascope.LazyDataPermissionInterceptor;
+import com.lemon.erp.framework.security.datascope.RowFilterInterceptor;
 import com.lemon.erp.framework.tenant.LemonTenantLineHandler;
 import com.lemon.erp.framework.tenant.TenantProperties;
 import org.apache.ibatis.executor.Executor;
 import org.apache.ibatis.mapping.MappedStatement;
 import org.apache.ibatis.mapping.SqlCommandType;
 import org.apache.ibatis.reflection.MetaObject;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -30,7 +32,8 @@ public class MybatisPlusConfig {
     private static final String CREATE_BY = "createBy";
 
     @Bean
-    public MybatisPlusInterceptor mybatisPlusInterceptor(TenantProperties tenantProperties) {
+    public MybatisPlusInterceptor mybatisPlusInterceptor(TenantProperties tenantProperties,
+                                                       ObjectProvider<RowFilterInterceptor> rowFilters) {
         MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
         // SaaS 模式：租户条件最先追加，数据权限、分页 count、防全表更新都基于带租户条件的 SQL
         if (tenantProperties.isEnabled()) {
@@ -39,6 +42,8 @@ public class MybatisPlusConfig {
         }
         // 数据权限必须在分页之前，分页 count 才会带上数据权限条件
         interceptor.addInnerInterceptor(new LazyDataPermissionInterceptor());
+        // 业务模块的附加行级过滤（如电商的店铺授权），同样要在分页之前
+        rowFilters.orderedStream().forEach(interceptor::addInnerInterceptor);
         PaginationInnerInterceptor pagination = new PaginationInnerInterceptor(DbType.MYSQL);
         // 单页最多 500 条，防止 size 传超大值一次拉全表
         pagination.setMaxLimit(MAX_PAGE_SIZE);

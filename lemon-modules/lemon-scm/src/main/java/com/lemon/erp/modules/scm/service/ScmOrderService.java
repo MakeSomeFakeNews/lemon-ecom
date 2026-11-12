@@ -184,6 +184,16 @@ public class ScmOrderService {
         return order;
     }
 
+    /**
+     * 回写外部单号（如电商模块把 1688 订单号写到采购订单），只改这一列、不校验状态；外部单号同一租户不能重复
+     *
+     * @param externalNo 为空时清除
+     */
+    @Transactional
+    public void updateExternalNo(Long id, String externalNo) {
+        orderMapper.update(Wrappers.<ScmOrder>lambdaUpdate().set(ScmOrder::getExternalNo, externalNo).eq(ScmOrder::getId, id));
+    }
+
     /** 修改销售订单的业务员（影响之后计算的销售提成） */
     @Transactional
     public void changeSalesman(Long id, Long salesmanId) {

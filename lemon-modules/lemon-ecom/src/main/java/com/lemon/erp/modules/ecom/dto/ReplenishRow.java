@@ -38,8 +38,15 @@ public class ReplenishRow {
     private BigDecimal sales14;
     private BigDecimal sales30;
     private BigDecimal sales60;
-    /** 按销量加权计算的日均（乘系数前） */
+    /** 按销量加权计算的日均（乘系数前；开启排除断货日时为排除后的值） */
     private BigDecimal weightedDaily;
+    /** 统计期间（加权用到的最长期间）内的断货天数，没有断货为 0 */
+    private int stockoutDays;
+    /** 不排除断货日时的加权日均（有断货日时返回，界面对比显示） */
+    private BigDecimal rawWeightedDaily;
+    /** 排除断货日后的 7 / 14 / 30 / 60 天销量（折算到整段天数，不返回前端），为空用原销量 */
+    @JsonIgnore
+    private BigDecimal[] effectiveSales;
     /** 日均来源：WEIGHTED 按权重 / FORECAST 按销量预测（及预测方法）/ MANUAL 手工日均 */
     private String dailySource;
     private String forecastMethod;

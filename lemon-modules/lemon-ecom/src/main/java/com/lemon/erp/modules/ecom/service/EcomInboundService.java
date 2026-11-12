@@ -1,5 +1,6 @@
 package com.lemon.erp.modules.ecom.service;
 
+import com.lemon.erp.modules.ecom.oper.scope.EcomStoreScope;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.lemon.erp.common.exception.BizException;
@@ -10,8 +11,6 @@ import com.lemon.erp.framework.data.DetailLines;
 import com.lemon.erp.framework.data.StatusTransitions;
 import com.lemon.erp.framework.security.LoginUser;
 import com.lemon.erp.framework.security.SecurityUtils;
-import com.lemon.erp.framework.security.datascope.DataPermission;
-import com.lemon.erp.framework.security.datascope.DataScopes;
 import com.lemon.erp.framework.workflow.ApprovalFlow;
 import com.lemon.erp.framework.workflow.ApprovalSupport;
 import com.lemon.erp.framework.workflow.FlowFinishedEvent;
@@ -90,7 +89,7 @@ public class EcomInboundService {
     private static final int SKU_QTY_SCALE = 4;
     private static final BigDecimal CM3_PER_M3 = new BigDecimal("1000000");
 
-    @DataPermission(table = "ecom_inbound", deptColumn = "dept_id", userColumn = "create_by")
+    // 数据范围按店铺授权（EcomStoreScope，接口执行期间自动过滤），不再按部门 / 制单人
     public PageResult<EcomInbound> page(long current, long size, Long storeId, InboundStatus status, String keyword) {
         Page<EcomInbound> page = Page.of(current, size);
         inboundMapper.selectPageList(page, storeId, status, keyword);
@@ -98,7 +97,7 @@ public class EcomInboundService {
     }
 
     public EcomInbound detail(Long id) {
-        EcomInbound i = DataScopes.require(EcomConstants.INBOUND_RULE, () -> inboundMapper.selectDetail(id), "ecom.error.inboundNotFound");
+        EcomInbound i = EcomStoreScope.require(() -> inboundMapper.selectDetail(id), "ecom.error.inboundNotFound");
         i.setItems(itemMapper.selectByInboundId(id));
         i.setBoxes(boxes(id));
         i.setSkuLines(skuLines(i.getItems(), i.getBoxes()));
@@ -111,7 +110,7 @@ public class EcomInboundService {
     }
 
     private EcomInbound require(Long id) {
-        return DataScopes.require(EcomConstants.INBOUND_RULE, () -> inboundMapper.selectById(id), "ecom.error.inboundNotFound");
+        return EcomStoreScope.require(() -> inboundMapper.selectById(id), "ecom.error.inboundNotFound");
     }
 
     @Transactional

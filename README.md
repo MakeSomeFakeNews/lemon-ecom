@@ -110,7 +110,7 @@ DB_PASSWORD=你的密码 ./gradlew bootRun
 cd lemon-web && npm install && npm run dev
 ```
 
-不想装 MySQL 和 Redis 时，`./gradlew bootTestRun` 用 H2 内存库和内存缓存启动后端，适合体验和开发。
+不想装 MySQL 和 Redis 时，`./gradlew bootTestRun` 用 H2 内存库和内存缓存启动后端，适合体验和开发。启动完成后会自动生成一套**演示数据**（约 1–2 分钟，看板上显示进度）：一个跨境卖家的 10 个平台店铺（亚马逊美 / 德 / 日、虾皮、TikTok Shop、Temu、速卖通、Shopify、eBay）、40 个带图片的商品、供应商与采购、头程货件、近 120 天约 5000 张订单（各作业环节都有）、退货、结算回款、广告、客服、补货与预测，打开就能看到完整效果；设置环境变量 `LEMON_ECOM_DEMO_DATA=false` 可以关闭。
 
 <details>
 <summary>打包部署与 Nginx 参考配置</summary>
@@ -141,6 +141,8 @@ location /api/ {
 </details>
 
 **默认账号**：`admin` / `admin123`（超级管理员）、`test` / `admin123`（只读用户）。开启 SaaS 多租户（`LEMON_TENANT_ENABLED=true`）后登录需要填写租户「柠檬科技」；设置 `LEMON_DEMO_ENABLED=true` 开启演示模式（只能查看，不能修改数据）。
+
+**演示数据**：Docker 部署时在 `.env` 中设置 `LEMON_ECOM_DEMO_DATA=true`，后端首次启动完成后自动生成（已生成过则跳过）；也可以在「电商 → 电商看板」没有数据时点击「生成演示数据」（权限 `ecom:demo:generate`，超级管理员和电商运营默认拥有）。演示店铺编码以 `DEMO-` 开头，授权信息是占位值、不会访问真实平台；每个租户只能生成一次。
 
 **接入平台**：在「电商 → 平台店铺」中新建店铺，没有渠道授权时用 Excel 导入订单、结算报告、广告报告和平台库存报告；填写渠道授权后可「测试授权」并手工或定时同步订单（亚马逊 SP-API、速卖通开放平台的接口按公开文档实现，接入前请用自己的账号联调）。
 
@@ -209,6 +211,8 @@ lemon-ecom
 - AI assistants with DeepSeek, Qwen, GLM, Kimi or Doubao: natural-language data queries, document recognition, data cleansing and business reports
 - WeChat mini program and mobile / PDA barcode scanning, DingTalk / WeCom / Feishu integration, Chinese and English UI, Docker one-click deployment
 - Every feature and every line of source code is open: no paid edition, no hidden modules, no license keys; Apache-2.0 licensed, free for commercial use
+
+Try it without MySQL / Redis: `./gradlew bootTestRun` starts the backend on H2 and automatically generates a complete demo seller (10 marketplace stores, 40 products with images, 120 days of orders, inbound shipments, settlements, ads, customer service and more, about 1–2 minutes). With Docker, set `LEMON_ECOM_DEMO_DATA=true` in `.env`; or click "Generate Demo Data" on the empty ecom dashboard.
 
 Contact: zmissu@163.com
 

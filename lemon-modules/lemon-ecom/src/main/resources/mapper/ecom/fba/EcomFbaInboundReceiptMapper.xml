@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.fba.mapper.EcomFbaInboundReceiptMapper">
+
+    <sql id="itemColumns"> it.id AS inbound_item_id, ib.id AS inbound_id, ib.doc_no, ib.shipment_id, ib.store_id, ib.status, it.seller_sku,
+               COALESCE(l.pack_qty, 1) AS pack_qty, it.qty / COALESCE(l.pack_qty, 1) AS shipped_qty, rc.received_qty
+        FROM ecom_inbound ib
+        JOIN ecom_inbound_item it ON it.inbound_id = ib.id
+        LEFT JOIN ecom_listing l ON l.store_id = ib.store_id AND l.seller_sku = it.seller_sku
+        LEFT JOIN ecom_fba_inbound_receipt rc ON rc.inbound_item_id = it.id
+    </sql>
+
+    <select id="selectInboundItems" resultType="com.lemon.erp.modules.ecom.fba.dto.FbaViews$ReceiptRow">
+        SELECT <include refid="itemColumns"/>
+        WHERE ib.id = #{inboundId} AND it.part_main = 1
+        ORDER BY it.id
+    </select>
+
+    <select id="selectInboundItem" resultType="com.lemon.erp.modules.ecom.fba.dto.FbaViews$ReceiptRow">
+        SELECT <include refid="itemColumns"/>
+        WHERE it.id = #{itemId}
+    </select>
+
+</mapper>

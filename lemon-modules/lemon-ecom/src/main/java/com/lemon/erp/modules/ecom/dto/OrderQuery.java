@@ -2,6 +2,7 @@ package com.lemon.erp.modules.ecom.dto;
 
 import com.lemon.erp.modules.ecom.model.EcomLocalStatus;
 import com.lemon.erp.modules.ecom.model.EcomOrderStatus;
+import com.lemon.erp.modules.ecom.model.EcomOrderType;
 import com.lemon.erp.modules.ecom.model.EcomPlatform;
 import com.lemon.erp.modules.ecom.model.FulfillmentType;
 import lombok.Data;
@@ -33,6 +34,14 @@ public class OrderQuery {
     private List<EcomLocalStatus> localStatuses;
     /** 排序：urgency 按发货紧急程度（承诺发货 / 计划发货时间早的在前），为空按下单时间倒序 */
     private String sort;
+    /** 订单类型 */
+    private EcomOrderType orderType;
+    /** 带某个标签 */
+    private Long tagId;
+    /** 只看地址校验不通过的 */
+    private Boolean addressInvalid;
+    /** 只看命中黑名单的 */
+    private Boolean blacklisted;
 
     /** 按发货紧急程度排序（mapper XML 使用） */
     public boolean isUrgencySort() {

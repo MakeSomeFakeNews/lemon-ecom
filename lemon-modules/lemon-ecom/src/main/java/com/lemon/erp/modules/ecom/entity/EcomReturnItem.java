@@ -22,6 +22,11 @@ public class EcomReturnItem extends BaseEntity {
     private String sellerSku;
     private BigDecimal qty;
     private BigDecimal refundAmount;
+    /** 退回的包裹（多包裹订单），为空按发货顺序分配 */
+    private Long packageId;
+
+    @TableField(exist = false)
+    private String packageNo;
 
     @TableField(exist = false)
     private String materialCode;

@@ -35,6 +35,10 @@ public class EcomForecastSku extends BaseEntity {
     private BigDecimal forecast30;
     private BigDecimal forecast60;
     private BigDecimal forecast90;
+    /** 最近 120 天中的断货天数（快照可售数不大于阈值） */
+    private Integer stockoutDays;
+    /** 最近 28 天断货日补偿后的日均（没有断货时与 historyDaily 相同） */
+    private BigDecimal adjustedDaily;
     /** 回测的日误差标准差（预测区间用） */
     private BigDecimal sigma;
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")

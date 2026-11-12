@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.owh.mapper.EcomOwhInboundItemMapper">
+
+    <select id="selectByInbound" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhInboundItem">
+        SELECT it.*, mt.name AS material_name, mt.spec AS material_spec
+        FROM ecom_owh_inbound_item it
+        LEFT JOIN wms_material mt ON mt.id = it.material_id
+        WHERE it.inbound_id = #{inboundId}
+        ORDER BY it.box_no, it.id
+    </select>
+
+    <insert id="insertBatch">
+        INSERT INTO ecom_owh_inbound_item (inbound_id, box_no, material_id, sku, qty, received_qty, create_time, update_time)
+        VALUES
+        <foreach collection="list" item="r" separator=",">
+            (#{r.inboundId}, #{r.boxNo}, #{r.materialId}, #{r.sku}, #{r.qty}, #{r.receivedQty}, NOW(), NOW())
+        </foreach>
+    </insert>
+</mapper>

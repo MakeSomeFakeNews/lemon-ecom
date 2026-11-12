@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.dev.mapper.EcomProfitSchemeMapper">
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.dev.entity.EcomProfitScheme">
+        SELECT s.id, s.name, s.project_id, s.platform, s.marketplace, s.currency, s.sale_price, s.profit, s.margin, s.roi, s.create_by,
+               s.create_time, s.update_time, p.name AS project_name, u.nickname AS create_by_name
+        FROM ecom_profit_scheme s
+        LEFT JOIN ecom_dev_project p ON p.id = s.project_id
+        LEFT JOIN sys_user u ON u.id = s.create_by
+        <where>
+            <if test="projectId != null">s.project_id = #{projectId}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (s.name LIKE CONCAT('%', #{keyword}, '%') OR p.name LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY s.id DESC
+    </select>
+
+</mapper>

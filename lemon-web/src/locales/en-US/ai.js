@@ -13,13 +13,15 @@ export default {
     EXTRACT: 'Smart Entry',
     CLEANSE: 'Data Cleansing',
     REPORT: 'Smart Reports',
+    WRITE: 'AI Writing',
     TEST: 'Connection Test'
   },
   featureDesc: {
     CHAT: 'Ask in natural language; AI queries business data within the asker\'s permissions and answers',
     EXTRACT: 'Upload images, PDF or Excel and turn them into draft documents such as purchase orders for review',
     CLEANSE: 'Find duplicates in materials, customers and suppliers and suggest normalized names, specs and categories',
-    REPORT: 'Summarize business metrics weekly or monthly and write business reports automatically'
+    REPORT: 'Summarize business metrics weekly or monthly and write business reports automatically',
+    WRITE: 'Business text generation: drafting and translating e-commerce customer service replies, review replies, translating and optimizing listing titles and descriptions'
   },
   settings: {
     dataNotice: 'Business data will be sent to the configured third-party model service',

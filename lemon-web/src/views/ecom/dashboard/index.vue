@@ -1,7 +1,7 @@
 <template>
   <div class="ecom-dashboard">
     <div class="page-card header">
-      <StoreSelect v-model:value="storeId" :placeholder="$t('ecomReport.common.allStores')" class="store" @update:value="loadCharts" />
+      <StoreSelect v-model:value="storeId" :placeholder="$t('ecomReport.common.allStores')" class="store" @update:value="onStoreChange" />
       <a-range-picker v-model:value="range" value-format="YYYY-MM-DD" :allow-clear="false" :presets="presets" @change="loadCharts" />
       <a-button :loading="loading" @click="loadAll">
         <template #icon><ReloadOutlined /></template>{{ $t('common.action.refresh') }}
@@ -9,7 +9,13 @@
       <span class="sub-text">{{ $t('ecomReport.common.baseCurrencyTip') }}</span>
     </div>
 
-    <!-- 今日 / 本月经营指标 -->
+    <!-- 没有数据时：生成演示数据入口与进度 -->
+    <DemoDataBanner :empty="noData" @done="loadAll" />
+
+    <!-- 今日 / 昨日 / 本月关键指标（环比、同比） -->
+    <KpiPanel :periods="kpi" />
+
+    <!-- 本月利润（扣除广告与费用分摊）与费用构成 -->
     <div class="stats">
       <div v-for="c in METRICS" :key="c.key" class="page-card stat">
         <div class="stat-label">{{ $t(`ecomReport.dashboard.${c.key}`) }}</div>
@@ -20,36 +26,31 @@
       </div>
     </div>
 
-    <!-- 待处理事项：点击到对应页面 -->
-    <div class="alerts">
-      <div v-for="c in ALERTS" :key="c.key" class="page-card alert" :class="[c.tone, { clickable: !!c.to }]" @click="go(c)">
-        <span class="alert-icon"><component :is="c.icon" /></span>
-        <div class="alert-body">
-          <div class="stat-label">{{ $t(`ecomReport.dashboard.${c.key}`) }}</div>
-          <div class="stat-value">{{ num(overview[c.key]) }}<span class="stat-unit suffix">{{ $t(`ecomReport.dashboard.${c.unit}`) }}</span></div>
-        </div>
-        <RightOutlined v-if="c.to" class="alert-arrow" />
-      </div>
-    </div>
+    <!-- 待处理事项：各功能注册的待办，点击到对应页面 -->
+    <TodoPanel :items="todos" :loaded="todosLoaded" />
 
-    <a-card :bordered="false" class="page-card" :title="$t('ecomReport.dashboard.trend')">
-      <EChart :option="trendOption" height="320px" />
-    </a-card>
-
-    <a-row v-if="canReport" :gutter="[16, 16]" class="row">
-      <a-col :xs="24" :xl="8">
-        <a-card :bordered="false" class="page-card" :title="$t('ecomReport.dashboard.storeShare')">
-          <EChart v-if="storeRows.length" :option="storeOption" height="300px" />
-          <a-empty v-else :image="simpleImage" class="empty" />
+    <a-row :gutter="[16, 16]">
+      <a-col :xs="24" :xl="10">
+        <HourlyChart :data="hourly" />
+      </a-col>
+      <a-col :xs="24" :xl="14">
+        <a-card :bordered="false" class="page-card" :title="$t('ecomReport.dashboard.trend')">
+          <EChart :option="trendOption" height="328px" />
         </a-card>
       </a-col>
-      <a-col :xs="24" :xl="8">
+    </a-row>
+
+    <!-- Top SKU、店铺排行、平台占比（按所选日期范围） -->
+    <RankPanel v-if="canReport && rankParams" :params="rankParams" />
+
+    <a-row v-if="canReport" :gutter="[16, 16]" class="row">
+      <a-col :xs="24" :xl="12">
         <a-card :bordered="false" class="page-card" :title="$t('ecomReport.dashboard.countryTop')">
           <EChart v-if="countryRows.length" :option="countryOption" height="300px" />
           <a-empty v-else :image="simpleImage" class="empty" />
         </a-card>
       </a-col>
-      <a-col :xs="24" :xl="8">
+      <a-col :xs="24" :xl="12">
         <a-card :bordered="false" class="page-card" :title="$t('ecomReport.dashboard.feeMix')">
           <EChart v-if="feeRows.length" :option="feeOption" height="300px" />
           <a-empty v-else :image="simpleImage" class="empty" />
@@ -62,71 +63,61 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import { Empty } from 'ant-design-vue'
-import {
-  AlertOutlined,
-  ClockCircleOutlined,
-  FieldTimeOutlined,
-  ReloadOutlined,
-  RightOutlined,
-  SendOutlined,
-  WarningOutlined
-} from '@ant-design/icons-vue'
+import { ReloadOutlined } from '@ant-design/icons-vue'
 import EChart from '@/components/charts/EChart.vue'
 import { shortMoney } from '@/components/charts/charts'
 import StoreSelect from '@/components/ecom/StoreSelect.vue'
 import { rangeParams, rangePresets, thisMonth, yuan } from '@/components/ecom/ecomReport'
-import { reportCountry, reportFees, reportOverview, reportStore, reportTrend } from '@/api/ecom/report'
+import { reportCountry, reportFees, reportOverview, reportTrend } from '@/api/ecom/report'
+import { dashboardHourly, dashboardKpi, dashboardTodos } from '@/api/ecom/dashboard'
 import { useDict } from '@/composables/useDict'
 import { useUserStore } from '@/store/user'
 import { findDict } from '@/utils/dict'
 import { money, num, nz } from '@/utils/number'
-import { EcomLocalStatus, ReplenishLevel, SettlementItemType } from '@/constants/enums'
+import { SettlementItemType } from '@/constants/enums'
 import { t } from '@/locales'
+import KpiPanel from './KpiPanel.vue'
+import TodoPanel from './TodoPanel.vue'
+import HourlyChart from './HourlyChart.vue'
+import RankPanel from './RankPanel.vue'
+import DemoDataBanner from '@/components/ecom/DemoDataBanner.vue'
 
 /**
- * 电商看板：概览指标（今日 / 本月，固定口径）、待处理事项（点击到订单 / 货件 / 补货页面），
- * 以及按所选店铺与日期范围的销售趋势、店铺销售额、国家分布、结算费用构成。
- * 店铺 / 国家 / 费用构成接口需要利润分析权限（ecom:report:list），没有权限时不显示
+ * 电商看板：今日 / 昨日 / 本月关键指标（环比较昨日 / 较上月同期、同比较去年同期，按所选店铺）、本月利润与费用、
+ * 待处理事项（后端各功能注册的待办，点击到对应页面）、实时销量（今日按小时 vs 昨日），
+ * 以及按所选店铺与日期范围的销售趋势、Top 10 SKU、店铺排行、平台占比、国家分布、结算费用构成。
+ * 排行 / 国家 / 费用构成需要利润分析权限（ecom:report:list），没有权限时不显示
  */
-const router = useRouter()
 const canReport = useUserStore().hasPerm('ecom:report:list')
 const dict = useDict('ecom_settlement_item_type')
 const simpleImage = Empty.PRESENTED_IMAGE_SIMPLE
 const presets = rangePresets()
 
-/** 概览指标卡（与 EcomReports.Overview 的字段一致） */
+/** 本月金额指标卡（与 EcomReports.Overview 的字段一致；利润扣除广告花费和费用分摊，与利润分析的订单口径一致） */
 const METRICS = [
-  { key: 'todayOrders' },
-  { key: 'todaySales', money: true },
-  { key: 'monthOrders' },
-  { key: 'monthSales', money: true },
   { key: 'monthProfit', money: true },
   { key: 'monthRefund', money: true },
   { key: 'monthFees', money: true },
   { key: 'monthCost', money: true }
-]
-/** 待处理事项：to 为跳转目标（订单页按 query 的 localStatus / overdue 作为初始筛选） */
-const ALERTS = [
-  { key: 'pendingOrders', unit: 'orderUnit', tone: 'warning', icon: ClockCircleOutlined, to: { path: '/ecom/order', query: { localStatus: EcomLocalStatus.PENDING } } },
-  { key: 'exceptionOrders', unit: 'orderUnit', tone: 'danger', icon: WarningOutlined, to: { path: '/ecom/order', query: { localStatus: EcomLocalStatus.EXCEPTION } } },
-  { key: 'overdueOrders', unit: 'orderUnit', tone: 'danger', icon: FieldTimeOutlined, to: { path: '/ecom/order', query: { overdue: '1' } } },
-  { key: 'inTransitInbounds', unit: 'shipmentUnit', tone: 'info', icon: SendOutlined, to: { path: '/ecom/inbound' } },
-  { key: 'urgentReplenish', unit: 'skuUnit', tone: 'warning', icon: AlertOutlined, to: { path: '/ecom/replenish', query: { level: ReplenishLevel.URGENT } } }
 ]
 
 const storeId = ref()
 const range = ref(thisMonth())
 const loading = ref(false)
 const overview = ref({})
+/** 看板没有数据（本月与今天都没有订单）：显示生成演示数据入口 */
+const noData = computed(() => overview.value.monthOrders === 0 && !overview.value.todayOrders)
 const trendRows = ref([])
-const storeRows = ref([])
 const countryRows = ref([])
 const feeRows = ref([])
-
-const go = (c) => c.to && router.push(c.to)
+const kpi = ref([])
+const hourly = ref({ today: [], yesterday: [] })
+const todos = ref([])
+const todosLoaded = ref(false)
+/** 排行的查询条件（加载图表时设置，排行组件随之刷新） */
+const rankParams = ref(null)
 
 const grid = { left: 16, right: 16, top: 36, bottom: 8, containLabel: true }
 const moneyTip = { valueFormatter: (v) => yuan(v) }
@@ -141,19 +132,6 @@ const trendOption = computed(() => ({
     { name: t('ecomReport.common.orders'), type: 'bar', yAxisIndex: 1, barMaxWidth: 20, itemStyle: { color: '#91caff' }, data: trendRows.value.map((r) => nz(r.orders)) },
     { name: t('ecomReport.common.sales'), type: 'line', smooth: true, data: trendRows.value.map((r) => nz(r.sales)), tooltip: moneyTip },
     { name: t('ecomReport.common.profit'), type: 'line', smooth: true, itemStyle: { color: '#52c41a' }, data: trendRows.value.map((r) => nz(r.profit)), tooltip: moneyTip }
-  ]
-}))
-
-const storeOption = computed(() => ({
-  tooltip: { trigger: 'item', ...moneyTip },
-  legend: { type: 'scroll', orient: 'vertical', right: 0, top: 'middle' },
-  series: [
-    {
-      type: 'pie',
-      radius: ['40%', '70%'],
-      center: ['35%', '50%'],
-      data: storeRows.value.filter((r) => nz(r.sales) > 0).map((r) => ({ name: r.storeName, value: nz(r.sales) }))
-    }
   ]
 }))
 
@@ -186,21 +164,41 @@ async function loadOverview() {
   overview.value = (await reportOverview()) || {}
 }
 
+/** 关键指标与实时销量（按所选店铺） */
+async function loadRealtime() {
+  const params = { storeId: storeId.value || undefined }
+  const [k, h] = await Promise.all([dashboardKpi(params), dashboardHourly(params)])
+  kpi.value = k || []
+  hourly.value = h || { today: [], yesterday: [] }
+}
+
+async function loadTodos() {
+  try {
+    todos.value = (await dashboardTodos()) || []
+  } finally {
+    todosLoaded.value = true
+  }
+}
+
+function onStoreChange() {
+  loadRealtime()
+  loadCharts()
+}
+
 let seq = 0
 async function loadCharts() {
   const current = ++seq
   loading.value = true
   try {
     const params = { ...rangeParams(range.value), storeId: storeId.value || undefined }
-    const [trend, stores, countries, fees] = await Promise.all([
+    rankParams.value = params
+    const [trend, countries, fees] = await Promise.all([
       reportTrend(params),
-      canReport ? reportStore(params) : [],
       canReport ? reportCountry(params) : [],
       canReport ? reportFees(params) : []
     ])
     if (current !== seq) return
     trendRows.value = trend || []
-    storeRows.value = stores || []
     countryRows.value = countries || []
     // 费用构成不含订单收入，金额为 0 的类型不显示
     feeRows.value = (fees || []).filter((r) => r.itemType !== SettlementItemType.ORDER && nz(r.amount) !== 0)
@@ -211,6 +209,8 @@ async function loadCharts() {
 
 function loadAll() {
   loadOverview()
+  loadRealtime()
+  loadTodos()
   loadCharts()
 }
 
@@ -272,77 +272,11 @@ onMounted(loadAll)
 .neg {
   color: var(--status-critical, #cf1322);
 }
-.alerts {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 16px;
-}
-.alert {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  background: var(--app-card);
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-.alert.clickable {
-  cursor: pointer;
-}
-.alert.clickable:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
-}
-.alert-body {
-  flex: 1;
-  min-width: 0;
-}
-.alert .stat-value {
-  margin-top: 2px;
-  font-size: 20px;
-}
-.alert-icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  flex: none;
-}
-.alert.warning .alert-icon {
-  color: #d48806;
-  background: rgba(250, 178, 25, 0.14);
-}
-.alert.danger .alert-icon {
-  color: var(--status-critical, #cf1322);
-  background: rgba(208, 59, 59, 0.1);
-}
-.alert.info .alert-icon {
-  color: var(--app-primary);
-  background: var(--app-primary-bg);
-}
-.alert-arrow {
-  color: var(--app-text-3);
-  font-size: 12px;
-}
 .no-perm {
   padding: 12px 16px;
   background: var(--app-card);
 }
 .empty {
   padding: 80px 0;
-}
-</style>
-
-<style>
-/* 暗色：待处理事项图标底色调淡（需要匹配根元素的 data-theme，不能放在 scoped 中） */
-html[data-theme='dark'] .ecom-dashboard .alert.warning .alert-icon {
-  color: #ffd666;
-  background: rgba(250, 178, 25, 0.1);
-}
-html[data-theme='dark'] .ecom-dashboard .alert.danger .alert-icon {
-  color: #ff7875;
-  background: rgba(208, 59, 59, 0.14);
 }
 </style>

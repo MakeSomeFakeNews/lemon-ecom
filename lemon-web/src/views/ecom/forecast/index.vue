@@ -54,6 +54,15 @@
           <template v-else-if="column.mape">
             <span :class="{ best: record.method === column.mape }">{{ percent(record[column.key], 1) }}</span>
           </template>
+          <template v-else-if="column.key === 'stockoutDays'">
+            <a-tooltip v-if="record.stockoutDays" :title="$t('ecomFix.stockout.listTip')">
+              <a-tag color="red" :bordered="false">{{ record.stockoutDays }}</a-tag>
+            </a-tooltip>
+            <span v-else class="sub-text">0</span>
+          </template>
+          <template v-else-if="column.key === 'adjustedDaily'">
+            <span :class="{ adjusted: record.stockoutDays && Number(record.adjustedDaily) !== Number(record.historyDaily) }">{{ qty(record.adjustedDaily, 2) }}</span>
+          </template>
           <template v-else-if="['historyDaily', 'forecast30', 'forecast60', 'forecast90'].includes(column.key)">
             {{ qty(record[column.key], column.key === 'historyDaily' ? 2 : 0) }}
           </template>
@@ -110,6 +119,8 @@ const columns = [
   mapeCol('mapeHolt', ForecastMethod.HOLT),
   mapeCol('mapeSeasonal', ForecastMethod.SEASONAL),
   { title: t('ecomAnalytics.forecast.historyDaily'), key: 'historyDaily', dataIndex: 'historyDaily', width: 110, align: 'right' },
+  { title: t('ecomFix.stockout.adjustedDaily'), key: 'adjustedDaily', dataIndex: 'adjustedDaily', width: 120, align: 'right' },
+  { title: t('ecomFix.stockout.days'), key: 'stockoutDays', dataIndex: 'stockoutDays', width: 100, align: 'center' },
   { title: t('ecomAnalytics.forecast.next30'), key: 'forecast30', dataIndex: 'forecast30', width: 100, align: 'right' },
   { title: t('ecomAnalytics.forecast.next60'), key: 'forecast60', dataIndex: 'forecast60', width: 100, align: 'right' },
   { title: t('ecomAnalytics.forecast.next90'), key: 'forecast90', dataIndex: 'forecast90', width: 100, align: 'right' },
@@ -163,5 +174,9 @@ async function generate() {
 }
 .mini-tag {
   margin-left: 4px;
+}
+.adjusted {
+  color: #d46b08;
+  font-weight: 600;
 }
 </style>

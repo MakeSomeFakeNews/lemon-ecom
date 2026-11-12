@@ -49,6 +49,7 @@
 import { reactive, ref } from 'vue'
 import { InfoCircleOutlined, SearchOutlined } from '@ant-design/icons-vue'
 import dayjs from 'dayjs'
+import { useRoute } from 'vue-router'
 import StoreSelect from '@/components/ecom/StoreSelect.vue'
 import { rangePresets } from '@/components/ecom/ecomReport'
 import { useUserStore } from '@/store/user'
@@ -68,7 +69,8 @@ import RuleLogs from '../ad-rule/RuleLogs.vue'
  */
 const userStore = useUserStore()
 const presets = rangePresets()
-const tab = ref('overview')
+// 看板「广告同步失败」等跳转时按 ?tab= 打开页签
+const tab = ref(useRoute().query.tab ? String(useRoute().query.tab) : 'overview')
 /** 默认近 30 天，截至昨天（广告报告一般次日才有） */
 const yesterday = dayjs().subtract(1, 'day')
 const query = reactive({ storeId: undefined, range: [yesterday.subtract(29, 'day').format('YYYY-MM-DD'), yesterday.format('YYYY-MM-DD')] })

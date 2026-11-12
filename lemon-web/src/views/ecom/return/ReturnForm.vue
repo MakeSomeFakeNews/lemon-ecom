@@ -65,7 +65,7 @@
         <a-table
           row-key="orderItemId"
           size="small"
-          :columns="itemColumns"
+          :columns="shippedPackages.length > 1 ? [...itemColumns, packageColumn] : itemColumns"
           :data-source="form.items"
           :pagination="false"
           :row-selection="{ selectedRowKeys: form.selected, onChange: (keys) => (form.selected = keys) }"
@@ -80,6 +80,11 @@
             <template v-else-if="column.key === 'soldQty'">{{ qty(record.soldQty) }}</template>
             <template v-else-if="column.key === 'qty'">
               <a-input-number v-model:value="record.qty" :min="0" :max="Number(record.soldQty)" :precision="4" class="full" :disabled="!form.selected.includes(record.orderItemId)" />
+            </template>
+            <template v-else-if="column.key === 'packageId'">
+              <a-select v-model:value="record.packageId" allow-clear class="full" :placeholder="$t('ecomOrd.returnPkg.auto')"
+                        :options="shippedPackages.map((p) => ({ value: p.id, label: `${p.packageNo} · ${p.trackingNo || '-'}` }))"
+                        :disabled="!form.selected.includes(record.orderItemId)" />
             </template>
             <template v-else-if="column.key === 'refundAmount'">
               <a-input-number v-model:value="record.refundAmount" :min="0" :precision="2" class="full" :disabled="!form.selected.includes(record.orderItemId)" />
@@ -104,7 +109,7 @@ import { useDict } from '@/composables/useDict'
 import { useFormDrawer } from '@/composables/useFormDrawer'
 import { toOptions } from '@/utils/dict'
 import { money, qty, round2, sumBy } from '@/utils/number'
-import { EcomLocalStatus, ReturnType } from '@/constants/enums'
+import { EcomLocalStatus, EcomPackageStatus, ReturnType } from '@/constants/enums'
 import { fcMoney } from '../order/order'
 
 /**
@@ -122,6 +127,8 @@ const itemColumns = [
   { title: t('ecomOrder.return.returnQty'), key: 'qty', width: 140 },
   { title: t('ecomOrder.return.lineRefund'), key: 'refundAmount', width: 160 }
 ]
+/** 多包裹订单：可指定退回的包裹（按该包裹的发货单生成销售退货），不指定按发货顺序分配 */
+const packageColumn = { title: t('ecomOrd.returnPkg.package'), key: 'packageId', width: 240 }
 
 const emptyForm = () => ({
   orderId: undefined,
@@ -145,7 +152,7 @@ const drawer = useFormDrawer({
     warehouseId: f.returnType === ReturnType.RETURN_REFUND ? f.warehouseId : null,
     refundAmount: f.refundAmount ?? null,
     remark: f.remark || null,
-    items: selectedItems(f).map((i) => ({ orderItemId: i.orderItemId, qty: i.qty, refundAmount: i.refundAmount ?? null }))
+    items: selectedItems(f).map((i) => ({ orderItemId: i.orderItemId, qty: i.qty, refundAmount: i.refundAmount ?? null, packageId: i.packageId ?? null }))
   }),
   onSuccess: () => emit('success')
 })
@@ -156,6 +163,7 @@ const orderCache = new Map()
 /** 当前订单 */
 const order = computed(() => orderCache.get(form.value.orderId))
 const isReturn = computed(() => form.value.returnType === ReturnType.RETURN_REFUND)
+const shippedPackages = computed(() => (order.value?.packages || []).filter((p) => p.status === EcomPackageStatus.SHIPPED))
 const selectedItems = (f) => f.items.filter((i) => f.selected.includes(i.orderItemId) && Number(i.qty) > 0)
 const linesTotal = computed(() => sumBy(selectedItems(form.value), 'refundAmount', round2))
 
@@ -197,12 +205,13 @@ async function loadOrder(id) {
     materialName: i.materialName,
     soldQty: i.qty,
     qty: Number(i.qty),
-    refundAmount: Number(i.amount) || 0
+    refundAmount: Number(i.amount) || 0,
+    packageId: undefined
   }))
   form.value.selected = form.value.items.map((i) => i.orderItemId)
   form.value.refundAmount = undefined
   // 已出库 / 已发货的订单默认退货退款（退回出库仓库），否则仅退款
-  const outbound = o.localStatus === EcomLocalStatus.OUTBOUND || o.localStatus === EcomLocalStatus.SHIPPED
+  const outbound = [EcomLocalStatus.OUTBOUND, EcomLocalStatus.SHIPPED, EcomLocalStatus.PARTIAL].includes(o.localStatus)
   if (!form.value.returnType) form.value.returnType = outbound ? ReturnType.RETURN_REFUND : ReturnType.REFUND_ONLY
   if (!form.value.warehouseId) form.value.warehouseId = o.warehouseId ?? undefined
 }

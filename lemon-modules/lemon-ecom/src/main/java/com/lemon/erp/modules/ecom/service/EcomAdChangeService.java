@@ -53,6 +53,7 @@ public class EcomAdChangeService {
     private final EcomAdRuleLogMapper logMapper;
     private final EcomAdScheduleMapper scheduleMapper;
     private final TransactionTemplate transactionTemplate;
+    private final EcomAdTypeResolver typeResolver;
 
     /**
      * 调用结果：available 表示店铺有可用的广告接口；results 只包含实际提交给接口的修改（没有平台 ID、接口不支持该能力的不提交），
@@ -72,8 +73,20 @@ public class EcomAdChangeService {
             return new PushOutcome(connector.isPresent(), Map.of());
         }
         AdsConnector c = connector.get();
-        List<AdsChange> pushable = changes.stream().filter(ch -> pushable(c, ch)).toList();
         Map<Long, AdsChangeResult> results = new HashMap<>();
+        // 补齐广告类型；该广告类型不支持的修改（如品牌推广广告组的竞价）明确返回失败，不当作只改本地
+        List<AdsChange> pushable = new java.util.ArrayList<>();
+        for (AdsChange ch : typeResolver.enrich(changes)) {
+            if (!pushable(c, ch)) {
+                continue;
+            }
+            String unsupported = unsupportedReason(c, ch);
+            if (unsupported != null) {
+                results.put(ch.localId(), AdsChangeResult.failed(ch.localId(), unsupported));
+            } else {
+                pushable.add(ch);
+            }
+        }
         if (pushable.isEmpty()) {
             return new PushOutcome(true, results);
         }
@@ -90,6 +103,20 @@ public class EcomAdChangeService {
         }
         pushable.forEach(ch -> results.putIfAbsent(ch.localId(), AdsChangeResult.failed(ch.localId(), "no result")));
         return new PushOutcome(true, results);
+    }
+
+    /** 广告类型不支持该项修改时的说明，支持时为 null */
+    private static String unsupportedReason(AdsConnector c, AdsChange ch) {
+        com.lemon.erp.modules.ecom.model.EcomAdType type = ch.adTypeOrSp();
+        if (ch.bid() != null && !c.supports(type, ch.level(), AdsCapability.UPDATE_BID)) {
+            return com.lemon.erp.common.i18n.Messages.get(ch.level() == EcomAdLevel.AD_GROUP ? "ecom.error.fix.adsTypeUnsupported.adGroupBid"
+                    : "ecom.error.fix.adsTypeUnsupported.bid", type.name());
+        }
+        if (ch.budget() != null && !c.supports(type, ch.level(), AdsCapability.UPDATE_BUDGET)
+                || ch.status() != null && !c.supports(type, ch.level(), AdsCapability.UPDATE_STATE)) {
+            return com.lemon.erp.common.i18n.Messages.get("ecom.error.fix.adsTypeUnsupported.change", type.name());
+        }
+        return null;
     }
 
     private static boolean pushable(AdsConnector c, AdsChange ch) {
@@ -309,6 +336,10 @@ public class EcomAdChangeService {
                 continue;
             }
             EcomAdCampaign c = structureService.campaign(g.getCampaignId());
+            if (c.getAdType() == com.lemon.erp.modules.ecom.model.EcomAdType.SD) {
+                // 展示型推广没有关键词，也就没有否定关键词
+                throw new BizException("ecom.error.fix.adsTypeUnsupported.negative", c.getAdType().name());
+            }
             byStore.computeIfAbsent(g.getStoreId(), k -> new java.util.ArrayList<>()).add(new Object[]{++seq, g, c, text});
         }
         int created = 0;
@@ -325,7 +356,7 @@ public class EcomAdChangeService {
                     EcomAdCampaign c = (EcomAdCampaign) x[2];
                     if (StringUtils.hasText(g.getPlatformAdGroupId()) && StringUtils.hasText(c.getPlatformCampaignId())) {
                         list.add(new com.lemon.erp.modules.ecom.ads.AdsNegativeKeyword((Long) x[0], c.getPlatformCampaignId(), g.getPlatformAdGroupId(),
-                                (String) x[3], match));
+                                (String) x[3], match, c.getAdType()));
                     }
                 }
                 if (!list.isEmpty()) {

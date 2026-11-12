@@ -75,6 +75,7 @@
 import { onMounted, reactive, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import { CheckSquareOutlined, DeleteOutlined, ImportOutlined, MessageOutlined, SearchOutlined, SyncOutlined, ToolOutlined } from '@ant-design/icons-vue'
 import ImportModal from '@/components/ImportModal.vue'
 import TableToolbar from '@/components/TableToolbar.vue'
@@ -122,7 +123,9 @@ const columns = [
 ]
 const { checked, visibleColumns, scrollX } = useColumns(columns, 'ecom-cs-review')
 
-const query = reactive({ storeId: undefined, rating: undefined, handleStatus: undefined, replied: undefined, range: null, keyword: '' })
+// 看板「差评待处理」跳转时带 handleStatus 作为初始筛选
+const initialHandle = useRoute().query.handleStatus
+const query = reactive({ storeId: undefined, rating: undefined, handleStatus: initialHandle ? String(initialHandle) : undefined, replied: undefined, range: null, keyword: '' })
 const toParams = (q) => ({
   storeId: q.storeId || undefined,
   handleStatus: q.handleStatus || undefined,

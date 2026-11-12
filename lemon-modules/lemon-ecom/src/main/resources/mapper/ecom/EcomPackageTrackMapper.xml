@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomPackageTrackMapper">
+
+    <insert id="insertBatch">
+        INSERT INTO ecom_package_track (package_id, event_time, time_text, location, description, status, sort, create_time, update_time)
+        VALUES
+        <foreach collection="items" item="i" separator=",">
+            (#{i.packageId}, #{i.eventTime}, #{i.timeText}, #{i.location}, #{i.description}, #{i.status}, #{i.sort}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        </foreach>
+    </insert>
+
+</mapper>

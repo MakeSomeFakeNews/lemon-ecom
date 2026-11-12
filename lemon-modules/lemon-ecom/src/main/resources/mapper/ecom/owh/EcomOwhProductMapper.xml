@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.owh.mapper.EcomOwhProductMapper">
+
+    <select id="selectByAccount" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhProduct">
+        SELECT p.*, ch.name AS channel_name
+        FROM ecom_owh_product p
+        LEFT JOIN ecom_logistics_channel ch ON ch.id = p.channel_id
+        WHERE p.account_id = #{accountId}
+        ORDER BY p.status DESC, p.owh_code, p.product_code
+    </select>
+</mapper>

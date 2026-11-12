@@ -11,6 +11,7 @@
       <div class="content">
         <b v-if="record.title">{{ record.title }}</b>
         <div>{{ (kind === 'review' ? record.content : record.comments) || '-' }}</div>
+        <div v-if="translated" class="translation">{{ translated }}</div>
       </div>
       <div v-if="existing" class="existing">
         <div class="sub-text">{{ $t('ecomCs.review.currentReply') }}</div>
@@ -20,6 +21,10 @@
         <div class="tools">
           <TemplatePicker v-if="kind === 'review'" :platform="record.platform" :review-id="record.id" @apply="applyTemplate" />
           <TemplatePicker v-else :platform="record.platform" :order-id="record.orderId" @apply="applyTemplate" />
+          <template v-if="kind === 'review' && canAi">
+            <AiTextButton :label="$t('ecomFix.ai.draft')" with-options :action="draft" @done="applyDraft" />
+            <AiTextButton v-if="!translated" :label="$t('ecomFix.ai.translateReview')" :action="translateReview" @done="(text) => (translated = text)" />
+          </template>
           <a-tooltip :title="viaPlatform ? $t('ecomCs.review.recordOnlyTip') : $t('ecomCs.review.recordOnlyForced')">
             <a-checkbox v-model:checked="recordOnly" :disabled="!viaPlatform">{{ $t('ecomCs.message.recordOnly') }}</a-checkbox>
           </a-tooltip>
@@ -35,6 +40,8 @@ import { computed, ref } from 'vue'
 import { message } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
 import TemplatePicker from '@/components/ecom/cs/TemplatePicker.vue'
+import AiTextButton from '@/components/ecom/ai/AiTextButton.vue'
+import { draftReviewReply, translateReviewText } from '@/api/ecom/aiText'
 import { replyCsFeedback, replyCsReview } from '@/api/ecom/cs'
 import { useUserStore } from '@/store/user'
 import { CsRecordSource } from '@/constants/enums'
@@ -45,7 +52,7 @@ import { CsRecordSource } from '@/constants/enums'
  * open(kind: 'review' | 'feedback', record)，成功后触发 success
  */
 const emit = defineEmits(['success'])
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const user = useUserStore()
 
 const open = ref(false)
@@ -56,6 +63,8 @@ const content = ref('')
 const recordOnly = ref(false)
 
 const canReply = computed(() => user.hasPerm('ecom:csReview:reply'))
+const canAi = computed(() => user.hasPerm('ecom:csReview:ai'))
+const translated = ref('')
 const existing = computed(() => (kind.value === 'review' ? record.value?.replyContent : record.value?.response))
 /** 同步来的评价可以通过平台接口回复 */
 const viaPlatform = computed(() => kind.value === 'review' && record.value?.source === CsRecordSource.SYNC)
@@ -65,12 +74,30 @@ function show(k, r) {
   kind.value = k
   record.value = r
   content.value = ''
+  translated.value = ''
   recordOnly.value = !(k === 'review' && r.source === CsRecordSource.SYNC)
   open.value = true
 }
 
 function applyTemplate({ content: text }) {
   content.value = content.value.trim() ? `${content.value.trim()}\n${text}` : text
+}
+
+/** AI 草拟评价回复（默认用评价的语言），放入回复框由人工确认 */
+async function draft(params) {
+  const r = await draftReviewReply(record.value.id, params)
+  return r?.text
+}
+function applyDraft(text) {
+  content.value = text
+  message.success(t('ecomFix.ai.drafted'))
+}
+/** 评价内容译成界面语言 */
+async function translateReview() {
+  const text = [record.value.title, record.value.content].filter(Boolean).join('\n')
+  if (!text) return null
+  const r = await translateReviewText({ text, target: String(locale.value || 'zh-CN').split('-')[0] })
+  return r?.text
 }
 
 async function submit() {
@@ -106,6 +133,12 @@ defineExpose({ open: show })
   background: var(--app-bg);
   white-space: pre-wrap;
   word-break: break-word;
+}
+.translation {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--app-border);
+  color: var(--app-text-2);
 }
 .existing {
   margin-bottom: 10px;

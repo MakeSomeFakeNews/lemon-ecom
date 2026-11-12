@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.fba.mapper.EcomFbaItemDimMapper">
+
+    <select id="selectDimPage" resultType="com.lemon.erp.modules.ecom.fba.dto.FbaViews$DimRow">
+        SELECT d.id, l.store_id, s.name AS store_name, s.marketplace, s.currency, l.seller_sku, l.title,
+               m.code AS material_code, m.name AS material_name,
+               d.length_cm, d.width_cm, d.height_cm, d.weight_kg, d.source, d.platform_tier, d.platform_fee
+        FROM ecom_listing l
+        JOIN ecom_store s ON s.id = l.store_id
+        LEFT JOIN wms_material m ON m.id = l.material_id
+        LEFT JOIN ecom_fba_item_dim d ON d.store_id = l.store_id AND d.seller_sku = l.seller_sku
+        WHERE l.fulfillment = 'PLATFORM' AND l.status &lt;&gt; 'DELETED' AND s.platform = 'AMAZON'
+        <if test="storeId != null">AND l.store_id = #{storeId}</if>
+        <if test="missingOnly != null and missingOnly">AND d.id IS NULL</if>
+        <if test="keyword != null and keyword != ''">
+            AND (l.seller_sku LIKE CONCAT('%', #{keyword}, '%') OR l.title LIKE CONCAT('%', #{keyword}, '%')
+                 OR m.code LIKE CONCAT('%', #{keyword}, '%') OR m.name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY l.store_id, l.seller_sku
+    </select>
+
+    <!-- 平台配送订单每个 SKU 的件数 -->
+    <sql id="orderQty">
+        SELECT o.store_id, o.platform_order_no, oi.seller_sku, SUM(oi.qty) AS qty
+        FROM ecom_order o JOIN ecom_order_item oi ON oi.order_id = o.id
+        WHERE o.fulfillment = 'PLATFORM'
+        <if test="storeId != null">AND o.store_id = #{storeId}</if>
+        GROUP BY o.store_id, o.platform_order_no, oi.seller_sku
+    </sql>
+
+    <sql id="feeFilter">
+        si.item_type = 'FULFILLMENT' AND si.platform_order_no IS NOT NULL
+        <if test="storeId != null">AND st.store_id = #{storeId}</if>
+        <if test="beginDate != null">AND COALESCE(si.posted_date, st.period_end) &gt;= #{beginDate}</if>
+        <if test="endDate != null">AND COALESCE(si.posted_date, st.period_end) &lt;= #{endDate}</if>
+    </sql>
+
+    <!--
+        结算明细中的配送费（负数取相反数）按 店铺 + 订单 + SKU 汇总：带 SKU 的直接归属；不带 SKU 的按订单各 SKU 件数占比分摊；
+        再关联订单行件数，按 店铺 + SKU 汇总
+    -->
+    <select id="selectFeeActuals" resultType="com.lemon.erp.modules.ecom.fba.dto.FbaViews$FeeActual">
+        SELECT a.store_id, a.seller_sku, COUNT(*) AS order_count, SUM(q.qty) AS qty, SUM(a.fee) AS actual_fee
+        FROM (
+            SELECT u.store_id, u.platform_order_no, u.seller_sku, SUM(u.fee) AS fee
+            FROM (
+                SELECT st.store_id, si.platform_order_no, si.seller_sku, -si.amount AS fee
+                FROM ecom_settlement_item si
+                JOIN ecom_settlement st ON st.id = si.settlement_id
+                WHERE <include refid="feeFilter"/> AND si.seller_sku IS NOT NULL
+                UNION ALL
+                SELECT g.store_id, g.platform_order_no, q2.seller_sku, g.fee * q2.qty / t.total_qty AS fee
+                FROM (
+                    SELECT st.store_id, si.platform_order_no, -SUM(si.amount) AS fee
+                    FROM ecom_settlement_item si
+                    JOIN ecom_settlement st ON st.id = si.settlement_id
+                    WHERE <include refid="feeFilter"/> AND si.seller_sku IS NULL
+                    GROUP BY st.store_id, si.platform_order_no
+                ) g
+                JOIN (<include refid="orderQty"/>) q2 ON q2.store_id = g.store_id AND q2.platform_order_no = g.platform_order_no
+                JOIN (
+                    SELECT o.store_id, o.platform_order_no, SUM(oi.qty) AS total_qty
+                    FROM ecom_order o JOIN ecom_order_item oi ON oi.order_id = o.id
+                    WHERE o.fulfillment = 'PLATFORM'
+                    <if test="storeId != null">AND o.store_id = #{storeId}</if>
+                    GROUP BY o.store_id, o.platform_order_no
+                ) t ON t.store_id = g.store_id AND t.platform_order_no = g.platform_order_no
+                WHERE t.total_qty &gt; 0
+            ) u
+            GROUP BY u.store_id, u.platform_order_no, u.seller_sku
+        ) a
+        JOIN (<include refid="orderQty"/>) q ON q.store_id = a.store_id AND q.platform_order_no = a.platform_order_no AND q.seller_sku = a.seller_sku
+        WHERE q.qty &gt; 0
+        GROUP BY a.store_id, a.seller_sku
+    </select>
+
+    <select id="selectAuditBase" resultType="com.lemon.erp.modules.ecom.fba.dto.FbaViews$AuditRow">
+        SELECT l.store_id, s.name AS store_name, s.marketplace, s.currency, l.seller_sku, m.code AS material_code, m.name AS material_name,
+               d.length_cm, d.width_cm, d.height_cm, d.weight_kg, d.platform_fee
+        FROM ecom_listing l
+        JOIN ecom_store s ON s.id = l.store_id
+        LEFT JOIN wms_material m ON m.id = l.material_id
+        LEFT JOIN ecom_fba_item_dim d ON d.store_id = l.store_id AND d.seller_sku = l.seller_sku
+        WHERE s.platform = 'AMAZON'
+        <if test="storeId != null">AND l.store_id = #{storeId}</if>
+    </select>
+
+</mapper>

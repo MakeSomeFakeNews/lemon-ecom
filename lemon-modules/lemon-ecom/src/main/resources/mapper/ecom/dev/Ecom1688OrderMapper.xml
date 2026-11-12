@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.dev.mapper.Ecom1688OrderMapper">
+
+    <sql id="columns">
+        o.id, o.account_id, o.scm_order_id, o.ali_order_id, o.seller_login_id, o.seller_name, o.status, o.ali_status, o.product_amount,
+        o.shipping_fee, o.total_amount, o.total_qty, o.logistics_company, o.logistics_no, o.message, o.ali_create_time, o.pay_time, o.ship_time,
+        o.receive_time, o.sync_time, o.sync_message, o.create_by, o.create_time, o.update_time,
+        a.name AS account_name, so.order_no AS scm_order_no, sp.name AS supplier_name, u.nickname AS create_by_name,
+        (SELECT COUNT(*) FROM ecom_1688_order_item i WHERE i.order_id = o.id) AS item_count
+    </sql>
+
+    <!-- 只读关联供应链的采购订单与供应商 -->
+    <sql id="joins">
+        FROM ecom_1688_order o
+        LEFT JOIN ecom_1688_account a ON a.id = o.account_id
+        LEFT JOIN scm_order so ON so.id = o.scm_order_id
+        LEFT JOIN scm_supplier sp ON sp.id = so.partner_id
+        LEFT JOIN sys_user u ON u.id = o.create_by
+    </sql>
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.dev.entity.Ecom1688Order">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        <where>
+            <if test="status != null">o.status = #{status}</if>
+            <if test="scmOrderId != null">AND o.scm_order_id = #{scmOrderId}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (o.ali_order_id LIKE CONCAT('%', #{keyword}, '%') OR so.order_no LIKE CONCAT('%', #{keyword}, '%')
+                     OR o.seller_login_id LIKE CONCAT('%', #{keyword}, '%') OR o.seller_name LIKE CONCAT('%', #{keyword}, '%')
+                     OR o.logistics_no LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY o.id DESC
+    </select>
+
+    <select id="selectDetail" resultType="com.lemon.erp.modules.ecom.dev.entity.Ecom1688Order">
+        SELECT <include refid="columns"/>, o.trace
+        <include refid="joins"/>
+        WHERE o.id = #{id}
+    </select>
+
+    <select id="selectByScmOrder" resultType="com.lemon.erp.modules.ecom.dev.entity.Ecom1688Order">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        WHERE o.scm_order_id = #{scmOrderId}
+        ORDER BY o.id
+    </select>
+
+</mapper>

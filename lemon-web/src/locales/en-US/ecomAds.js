@@ -268,7 +268,7 @@ export default {
     keywordPh: 'Object / campaign'
   },
   auth: {
-    tip: 'Advertising API credentials are stored separately from store channel credentials (encrypted, write-only). Amazon Ads: create an LWA app in the Amazon Ads developer console and get a refresh token, save, then click Profiles to choose the marketplace profile',
+    tip: 'Advertising API credentials are stored separately from store channel credentials (encrypted, write-only). Amazon Ads: create an LWA app in the Amazon Ads developer console, enter the Client ID / Client Secret in Authorize and complete Login with Amazon with "Authorize with Amazon" (or enter a refresh token directly), then choose the marketplace profile; sync covers Sponsored Products, Sponsored Brands and Sponsored Display',
     connector: 'Advertising API',
     unsupported: 'Not available',
     configured: 'Authorized',

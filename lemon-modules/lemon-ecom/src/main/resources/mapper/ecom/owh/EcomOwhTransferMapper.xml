@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.owh.mapper.EcomOwhTransferMapper">
+
+    <sql id="columns">
+        t.*, fw.name AS from_warehouse_name, tw.name AS to_warehouse_name, fm.owh_code AS from_owh_code, tm.owh_code AS to_owh_code,
+        i.inbound_no, i.status AS inbound_status
+    </sql>
+
+    <sql id="joins">
+        FROM ecom_owh_transfer t
+        LEFT JOIN wms_warehouse fw ON fw.id = t.from_warehouse_id
+        LEFT JOIN wms_warehouse tw ON tw.id = t.to_warehouse_id
+        LEFT JOIN ecom_owh_warehouse fm ON fm.id = t.from_mapping_id
+        LEFT JOIN ecom_owh_warehouse tm ON tm.id = t.to_mapping_id
+        LEFT JOIN ecom_owh_inbound i ON i.id = t.inbound_id
+    </sql>
+
+    <sql id="filters">
+        <if test="warehouseId != null">AND (t.from_warehouse_id = #{warehouseId} OR t.to_warehouse_id = #{warehouseId})</if>
+        <if test="keyword != null and keyword != ''">
+            AND (t.transfer_no LIKE CONCAT('%', #{keyword}, '%') OR t.owh_out_no LIKE CONCAT('%', #{keyword}, '%')
+                 OR t.transfer_doc_no LIKE CONCAT('%', #{keyword}, '%') OR t.tracking_no LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+    </sql>
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhTransfer">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        <where>
+            <include refid="filters"/>
+            <if test="status != null">AND t.status = #{status}</if>
+        </where>
+        ORDER BY t.id DESC
+    </select>
+
+    <select id="countByStatus" resultType="map">
+        SELECT t.status AS "status", COUNT(*) AS "cnt"
+        FROM ecom_owh_transfer t
+        <where>
+            <include refid="filters"/>
+        </where>
+        GROUP BY t.status
+    </select>
+
+    <select id="selectDetail" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhTransfer">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        WHERE t.id = #{id}
+    </select>
+
+    <select id="selectForUpdate" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhTransfer">
+        SELECT * FROM ecom_owh_transfer WHERE id = #{id} FOR UPDATE
+    </select>
+
+    <select id="selectSyncingIds" resultType="long">
+        SELECT t.id FROM ecom_owh_transfer t
+        LEFT JOIN ecom_owh_warehouse fm ON fm.id = t.from_mapping_id
+        LEFT JOIN ecom_owh_account fa ON fa.id = fm.account_id
+        LEFT JOIN ecom_owh_warehouse tm ON tm.id = t.to_mapping_id
+        LEFT JOIN ecom_owh_account ta ON ta.id = tm.account_id
+        WHERE (t.status = 'OUT_PUSHED' AND fa.status = 1 AND fa.auto_sync = 1)
+           OR (t.status = 'IN_TRANSIT' AND t.to_mapping_id IS NOT NULL AND ta.status = 1 AND ta.auto_sync = 1)
+        ORDER BY t.id
+    </select>
+</mapper>

@@ -6770,3 +6770,2361 @@ WHERE r.id = 5 AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r
 INSERT INTO sys_role_menu (role_id, menu_id)
 SELECT r.id, m.id FROM sys_role r JOIN sys_menu m ON (m.id = 986 OR m.parent_id = 986)
 WHERE r.id IN (2, 3) AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r.id AND x.menu_id = m.id);
+
+-- ===== 第四轮：订单增强（手工单与补发、标签与备注、地址校验与黑名单、物流轨迹、利润预估、部分发货回传、多包裹退货、批量操作） =====
+
+-- 订单：类型与来源、地址校验结果、命中的黑名单、利润预估
+ALTER TABLE ecom_order ADD COLUMN order_type VARCHAR(16) NOT NULL DEFAULT 'PLATFORM' COMMENT '订单类型(字典 ecom_order_type) PLATFORM平台订单 MANUAL手工订单 RESEND补发单';
+ALTER TABLE ecom_order ADD COLUMN source_order_id BIGINT DEFAULT NULL COMMENT '补发单的原订单';
+ALTER TABLE ecom_order ADD COLUMN source_ticket_id BIGINT DEFAULT NULL COMMENT '补发单关联的售后工单';
+ALTER TABLE ecom_order ADD COLUMN source_return_id BIGINT DEFAULT NULL COMMENT '补发单关联的退货退款单';
+ALTER TABLE ecom_order ADD COLUMN address_issue VARCHAR(500) DEFAULT NULL COMMENT '地址校验发现的问题（为空表示通过）';
+ALTER TABLE ecom_order ADD COLUMN address_invalid TINYINT NOT NULL DEFAULT 0 COMMENT '地址校验不通过（必填缺失、邮编 / 电话格式、PO Box） 1是 0否';
+ALTER TABLE ecom_order ADD COLUMN remote_area TINYINT NOT NULL DEFAULT 0 COMMENT '收件地址在偏远地区 1是 0否';
+ALTER TABLE ecom_order ADD COLUMN blacklist_id BIGINT DEFAULT NULL COMMENT '命中的买家黑名单';
+ALTER TABLE ecom_order ADD COLUMN est_channel_id BIGINT DEFAULT NULL COMMENT '利润预估使用的物流渠道';
+ALTER TABLE ecom_order ADD COLUMN est_weight DECIMAL(12, 3) DEFAULT NULL COMMENT '利润预估使用的重量（kg）';
+ALTER TABLE ecom_order ADD COLUMN est_shipping DECIMAL(18, 2) DEFAULT NULL COMMENT '预估运费（本位币）';
+ALTER TABLE ecom_order ADD COLUMN est_fee DECIMAL(18, 2) DEFAULT NULL COMMENT '预估平台费用（本位币，佣金 + 配送费 + 其他 + 税）';
+ALTER TABLE ecom_order ADD COLUMN est_cost DECIMAL(18, 2) DEFAULT NULL COMMENT '预估商品成本（本位币，按物料参考成本）';
+ALTER TABLE ecom_order ADD COLUMN est_profit DECIMAL(18, 2) DEFAULT NULL COMMENT '预估利润（本位币）';
+ALTER TABLE ecom_order ADD COLUMN est_profit_rate DECIMAL(10, 2) DEFAULT NULL COMMENT '预估利润率（%）';
+CREATE INDEX idx_ecom_order_source ON ecom_order (source_order_id);
+
+-- 包裹：物流轨迹汇总、按包裹回传平台的结果
+ALTER TABLE ecom_package ADD COLUMN track_status VARCHAR(16) DEFAULT NULL COMMENT '轨迹状态(字典 ecom_track_status)';
+ALTER TABLE ecom_package ADD COLUMN track_alert VARCHAR(16) DEFAULT NULL COMMENT '轨迹预警(字典 ecom_track_alert)';
+ALTER TABLE ecom_package ADD COLUMN track_source VARCHAR(16) DEFAULT NULL COMMENT '轨迹来源 CARRIER物流商接口 TRACK17 17TRACK';
+ALTER TABLE ecom_package ADD COLUMN track_first_time DATETIME DEFAULT NULL COMMENT '首条轨迹（上网）时间';
+ALTER TABLE ecom_package ADD COLUMN track_last_time DATETIME DEFAULT NULL COMMENT '最新轨迹时间';
+ALTER TABLE ecom_package ADD COLUMN track_last_event VARCHAR(500) DEFAULT NULL COMMENT '最新轨迹描述';
+ALTER TABLE ecom_package ADD COLUMN track_delivered_time DATETIME DEFAULT NULL COMMENT '签收时间';
+ALTER TABLE ecom_package ADD COLUMN track_pull_time DATETIME DEFAULT NULL COMMENT '最近一次拉取轨迹的时间';
+ALTER TABLE ecom_package ADD COLUMN track_error VARCHAR(500) DEFAULT NULL COMMENT '最近一次拉取轨迹失败的原因';
+ALTER TABLE ecom_package ADD COLUMN ship_confirm TINYINT DEFAULT NULL COMMENT '按包裹回传平台（部分发货） 1成功 0失败 为空未回传';
+ALTER TABLE ecom_package ADD COLUMN ship_confirm_msg VARCHAR(500) DEFAULT NULL COMMENT '按包裹回传平台的结果说明';
+CREATE INDEX idx_ecom_package_track ON ecom_package (status, track_status);
+
+-- 审单规则：新增条件（预估利润率低于、命中黑名单、地址异常、偏远地区）与动作（自动打标签）
+ALTER TABLE ecom_order_rule ADD COLUMN profit_rate_max DECIMAL(10, 2) DEFAULT NULL COMMENT '条件：预估利润率低于（%）';
+ALTER TABLE ecom_order_rule ADD COLUMN blacklist_hit TINYINT NOT NULL DEFAULT 0 COMMENT '条件：命中买家黑名单 1是 0不限';
+ALTER TABLE ecom_order_rule ADD COLUMN address_issue TINYINT NOT NULL DEFAULT 0 COMMENT '条件：地址校验不通过 1是 0不限';
+ALTER TABLE ecom_order_rule ADD COLUMN remote_area TINYINT NOT NULL DEFAULT 0 COMMENT '条件：偏远地区 1是 0不限';
+ALTER TABLE ecom_order_rule ADD COLUMN tag_ids VARCHAR(255) DEFAULT NULL COMMENT '动作：自动打标签（标签 ID，逗号分隔）';
+
+-- 退货：按包裹 / 发货单选择退回的行
+ALTER TABLE ecom_return_item ADD COLUMN package_id BIGINT DEFAULT NULL COMMENT '退回的包裹（多包裹订单），为空按发货顺序分配';
+ALTER TABLE ecom_return ADD COLUMN trade_doc_nos VARCHAR(500) DEFAULT NULL COMMENT '生成的全部销售退货单号（多包裹订单按发货单分别生成，逗号分隔）';
+
+DROP TABLE IF EXISTS ecom_order_tag;
+CREATE TABLE ecom_order_tag (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id   BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    name        VARCHAR(32)  NOT NULL COMMENT '标签名称',
+    color       VARCHAR(16)  NOT NULL DEFAULT 'blue' COMMENT '颜色（Ant Design 预设色或 #RRGGBB）',
+    sort        INT          NOT NULL DEFAULT 0 COMMENT '排序',
+    status      TINYINT      NOT NULL DEFAULT 1 COMMENT '状态 1启用 0停用',
+    remark      VARCHAR(255)          DEFAULT NULL COMMENT '说明',
+    create_time DATETIME              DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME              DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_order_tag_name (name, tenant_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '订单标签';
+
+DROP TABLE IF EXISTS ecom_order_tag_link;
+CREATE TABLE ecom_order_tag_link (
+    id          BIGINT   NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id   BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    order_id    BIGINT   NOT NULL COMMENT '平台订单',
+    tag_id      BIGINT   NOT NULL COMMENT '标签',
+    auto_tagged TINYINT  NOT NULL DEFAULT 0 COMMENT '由审单规则自动打上 1是 0人工',
+    create_time DATETIME          DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME          DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_order_tag_link (order_id, tag_id, tenant_id),
+    KEY idx_ecom_order_tag_link_tag (tag_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '订单打标';
+
+DROP TABLE IF EXISTS ecom_order_note;
+CREATE TABLE ecom_order_note (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id   BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    order_id    BIGINT       NOT NULL COMMENT '平台订单',
+    content     VARCHAR(500) NOT NULL COMMENT '备注内容',
+    create_by   BIGINT                DEFAULT NULL COMMENT '备注人',
+    create_time DATETIME              DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME              DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_order_note_order (order_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '订单内部备注历史';
+
+DROP TABLE IF EXISTS ecom_buyer_blacklist;
+CREATE TABLE ecom_buyer_blacklist (
+    id            BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id     BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    match_type    VARCHAR(16)  NOT NULL COMMENT '匹配方式(字典 ecom_blacklist_type) BUYER买家 ID EMAIL邮箱 ADDRESS地址 PHONE电话',
+    match_value   VARCHAR(255) NOT NULL COMMENT '匹配值（原文）',
+    match_key     VARCHAR(255) NOT NULL COMMENT '规范化后的匹配值（小写、去空白 / 符号）',
+    store_id      BIGINT                DEFAULT NULL COMMENT '只对该店铺生效，为空全部店铺',
+    reason        VARCHAR(255)          DEFAULT NULL COMMENT '拉黑原因',
+    status        TINYINT      NOT NULL DEFAULT 1 COMMENT '状态 1启用 0停用',
+    hit_count     INT          NOT NULL DEFAULT 0 COMMENT '命中次数',
+    last_hit_time DATETIME              DEFAULT NULL COMMENT '最近命中时间',
+    create_by     BIGINT                DEFAULT NULL COMMENT '创建人',
+    create_time   DATETIME              DEFAULT NULL COMMENT '创建时间',
+    update_time   DATETIME              DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_buyer_blacklist (match_type, match_key, tenant_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '买家黑名单';
+
+DROP TABLE IF EXISTS ecom_remote_area;
+CREATE TABLE ecom_remote_area (
+    id             BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id      BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    country        VARCHAR(8)   NOT NULL COMMENT '国家 / 地区代码',
+    postcode_from  VARCHAR(16)  NOT NULL COMMENT '邮编起（前缀匹配时与止相同）',
+    postcode_to    VARCHAR(16)  NOT NULL COMMENT '邮编止（含）',
+    name           VARCHAR(64)           DEFAULT NULL COMMENT '地区名称',
+    status         TINYINT      NOT NULL DEFAULT 1 COMMENT '状态 1启用 0停用',
+    remark         VARCHAR(255)          DEFAULT NULL COMMENT '说明',
+    create_time    DATETIME              DEFAULT NULL COMMENT '创建时间',
+    update_time    DATETIME              DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_remote_area (country, postcode_from, postcode_to, tenant_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '偏远地区邮编段（地址校验识别偏远地区）';
+
+DROP TABLE IF EXISTS ecom_package_track;
+CREATE TABLE ecom_package_track (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id   BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    package_id  BIGINT       NOT NULL COMMENT '包裹',
+    event_time  DATETIME              DEFAULT NULL COMMENT '发生时间（解析失败为空）',
+    time_text   VARCHAR(32)           DEFAULT NULL COMMENT '发生时间原文',
+    location    VARCHAR(128)          DEFAULT NULL COMMENT '地点',
+    description VARCHAR(500)          DEFAULT NULL COMMENT '描述',
+    status      VARCHAR(16)           DEFAULT NULL COMMENT '归一后的状态(字典 ecom_track_status)',
+    sort        INT          NOT NULL DEFAULT 0 COMMENT '顺序（0 为最新）',
+    create_time DATETIME              DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME              DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_package_track_pkg (package_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '包裹物流轨迹';
+
+DROP TABLE IF EXISTS ecom_order_setting;
+CREATE TABLE ecom_order_setting (
+    id                BIGINT   NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id         BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    address_check     TINYINT  NOT NULL DEFAULT 1 COMMENT '审核前校验地址 1是 0否',
+    track_key         TEXT              COMMENT '17TRACK API 密钥（加密保存，enc: 前缀）',
+    track_enabled     TINYINT  NOT NULL DEFAULT 1 COMMENT '定时拉取已发货包裹的轨迹 1是 0否',
+    no_scan_hours     INT      NOT NULL DEFAULT 72 COMMENT '发货后超过多少小时没有轨迹为超时未上网',
+    transit_days      INT      NOT NULL DEFAULT 20 COMMENT '上网后超过多少天未签收为运输超时',
+    stale_days        INT      NOT NULL DEFAULT 7 COMMENT '超过多少天轨迹没有更新为停滞（运输超时）',
+    create_time       DATETIME          DEFAULT NULL COMMENT '创建时间',
+    update_time       DATETIME          DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_order_setting (tenant_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '订单作业设置（地址校验、物流跟踪）';
+
+-- 菜单：订单与售后下的订单标签、买家黑名单、物流跟踪、偏远地区；平台订单的手工建单、补发、打标签按钮
+INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time) VALUES
+(530, 982, '订单标签', 'C', 'order-tag', 'ecom/order-tag/index', 'ecom:orderTag:list', 'TagsOutlined', 6, 1, 1, NOW(), NOW()),
+(531, 982, '买家黑名单', 'C', 'buyer-blacklist', 'ecom/buyer-blacklist/index', 'ecom:blacklist:list', 'StopOutlined', 7, 1, 1, NOW(), NOW()),
+(532, 982, '物流跟踪', 'C', 'order-track', 'ecom/order-track/index', 'ecom:track:list', 'NodeIndexOutlined', 8, 1, 1, NOW(), NOW()),
+(533, 982, '偏远地区', 'C', 'remote-area', 'ecom/remote-area/index', 'ecom:remoteArea:list', 'EnvironmentOutlined', 9, 1, 1, NOW(), NOW()),
+(5300, 530, '标签新增', 'F', NULL, NULL, 'ecom:orderTag:add', NULL, 1, 1, 1, NOW(), NOW()),
+(5301, 530, '标签修改', 'F', NULL, NULL, 'ecom:orderTag:edit', NULL, 2, 1, 1, NOW(), NOW()),
+(5302, 530, '标签删除', 'F', NULL, NULL, 'ecom:orderTag:remove', NULL, 3, 1, 1, NOW(), NOW()),
+(5310, 531, '黑名单新增', 'F', NULL, NULL, 'ecom:blacklist:add', NULL, 1, 1, 1, NOW(), NOW()),
+(5311, 531, '黑名单修改', 'F', NULL, NULL, 'ecom:blacklist:edit', NULL, 2, 1, 1, NOW(), NOW()),
+(5312, 531, '黑名单删除', 'F', NULL, NULL, 'ecom:blacklist:remove', NULL, 3, 1, 1, NOW(), NOW()),
+(5320, 532, '拉取轨迹', 'F', NULL, NULL, 'ecom:track:sync', NULL, 1, 1, 1, NOW(), NOW()),
+(5321, 532, '跟踪设置', 'F', NULL, NULL, 'ecom:track:setting', NULL, 2, 1, 1, NOW(), NOW()),
+(5330, 533, '偏远地区新增', 'F', NULL, NULL, 'ecom:remoteArea:add', NULL, 1, 1, 1, NOW(), NOW()),
+(5331, 533, '偏远地区修改', 'F', NULL, NULL, 'ecom:remoteArea:edit', NULL, 2, 1, 1, NOW(), NOW()),
+(5332, 533, '偏远地区删除', 'F', NULL, NULL, 'ecom:remoteArea:remove', NULL, 3, 1, 1, NOW(), NOW()),
+(5340, 423, '手工建单', 'F', NULL, NULL, 'ecom:order:add', NULL, 8, 1, 1, NOW(), NOW()),
+(5341, 423, '创建补发单', 'F', NULL, NULL, 'ecom:order:resend', NULL, 9, 1, 1, NOW(), NOW()),
+(5342, 423, '订单打标签 / 备注', 'F', NULL, NULL, 'ecom:order:tag', NULL, 10, 1, 1, NOW(), NOW());
+
+-- 字典：订单类型、轨迹状态、轨迹预警、黑名单匹配方式（系统字典）
+INSERT INTO sys_dict_type (id, name, type, kind, status, remark, create_time, update_time) VALUES
+(330, '订单类型', 'ecom_order_type', 'SYSTEM', 1, '平台订单 / 手工订单 / 补发单', NOW(), NOW()),
+(331, '物流轨迹状态', 'ecom_track_status', 'SYSTEM', 1, '包裹轨迹归一后的状态', NOW(), NOW()),
+(332, '物流轨迹预警', 'ecom_track_alert', 'SYSTEM', 1, '超时未上网、运输超时、轨迹异常', NOW(), NOW()),
+(333, '黑名单匹配方式', 'ecom_blacklist_type', 'SYSTEM', 1, '买家黑名单按买家 ID / 邮箱 / 地址 / 电话匹配', NOW(), NOW());
+INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, builtin, create_time, update_time) VALUES
+('ecom_order_type', '平台订单', 'PLATFORM', 'default', 1, 1, 1, NOW(), NOW()),
+('ecom_order_type', '手工订单', 'MANUAL', 'cyan', 2, 1, 1, NOW(), NOW()),
+('ecom_order_type', '补发单', 'RESEND', 'purple', 3, 1, 1, NOW(), NOW()),
+('ecom_track_status', '暂无轨迹', 'NOT_FOUND', 'default', 1, 1, 1, NOW(), NOW()),
+('ecom_track_status', '已揽收', 'PICKED_UP', 'cyan', 2, 1, 1, NOW(), NOW()),
+('ecom_track_status', '运输中', 'IN_TRANSIT', 'blue', 3, 1, 1, NOW(), NOW()),
+('ecom_track_status', '到达待取', 'PICKUP', 'gold', 4, 1, 1, NOW(), NOW()),
+('ecom_track_status', '已签收', 'DELIVERED', 'green', 5, 1, 1, NOW(), NOW()),
+('ecom_track_status', '异常', 'EXCEPTION', 'red', 6, 1, 1, NOW(), NOW()),
+('ecom_track_status', '退回', 'RETURNED', 'volcano', 7, 1, 1, NOW(), NOW()),
+('ecom_track_alert', '超时未上网', 'NO_SCAN', 'orange', 1, 1, 1, NOW(), NOW()),
+('ecom_track_alert', '运输超时', 'TRANSIT_TIMEOUT', 'magenta', 2, 1, 1, NOW(), NOW()),
+('ecom_track_alert', '轨迹异常', 'EXCEPTION', 'red', 3, 1, 1, NOW(), NOW()),
+('ecom_blacklist_type', '买家 ID', 'BUYER', 'blue', 1, 1, 1, NOW(), NOW()),
+('ecom_blacklist_type', '邮箱', 'EMAIL', 'cyan', 2, 1, 1, NOW(), NOW()),
+('ecom_blacklist_type', '地址', 'ADDRESS', 'purple', 3, 1, 1, NOW(), NOW()),
+('ecom_blacklist_type', '电话', 'PHONE', 'gold', 4, 1, 1, NOW(), NOW());
+
+-- 内置角色：超级管理员、电商运营全部；总经理只读（页面）
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT r.id, m.id FROM sys_role r JOIN sys_menu m ON (m.id BETWEEN 530 AND 539 OR m.id BETWEEN 5300 AND 5399)
+WHERE r.id IN (1, 5) AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r.id AND x.menu_id = m.id);
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT r.id, m.id FROM sys_role r JOIN sys_menu m ON m.id BETWEEN 530 AND 539
+WHERE r.id = 3 AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r.id AND x.menu_id = m.id);
+
+-- 偏远地区示例（美国阿拉斯加、夏威夷、波多黎各，澳大利亚北领地，英国苏格兰高地与离岛），可在「偏远地区」中维护
+INSERT INTO ecom_remote_area (country, postcode_from, postcode_to, name, status, create_time, update_time) VALUES
+('US', '99500', '99999', 'Alaska', 1, NOW(), NOW()),
+('US', '96700', '96899', 'Hawaii', 1, NOW(), NOW()),
+('US', '00600', '00999', 'Puerto Rico', 1, NOW(), NOW()),
+('AU', '0800', '0899', 'Northern Territory', 1, NOW(), NOW()),
+('GB', 'HS', 'HS', 'Outer Hebrides', 1, NOW(), NOW()),
+('GB', 'ZE', 'ZE', 'Shetland', 1, NOW(), NOW()),
+('GB', 'KW15', 'KW17', 'Orkney', 1, NOW(), NOW()),
+('GB', 'IV', 'IV', 'Highlands (Inverness)', 1, NOW(), NOW());
+
+-- ===== 第四轮：刊登与定价 =====
+-- 刊登中心（草稿 → 每店一份内容 → 经连接器发布）、刊登模板、价格模板（定价公式）、批量改价 / 改库存与改价历史、自动调价（规则、日志）、竞品价格快照
+
+DROP TABLE IF EXISTS ecom_price_template;
+CREATE TABLE ecom_price_template (
+    id              BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id       BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    name            VARCHAR(64)    NOT NULL COMMENT '名称',
+    platform        VARCHAR(16)             DEFAULT NULL COMMENT '适用平台(字典 ecom_platform)，为空通用',
+    first_leg_cost  DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '头程运费（本位币 / 件）',
+    other_cost      DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '包材等其他成本（本位币 / 件）',
+    commission_rate DECIMAL(6, 2)  NOT NULL DEFAULT 15 COMMENT '平台佣金率（%）',
+    other_rate      DECIMAL(6, 2)  NOT NULL DEFAULT 0 COMMENT '其他费率（广告、退货损耗等，%）',
+    fixed_fee       DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '固定费（店铺币种 / 件，如 FBA 配送费、交易手续费）',
+    target_margin   DECIMAL(6, 2)  NOT NULL DEFAULT 20 COMMENT '目标利润率（%，利润 ÷ 售价）',
+    price_tail      DECIMAL(6, 2)           DEFAULT NULL COMMENT '尾数（如 0.99：售价向上取到 x.99），为空保留两位小数',
+    min_price       DECIMAL(18, 4)          DEFAULT NULL COMMENT '最低售价（店铺币种），为空不限',
+    status          TINYINT        NOT NULL DEFAULT 1 COMMENT '状态 1启用 0停用',
+    remark          VARCHAR(255)            DEFAULT NULL COMMENT '备注',
+    create_by       BIGINT                  DEFAULT NULL COMMENT '创建人',
+    create_time     DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time     DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_price_template (name, tenant_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '价格模板：售价 = ((成本 + 头程 + 其他成本) ÷ 汇率 + 固定费) ÷ (1 − 佣金率 − 其他费率 − 目标利润率)，再取尾数';
+
+DROP TABLE IF EXISTS ecom_publish_template;
+CREATE TABLE ecom_publish_template (
+    id                BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id         BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    name              VARCHAR(64)  NOT NULL COMMENT '名称',
+    platform          VARCHAR(16)  NOT NULL COMMENT '平台(字典 ecom_platform)',
+    category_id       VARCHAR(64)           DEFAULT NULL COMMENT '默认平台类目 ID（亚马逊为 Product Type）',
+    category_name     VARCHAR(255)          DEFAULT NULL COMMENT '类目名称（路径）',
+    attributes_json   TEXT                  DEFAULT NULL COMMENT '常用属性默认值（JSON 对象：属性键 → 值）',
+    brand             VARCHAR(64)           DEFAULT NULL COMMENT '默认品牌',
+    shipping_template VARCHAR(128)          DEFAULT NULL COMMENT '运费模板 / 物流（eBay fulfillmentPolicyId、虾皮 logistic_id 等）',
+    return_policy     VARCHAR(128)          DEFAULT NULL COMMENT '退货政策（eBay returnPolicyId 等）',
+    handling_days     INT                   DEFAULT NULL COMMENT '备货天数',
+    fulfillment       VARCHAR(16)           DEFAULT NULL COMMENT '配送方式 PLATFORM平台仓 SELLER自发货',
+    price_template_id BIGINT                DEFAULT NULL COMMENT '默认价格模板',
+    extra_json        TEXT                  DEFAULT NULL COMMENT '其他平台参数（JSON 对象，如 eBay paymentPolicyId、merchantLocationKey）',
+    status            TINYINT      NOT NULL DEFAULT 1 COMMENT '状态 1启用 0停用',
+    remark            VARCHAR(255)          DEFAULT NULL COMMENT '备注',
+    create_by         BIGINT                DEFAULT NULL COMMENT '创建人',
+    create_time       DATETIME              DEFAULT NULL COMMENT '创建时间',
+    update_time       DATETIME              DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_publish_template (name, tenant_id),
+    KEY idx_ecom_publish_template_platform (platform)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '刊登模板：按平台保存常用属性、运费模板、退货政策等默认值';
+
+DROP TABLE IF EXISTS ecom_publish_draft;
+CREATE TABLE ecom_publish_draft (
+    id             BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id      BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    material_id    BIGINT       NOT NULL COMMENT '来源物料（多规格款式时为 SPU，变体为其下的 SKU）',
+    title          VARCHAR(255) NOT NULL COMMENT '主标题',
+    bullets_json   TEXT                  DEFAULT NULL COMMENT '五点描述 / 卖点（JSON 数组）',
+    description    TEXT                  DEFAULT NULL COMMENT '商品描述',
+    images_json    TEXT                  DEFAULT NULL COMMENT '图片 URL（JSON 数组，第一张为主图）',
+    brand          VARCHAR(64)           DEFAULT NULL COMMENT '品牌',
+    barcode_type   VARCHAR(16)           DEFAULT NULL COMMENT '条码类型 UPC EAN GTIN JAN ISBN',
+    upc_exempt     TINYINT      NOT NULL DEFAULT 0 COMMENT 'UPC 豁免 1是',
+    exemption_note VARCHAR(255)          DEFAULT NULL COMMENT '豁免说明（品牌备案 / GTIN 豁免编号等）',
+    remark         VARCHAR(255)          DEFAULT NULL COMMENT '备注',
+    dept_id        BIGINT                DEFAULT NULL COMMENT '制单人部门',
+    create_by      BIGINT                DEFAULT NULL COMMENT '制单人',
+    create_time    DATETIME              DEFAULT NULL COMMENT '创建时间',
+    update_time    DATETIME              DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_publish_draft_material (material_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '刊登草稿（主内容，按店铺拆成刊登记录）';
+
+DROP TABLE IF EXISTS ecom_publish_item;
+CREATE TABLE ecom_publish_item (
+    id                  BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id           BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    draft_id            BIGINT       NOT NULL COMMENT '刊登草稿',
+    store_id            BIGINT       NOT NULL COMMENT '店铺',
+    status              VARCHAR(16)  NOT NULL DEFAULT 'DRAFT' COMMENT '状态(字典 ecom_publish_status)',
+    title               VARCHAR(255) NOT NULL COMMENT '标题',
+    bullets_json        TEXT                  DEFAULT NULL COMMENT '五点描述（JSON 数组）',
+    description         TEXT                  DEFAULT NULL COMMENT '描述',
+    images_json         TEXT                  DEFAULT NULL COMMENT '图片 URL（JSON 数组）',
+    brand               VARCHAR(64)           DEFAULT NULL COMMENT '品牌',
+    barcode_type        VARCHAR(16)           DEFAULT NULL COMMENT '条码类型',
+    upc_exempt          TINYINT      NOT NULL DEFAULT 0 COMMENT 'UPC 豁免',
+    exemption_note      VARCHAR(255)          DEFAULT NULL COMMENT '豁免说明',
+    category_id         VARCHAR(64)           DEFAULT NULL COMMENT '平台类目 ID（亚马逊 Product Type）',
+    category_name       VARCHAR(255)          DEFAULT NULL COMMENT '类目名称',
+    attributes_json     TEXT                  DEFAULT NULL COMMENT '平台属性（JSON 对象）',
+    publish_template_id BIGINT                DEFAULT NULL COMMENT '刊登模板',
+    price_template_id   BIGINT                DEFAULT NULL COMMENT '价格模板',
+    currency            VARCHAR(8)            DEFAULT NULL COMMENT '币种（店铺币种）',
+    fulfillment         VARCHAR(16)           DEFAULT NULL COMMENT '配送方式',
+    shipping_template   VARCHAR(128)          DEFAULT NULL COMMENT '运费模板',
+    return_policy       VARCHAR(128)          DEFAULT NULL COMMENT '退货政策',
+    handling_days       INT                   DEFAULT NULL COMMENT '备货天数',
+    extra_json          TEXT                  DEFAULT NULL COMMENT '其他平台参数（JSON 对象）',
+    parent_sku          VARCHAR(64)           DEFAULT NULL COMMENT '父 SKU（多变体时）',
+    platform_item_id    VARCHAR(64)           DEFAULT NULL COMMENT '平台商品 ID（发布成功后回写）',
+    platform_url        VARCHAR(255)          DEFAULT NULL COMMENT '平台商品链接',
+    publish_ref         VARCHAR(128)          DEFAULT NULL COMMENT '平台异步处理编号（沃尔玛 feedId 等，发布中时轮询结果）',
+    error_message       VARCHAR(2000)         DEFAULT NULL COMMENT '失败原因（平台返回的错误）',
+    retry_count         INT          NOT NULL DEFAULT 0 COMMENT '重试次数',
+    submit_time         DATETIME              DEFAULT NULL COMMENT '提交发布时间',
+    publish_time        DATETIME              DEFAULT NULL COMMENT '发布成功时间',
+    offline_time        DATETIME              DEFAULT NULL COMMENT '下架时间',
+    create_by           BIGINT                DEFAULT NULL COMMENT '创建人',
+    create_time         DATETIME              DEFAULT NULL COMMENT '创建时间',
+    update_time         DATETIME              DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_publish_item (draft_id, store_id, tenant_id),
+    KEY idx_ecom_publish_item_status (status),
+    KEY idx_ecom_publish_item_store (store_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '刊登记录：一个草稿在一个店铺的内容与发布状态';
+
+DROP TABLE IF EXISTS ecom_publish_variant;
+CREATE TABLE ecom_publish_variant (
+    id               BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id        BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    item_id          BIGINT         NOT NULL COMMENT '刊登记录',
+    material_id      BIGINT         NOT NULL COMMENT '物料（SKU）',
+    seller_sku       VARCHAR(64)    NOT NULL COMMENT '平台 SKU',
+    variant_text     VARCHAR(128)            DEFAULT NULL COMMENT '变体属性（显示用，如 Red / XL）',
+    variant_attrs_json VARCHAR(1000)           DEFAULT NULL COMMENT '变体属性（JSON 对象：属性名 → 值）',
+    barcode          VARCHAR(32)             DEFAULT NULL COMMENT '条码（UPC / EAN）',
+    price            DECIMAL(18, 4)          DEFAULT NULL COMMENT '售价（店铺币种）',
+    qty              INT            NOT NULL DEFAULT 0 COMMENT '库存',
+    cost             DECIMAL(18, 4)          DEFAULT NULL COMMENT '单件成本（本位币，物料参考成本）',
+    suggested_price  DECIMAL(18, 4)          DEFAULT NULL COMMENT '按价格模板计算的建议价',
+    est_profit       DECIMAL(18, 4)          DEFAULT NULL COMMENT '按售价预估的单件利润（店铺币种）',
+    est_margin       DECIMAL(10, 2)          DEFAULT NULL COMMENT '预估利润率（%）',
+    platform_sku_id  VARCHAR(64)             DEFAULT NULL COMMENT '平台 SKU / 变体 ID（发布成功后回写）',
+    listing_id       BIGINT                  DEFAULT NULL COMMENT '生成 / 关联的在线商品',
+    sort             INT            NOT NULL DEFAULT 0 COMMENT '排序',
+    create_time      DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time      DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_publish_variant (item_id, seller_sku, tenant_id),
+    KEY idx_ecom_publish_variant_material (material_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '刊登记录的变体（每个平台 SKU 一行）';
+
+DROP TABLE IF EXISTS ecom_publish_log;
+CREATE TABLE ecom_publish_log (
+    id          BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id   BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    item_id     BIGINT        NOT NULL COMMENT '刊登记录',
+    store_id    BIGINT        NOT NULL COMMENT '店铺',
+    action      VARCHAR(16)   NOT NULL COMMENT '动作(字典 ecom_publish_action)',
+    success     TINYINT       NOT NULL DEFAULT 1 COMMENT '是否成功',
+    message     VARCHAR(2000)          DEFAULT NULL COMMENT '说明 / 平台返回的错误',
+    create_by   BIGINT                 DEFAULT NULL COMMENT '操作人（定时任务为空）',
+    create_time DATETIME               DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME               DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_publish_log_item (item_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '刊登日志';
+
+DROP TABLE IF EXISTS ecom_price_change;
+CREATE TABLE ecom_price_change (
+    id          BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id   BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    batch_no    VARCHAR(32)             DEFAULT NULL COMMENT '批次号（一次批量修改相同）',
+    listing_id  BIGINT         NOT NULL COMMENT '在线商品',
+    store_id    BIGINT         NOT NULL COMMENT '店铺',
+    seller_sku  VARCHAR(64)    NOT NULL COMMENT '平台 SKU',
+    change_type VARCHAR(8)     NOT NULL COMMENT '类型(字典 ecom_price_change_type) PRICE价格 STOCK库存',
+    old_value   DECIMAL(18, 4)          DEFAULT NULL COMMENT '原值',
+    new_value   DECIMAL(18, 4) NOT NULL COMMENT '新值',
+    currency    VARCHAR(8)              DEFAULT NULL COMMENT '币种',
+    source      VARCHAR(16)    NOT NULL COMMENT '来源(字典 ecom_price_change_source)',
+    status      VARCHAR(16)    NOT NULL COMMENT '结果(字典 ecom_price_change_status)',
+    message     VARCHAR(1000)           DEFAULT NULL COMMENT '说明 / 平台返回的错误',
+    rule_id     BIGINT                  DEFAULT NULL COMMENT '自动调价规则',
+    create_by   BIGINT                  DEFAULT NULL COMMENT '操作人（定时任务为空）',
+    create_time DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_price_change_listing (listing_id, create_time),
+    KEY idx_ecom_price_change_store (store_id, create_time),
+    KEY idx_ecom_price_change_batch (batch_no)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '改价 / 改库存历史';
+
+DROP TABLE IF EXISTS ecom_reprice_rule;
+CREATE TABLE ecom_reprice_rule (
+    id                BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id         BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    name              VARCHAR(64)    NOT NULL COMMENT '名称',
+    status            TINYINT        NOT NULL DEFAULT 1 COMMENT '状态 1启用 0停用',
+    store_ids         VARCHAR(500)            DEFAULT NULL COMMENT '适用店铺（逗号分隔，为空全部）',
+    skus              VARCHAR(1000)           DEFAULT NULL COMMENT '适用平台 SKU（逗号分隔，为空为店铺的全部在售商品）',
+    strategy          VARCHAR(16)    NOT NULL COMMENT '策略(字典 ecom_reprice_strategy)',
+    adjust_mode       VARCHAR(16)             DEFAULT NULL COMMENT '调整方式 AMOUNT按金额 PERCENT按百分比（低于最低价、按库存时使用）',
+    adjust_value      DECIMAL(18, 4)          DEFAULT NULL COMMENT '调整值（金额或 %）',
+    target_margin     DECIMAL(6, 2)           DEFAULT NULL COMMENT '目标利润率（%，按目标利润率时使用）',
+    floor_mode        VARCHAR(16)    NOT NULL DEFAULT 'FIXED' COMMENT '底价方式(字典 ecom_reprice_floor_mode)',
+    min_price         DECIMAL(18, 4)          DEFAULT NULL COMMENT '最低价（固定底价）',
+    max_price         DECIMAL(18, 4)          DEFAULT NULL COMMENT '最高价，为空不限',
+    min_margin        DECIMAL(6, 2)           DEFAULT NULL COMMENT '最低利润率（%，按成本推算底价）',
+    price_template_id BIGINT                  DEFAULT NULL COMMENT '计算成本与费用的价格模板',
+    stock_high_days   INT                     DEFAULT NULL COMMENT '可售天数高于它时降价（按库存）',
+    stock_low_days    INT                     DEFAULT NULL COMMENT '可售天数低于它时涨价（按库存）',
+    interval_minutes  INT            NOT NULL DEFAULT 60 COMMENT '执行间隔（分钟）',
+    suggest_only      TINYINT        NOT NULL DEFAULT 1 COMMENT '仅建议不推送 1是',
+    last_run_time     DATETIME                DEFAULT NULL COMMENT '最近执行时间',
+    last_run_message  VARCHAR(500)            DEFAULT NULL COMMENT '最近执行结果',
+    remark            VARCHAR(255)            DEFAULT NULL COMMENT '备注',
+    create_by         BIGINT                  DEFAULT NULL COMMENT '创建人',
+    create_time       DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time       DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_reprice_rule (name, tenant_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '自动调价规则';
+
+DROP TABLE IF EXISTS ecom_reprice_log;
+CREATE TABLE ecom_reprice_log (
+    id           BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id    BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    rule_id      BIGINT         NOT NULL COMMENT '规则',
+    listing_id   BIGINT         NOT NULL COMMENT '在线商品',
+    store_id     BIGINT         NOT NULL COMMENT '店铺',
+    seller_sku   VARCHAR(64)    NOT NULL COMMENT '平台 SKU',
+    old_price    DECIMAL(18, 4)          DEFAULT NULL COMMENT '原价',
+    new_price    DECIMAL(18, 4)          DEFAULT NULL COMMENT '新价',
+    lowest_price DECIMAL(18, 4)          DEFAULT NULL COMMENT '竞品最低价（含运费）',
+    buybox_price DECIMAL(18, 4)          DEFAULT NULL COMMENT '购物车价',
+    floor_price  DECIMAL(18, 4)          DEFAULT NULL COMMENT '底价',
+    currency     VARCHAR(8)              DEFAULT NULL COMMENT '币种',
+    reason       VARCHAR(500)            DEFAULT NULL COMMENT '调价原因',
+    status       VARCHAR(16)    NOT NULL COMMENT '结果(字典 ecom_reprice_log_status)',
+    message      VARCHAR(1000)           DEFAULT NULL COMMENT '推送结果 / 平台错误',
+    run_time     DATETIME       NOT NULL COMMENT '执行时间',
+    create_by    BIGINT                  DEFAULT NULL COMMENT '操作人（定时任务为空）',
+    create_time  DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time  DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_reprice_log_rule (rule_id, run_time),
+    KEY idx_ecom_reprice_log_listing (listing_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '自动调价日志';
+
+DROP TABLE IF EXISTS ecom_competitor_price;
+CREATE TABLE ecom_competitor_price (
+    id               BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id        BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    listing_id       BIGINT         NOT NULL COMMENT '在线商品',
+    store_id         BIGINT         NOT NULL COMMENT '店铺',
+    seller_sku       VARCHAR(64)    NOT NULL COMMENT '平台 SKU',
+    platform_item_id VARCHAR(64)             DEFAULT NULL COMMENT '平台商品 ID（ASIN 等）',
+    source           VARCHAR(16)    NOT NULL COMMENT '来源(字典 ecom_competitor_source)',
+    lowest_price     DECIMAL(18, 4)          DEFAULT NULL COMMENT '竞品最低价（商品价，不含本店）',
+    lowest_shipping  DECIMAL(18, 4)          DEFAULT NULL COMMENT '最低价对应的运费',
+    buybox_price     DECIMAL(18, 4)          DEFAULT NULL COMMENT '购物车价（含运费）',
+    buybox_winner    TINYINT        NOT NULL DEFAULT 0 COMMENT '本店持有购物车 1是',
+    offer_count      INT                     DEFAULT NULL COMMENT '卖家数',
+    competitor       VARCHAR(128)            DEFAULT NULL COMMENT '最低价卖家 / 竞品说明',
+    currency         VARCHAR(8)              DEFAULT NULL COMMENT '币种',
+    snapshot_time    DATETIME       NOT NULL COMMENT '快照时间',
+    remark           VARCHAR(255)            DEFAULT NULL COMMENT '备注',
+    create_by        BIGINT                  DEFAULT NULL COMMENT '录入人（接口拉取为空）',
+    create_time      DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time      DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_competitor_listing (listing_id, snapshot_time),
+    KEY idx_ecom_competitor_store (store_id, snapshot_time)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '竞品价格快照（亚马逊经 Product Pricing API 拉取，其他平台手工录入 / 导入）';
+
+-- 菜单：店铺与商品下的刊登中心、刊登模板、价格模板、改价记录、自动调价、竞品价格
+INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time) VALUES
+(500, 981, '刊登中心', 'C', 'publish', 'ecom/publish/index', 'ecom:publish:list', 'CloudUploadOutlined', 5, 1, 1, NOW(), NOW()),
+(501, 981, '刊登模板', 'C', 'publish-template', 'ecom/publish-template/index', 'ecom:publishTemplate:list', 'ProfileOutlined', 6, 1, 1, NOW(), NOW()),
+(502, 981, '价格模板', 'C', 'price-template', 'ecom/price-template/index', 'ecom:priceTemplate:list', 'CalculatorOutlined', 7, 1, 1, NOW(), NOW()),
+(503, 981, '改价记录', 'C', 'price-change', 'ecom/price-change/index', 'ecom:priceChange:list', 'HistoryOutlined', 8, 1, 1, NOW(), NOW()),
+(504, 981, '自动调价', 'C', 'repricer', 'ecom/repricer/index', 'ecom:repricer:list', 'RiseOutlined', 9, 1, 1, NOW(), NOW()),
+(505, 981, '竞品价格', 'C', 'competitor-price', 'ecom/competitor-price/index', 'ecom:competitor:list', 'FundViewOutlined', 10, 1, 1, NOW(), NOW()),
+(5000, 500, '刊登新增', 'F', NULL, NULL, 'ecom:publish:add', NULL, 1, 1, 1, NOW(), NOW()),
+(5001, 500, '刊登修改', 'F', NULL, NULL, 'ecom:publish:edit', NULL, 2, 1, 1, NOW(), NOW()),
+(5002, 500, '刊登删除', 'F', NULL, NULL, 'ecom:publish:remove', NULL, 3, 1, 1, NOW(), NOW()),
+(5003, 500, '发布 / 重试 / 下架', 'F', NULL, NULL, 'ecom:publish:push', NULL, 4, 1, 1, NOW(), NOW()),
+(5010, 501, '模板新增', 'F', NULL, NULL, 'ecom:publishTemplate:add', NULL, 1, 1, 1, NOW(), NOW()),
+(5011, 501, '模板修改', 'F', NULL, NULL, 'ecom:publishTemplate:edit', NULL, 2, 1, 1, NOW(), NOW()),
+(5012, 501, '模板删除', 'F', NULL, NULL, 'ecom:publishTemplate:remove', NULL, 3, 1, 1, NOW(), NOW()),
+(5020, 502, '模板新增', 'F', NULL, NULL, 'ecom:priceTemplate:add', NULL, 1, 1, 1, NOW(), NOW()),
+(5021, 502, '模板修改', 'F', NULL, NULL, 'ecom:priceTemplate:edit', NULL, 2, 1, 1, NOW(), NOW()),
+(5022, 502, '模板删除', 'F', NULL, NULL, 'ecom:priceTemplate:remove', NULL, 3, 1, 1, NOW(), NOW()),
+(5030, 503, '批量改价 / 改库存', 'F', NULL, NULL, 'ecom:priceChange:add', NULL, 1, 1, 1, NOW(), NOW()),
+(5040, 504, '规则新增', 'F', NULL, NULL, 'ecom:repricer:add', NULL, 1, 1, 1, NOW(), NOW()),
+(5041, 504, '规则修改', 'F', NULL, NULL, 'ecom:repricer:edit', NULL, 2, 1, 1, NOW(), NOW()),
+(5042, 504, '规则删除', 'F', NULL, NULL, 'ecom:repricer:remove', NULL, 3, 1, 1, NOW(), NOW()),
+(5043, 504, '执行 / 应用建议', 'F', NULL, NULL, 'ecom:repricer:execute', NULL, 4, 1, 1, NOW(), NOW()),
+(5050, 505, '录入 / 导入 / 拉取', 'F', NULL, NULL, 'ecom:competitor:add', NULL, 1, 1, 1, NOW(), NOW()),
+(5051, 505, '删除', 'F', NULL, NULL, 'ecom:competitor:remove', NULL, 2, 1, 1, NOW(), NOW());
+
+-- 系统字典：刊登状态与动作、改价类型 / 来源 / 结果、调整方式、调价策略 / 底价方式 / 日志结果、竞品价格来源
+INSERT INTO sys_dict_type (id, name, type, kind, status, remark, create_time, update_time) VALUES
+(300, '刊登状态', 'ecom_publish_status', 'SYSTEM', 1, '刊登记录的发布状态', NOW(), NOW()),
+(301, '刊登动作', 'ecom_publish_action', 'SYSTEM', 1, '刊登日志的动作', NOW(), NOW()),
+(302, '改价类型', 'ecom_price_change_type', 'SYSTEM', 1, '改价历史中的修改对象', NOW(), NOW()),
+(303, '改价来源', 'ecom_price_change_source', 'SYSTEM', 1, '改价历史的来源', NOW(), NOW()),
+(304, '改价结果', 'ecom_price_change_status', 'SYSTEM', 1, '改价是否推送到平台', NOW(), NOW()),
+(305, '调整方式', 'ecom_price_adjust_mode', 'SYSTEM', 1, '批量改价 / 改库存、调价规则的调整方式', NOW(), NOW()),
+(306, '调价策略', 'ecom_reprice_strategy', 'SYSTEM', 1, '自动调价规则的策略', NOW(), NOW()),
+(307, '底价方式', 'ecom_reprice_floor_mode', 'SYSTEM', 1, '自动调价的最低价计算方式', NOW(), NOW()),
+(308, '调价结果', 'ecom_reprice_log_status', 'SYSTEM', 1, '自动调价日志的结果', NOW(), NOW()),
+(309, '竞品价格来源', 'ecom_competitor_source', 'SYSTEM', 1, '竞品价格快照的来源', NOW(), NOW());
+INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, builtin, create_time, update_time) VALUES
+('ecom_publish_status', '草稿', 'DRAFT', 'default', 1, 1, 1, NOW(), NOW()),
+('ecom_publish_status', '待发布', 'PENDING', 'orange', 2, 1, 1, NOW(), NOW()),
+('ecom_publish_status', '发布中', 'PUBLISHING', 'processing', 3, 1, 1, NOW(), NOW()),
+('ecom_publish_status', '成功', 'SUCCESS', 'green', 4, 1, 1, NOW(), NOW()),
+('ecom_publish_status', '失败', 'FAILED', 'red', 5, 1, 1, NOW(), NOW()),
+('ecom_publish_status', '已下架', 'OFFLINE', 'default', 6, 1, 1, NOW(), NOW()),
+('ecom_publish_action', '提交发布', 'SUBMIT', 'blue', 1, 1, 1, NOW(), NOW()),
+('ecom_publish_action', '发布', 'PUBLISH', 'cyan', 2, 1, 1, NOW(), NOW()),
+('ecom_publish_action', '查询结果', 'CHECK', 'geekblue', 3, 1, 1, NOW(), NOW()),
+('ecom_publish_action', '下架', 'OFFLINE', 'default', 4, 1, 1, NOW(), NOW()),
+('ecom_price_change_type', '价格', 'PRICE', 'blue', 1, 1, 1, NOW(), NOW()),
+('ecom_price_change_type', '库存', 'STOCK', 'purple', 2, 1, 1, NOW(), NOW()),
+('ecom_price_change_source', '手工修改', 'MANUAL', 'default', 1, 1, 1, NOW(), NOW()),
+('ecom_price_change_source', '批量修改', 'BATCH', 'blue', 2, 1, 1, NOW(), NOW()),
+('ecom_price_change_source', '自动调价', 'REPRICER', 'purple', 3, 1, 1, NOW(), NOW()),
+('ecom_price_change_source', '刊登', 'PUBLISH', 'cyan', 4, 1, 1, NOW(), NOW()),
+('ecom_price_change_status', '已推送', 'SUCCESS', 'green', 1, 1, 1, NOW(), NOW()),
+('ecom_price_change_status', '推送失败', 'FAILED', 'red', 2, 1, 1, NOW(), NOW()),
+('ecom_price_change_status', '仅本地', 'LOCAL', 'default', 3, 1, 1, NOW(), NOW()),
+('ecom_price_adjust_mode', '固定值', 'FIXED', 'default', 1, 1, 1, NOW(), NOW()),
+('ecom_price_adjust_mode', '按百分比', 'PERCENT', 'blue', 2, 1, 1, NOW(), NOW()),
+('ecom_price_adjust_mode', '按金额', 'AMOUNT', 'cyan', 3, 1, 1, NOW(), NOW()),
+('ecom_price_adjust_mode', '按公式', 'FORMULA', 'purple', 4, 1, 1, NOW(), NOW()),
+('ecom_reprice_strategy', '跟随最低价', 'MATCH_LOWEST', 'blue', 1, 1, 1, NOW(), NOW()),
+('ecom_reprice_strategy', '低于最低价', 'BEAT_LOWEST', 'geekblue', 2, 1, 1, NOW(), NOW()),
+('ecom_reprice_strategy', '跟随购物车价', 'MATCH_BUYBOX', 'gold', 3, 1, 1, NOW(), NOW()),
+('ecom_reprice_strategy', '按目标利润率', 'TARGET_MARGIN', 'green', 4, 1, 1, NOW(), NOW()),
+('ecom_reprice_strategy', '按库存 / 销量', 'BY_STOCK', 'purple', 5, 1, 1, NOW(), NOW()),
+('ecom_reprice_floor_mode', '固定底价', 'FIXED', 'default', 1, 1, 1, NOW(), NOW()),
+('ecom_reprice_floor_mode', '成本 + 最低利润率', 'COST_MARGIN', 'green', 2, 1, 1, NOW(), NOW()),
+('ecom_reprice_log_status', '建议', 'SUGGESTED', 'orange', 1, 1, 1, NOW(), NOW()),
+('ecom_reprice_log_status', '已推送', 'PUSHED', 'green', 2, 1, 1, NOW(), NOW()),
+('ecom_reprice_log_status', '推送失败', 'FAILED', 'red', 3, 1, 1, NOW(), NOW()),
+('ecom_reprice_log_status', '仅本地', 'LOCAL', 'cyan', 4, 1, 1, NOW(), NOW()),
+('ecom_reprice_log_status', '跳过', 'SKIPPED', 'default', 5, 1, 1, NOW(), NOW()),
+('ecom_reprice_log_status', '已忽略', 'IGNORED', 'default', 6, 1, 1, NOW(), NOW()),
+('ecom_competitor_source', '平台接口', 'API', 'blue', 1, 1, 1, NOW(), NOW()),
+('ecom_competitor_source', '手工录入', 'MANUAL', 'default', 2, 1, 1, NOW(), NOW()),
+('ecom_competitor_source', '导入', 'IMPORT', 'cyan', 3, 1, 1, NOW(), NOW());
+
+-- 示例价格模板
+INSERT INTO ecom_price_template (name, platform, first_leg_cost, other_cost, commission_rate, other_rate, fixed_fee, target_margin, price_tail, status, remark, create_time, update_time) VALUES
+('亚马逊 FBA 标准', 'AMAZON', 12, 1.5, 15, 5, 3.5, 20, 0.99, 1, '海运头程，FBA 配送费按标准尺寸估算', NOW(), NOW()),
+('自发货小包', NULL, 0, 1, 12, 3, 0, 25, 0.99, 1, '自发货渠道的通用定价', NOW(), NOW());
+
+-- 内置角色：电商运营全部；总经理只读
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT r.id, m.id FROM sys_role r JOIN sys_menu m ON (m.id BETWEEN 500 AND 509 OR m.parent_id BETWEEN 500 AND 509)
+WHERE r.id = 5 AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r.id AND x.menu_id = m.id);
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT r.id, m.id FROM sys_role r JOIN sys_menu m ON (m.id BETWEEN 500 AND 509)
+WHERE r.id = 3 AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r.id AND x.menu_id = m.id);
+
+-- ===== 第四轮：FBA 运营 =====
+-- 亚马逊报告任务（Reports API：createReport → getReport 轮询 → getReportDocument 下载解析），也可上传报告文件
+CREATE TABLE ecom_amz_report (
+    id               BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id        BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    store_id         BIGINT        NOT NULL COMMENT '店铺（亚马逊）',
+    report_type      VARCHAR(32)   NOT NULL COMMENT '报告类型(字典 ecom_amz_report_type)',
+    data_start       DATE                   DEFAULT NULL COMMENT '数据开始日期',
+    data_end         DATE                   DEFAULT NULL COMMENT '数据结束日期',
+    report_id        VARCHAR(64)            DEFAULT NULL COMMENT '亚马逊报告 ID（上传的为空）',
+    document_id      VARCHAR(128)           DEFAULT NULL COMMENT '亚马逊报告文档 ID',
+    status           VARCHAR(16)   NOT NULL DEFAULT 'SUBMITTED' COMMENT '状态(字典 ecom_amz_report_status) SUBMITTED已提交 PROCESSING生成中 DONE已完成 FAILED失败 CANCELLED已取消',
+    uploaded         TINYINT       NOT NULL DEFAULT 0 COMMENT '手工上传的报告文件 1是',
+    row_count        INT           NOT NULL DEFAULT 0 COMMENT '报告行数',
+    applied_count    INT           NOT NULL DEFAULT 0 COMMENT '写入 / 更新的条数',
+    poll_count       INT           NOT NULL DEFAULT 0 COMMENT '已查询状态的次数',
+    next_poll_time   DATETIME               DEFAULT NULL COMMENT '下次查询状态的时间',
+    message          VARCHAR(500)           DEFAULT NULL COMMENT '失败原因或处理说明',
+    finish_time      DATETIME               DEFAULT NULL COMMENT '完成时间',
+    create_by        BIGINT                 DEFAULT NULL COMMENT '创建人（定时任务为空）',
+    create_time      DATETIME               DEFAULT NULL COMMENT '创建时间',
+    update_time      DATETIME               DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_amz_report_store (store_id, report_type),
+    KEY idx_ecom_amz_report_status (status, next_poll_time)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '亚马逊报告任务';
+
+-- FBA 库存健康快照：店铺 × SKU 只保留最近一次（库存规划报告 / 库存报告，或按头程签收先进先出推算库龄）
+CREATE TABLE ecom_fba_inventory (
+    id                BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id         BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    store_id          BIGINT         NOT NULL COMMENT '店铺',
+    seller_sku        VARCHAR(64)    NOT NULL COMMENT '平台 SKU',
+    fnsku             VARCHAR(32)             DEFAULT NULL COMMENT 'FNSKU',
+    asin              VARCHAR(32)             DEFAULT NULL COMMENT 'ASIN',
+    title             VARCHAR(255)            DEFAULT NULL COMMENT '商品名称',
+    snapshot_date     DATE           NOT NULL COMMENT '快照日期',
+    available_qty     DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '可售',
+    inbound_qty       DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '在途（处理中 + 已发货 + 接收中）',
+    reserved_qty      DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '预留',
+    unfulfillable_qty DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '不可售',
+    researching_qty   DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '调查中',
+    age_0_90          DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '库龄 0–90 天',
+    age_91_180        DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '库龄 91–180 天',
+    age_181_270       DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '库龄 181–270 天',
+    age_271_365       DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '库龄 271–365 天',
+    age_365_plus      DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '库龄 365 天以上',
+    age_source        VARCHAR(16)    NOT NULL DEFAULT 'REPORT' COMMENT '库龄来源 REPORT亚马逊报告 FIFO按头程签收推算',
+    units_shipped_30  DECIMAL(18, 4)          DEFAULT NULL COMMENT '报告中最近 30 天发货件数',
+    report_storage_fee DECIMAL(18, 2)         DEFAULT NULL COMMENT '报告中预估下月仓储费（店铺币种）',
+    currency          VARCHAR(8)              DEFAULT NULL COMMENT '币种',
+    create_time       DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time       DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_fba_inventory (store_id, seller_sku, tenant_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'FBA 库存健康快照';
+
+-- 仓储费费率：月度仓储费按尺寸类别 + 月份（淡旺季），超龄库存附加费（长期仓储费）按尺寸类别 + 库龄段，按单位体积计费
+CREATE TABLE ecom_fba_storage_rate (
+    id            BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id     BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    marketplace   VARCHAR(16)    NOT NULL COMMENT '站点(业务字典 ecom_marketplace)',
+    fee_type      VARCHAR(16)    NOT NULL COMMENT '费用类型(字典 ecom_fba_storage_fee_type) MONTHLY月度仓储费 AGED超龄附加费',
+    size_category VARCHAR(16)    NOT NULL COMMENT '尺寸类别(字典 ecom_fba_size_category) STANDARD标准件 OVERSIZE大件',
+    month_from    INT                     DEFAULT NULL COMMENT '月份起（月度仓储费，1–12）',
+    month_to      INT                     DEFAULT NULL COMMENT '月份止（含）',
+    age_from      INT                     DEFAULT NULL COMMENT '库龄起（天，含，超龄附加费）',
+    age_to        INT                     DEFAULT NULL COMMENT '库龄止（天，含），为空不限',
+    rate          DECIMAL(18, 4) NOT NULL COMMENT '费率（每立方英尺 / 每立方米，店铺币种）',
+    volume_unit   VARCHAR(8)     NOT NULL DEFAULT 'CUFT' COMMENT '体积单位 CUFT立方英尺 CBM立方米',
+    currency      VARCHAR(8)     NOT NULL COMMENT '币种',
+    builtin       TINYINT        NOT NULL DEFAULT 0 COMMENT '内置 1是',
+    remark        VARCHAR(255)            DEFAULT NULL COMMENT '备注',
+    create_time   DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time   DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_fba_storage_rate (marketplace, fee_type)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'FBA 仓储费费率';
+
+-- FBA 配送费尺寸分段：按站点从小到大依次匹配，第一个尺寸和重量都不超过上限的分段
+CREATE TABLE ecom_fba_size_tier (
+    id            BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id     BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    marketplace   VARCHAR(16)    NOT NULL COMMENT '站点(业务字典 ecom_marketplace)',
+    code          VARCHAR(32)    NOT NULL COMMENT '分段编码',
+    name          VARCHAR(64)    NOT NULL COMMENT '分段名称',
+    size_category VARCHAR(16)    NOT NULL DEFAULT 'STANDARD' COMMENT '尺寸类别(字典 ecom_fba_size_category)，仓储费按它取费率',
+    unit_system   VARCHAR(16)    NOT NULL DEFAULT 'IMPERIAL' COMMENT '单位制 IMPERIAL英寸 / 磅 METRIC厘米 / 千克',
+    max_long      DECIMAL(10, 2)          DEFAULT NULL COMMENT '最长边上限，为空不限',
+    max_median    DECIMAL(10, 2)          DEFAULT NULL COMMENT '次长边上限',
+    max_short     DECIMAL(10, 2)          DEFAULT NULL COMMENT '最短边上限',
+    max_girth     DECIMAL(10, 2)          DEFAULT NULL COMMENT '长度 + 围长上限（最长边 + 2 × (次长边 + 最短边)）',
+    max_weight    DECIMAL(10, 3)          DEFAULT NULL COMMENT '发货重量上限',
+    dim_divisor   DECIMAL(10, 2)          DEFAULT NULL COMMENT '体积重系数（体积 ÷ 系数 = 体积重，发货重量取实重与体积重的较大者），为空只按实重',
+    sort          INT            NOT NULL DEFAULT 0 COMMENT '匹配顺序',
+    builtin       TINYINT        NOT NULL DEFAULT 0 COMMENT '内置 1是',
+    create_time   DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time   DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_fba_size_tier (marketplace, code, tenant_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'FBA 配送费尺寸分段';
+
+-- FBA 配送费费率：分段 × 发货重量段（下限不含、上限含），费用 = 固定费 + 超出 extra_from 的部分每 extra_unit 加 extra_fee
+CREATE TABLE ecom_fba_fee_rate (
+    id           BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id    BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    marketplace  VARCHAR(16)    NOT NULL COMMENT '站点',
+    tier_code    VARCHAR(32)    NOT NULL COMMENT '尺寸分段编码',
+    weight_from  DECIMAL(10, 3) NOT NULL DEFAULT 0 COMMENT '发货重量下限（不含）',
+    weight_to    DECIMAL(10, 3)          DEFAULT NULL COMMENT '发货重量上限（含），为空不限',
+    fee          DECIMAL(18, 2) NOT NULL COMMENT '配送费（每件，店铺币种）',
+    extra_from   DECIMAL(10, 3)          DEFAULT NULL COMMENT '续重起点（超过它的部分按续重计费），为空不计续重',
+    extra_unit   DECIMAL(10, 3)          DEFAULT NULL COMMENT '续重单位重量',
+    extra_fee    DECIMAL(18, 2)          DEFAULT NULL COMMENT '每个续重单位的费用',
+    currency     VARCHAR(8)     NOT NULL COMMENT '币种',
+    builtin      TINYINT        NOT NULL DEFAULT 0 COMMENT '内置 1是',
+    create_time  DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time  DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_fba_fee_rate (marketplace, tier_code)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'FBA 配送费费率';
+
+-- FBA 商品尺寸重量（店铺 × SKU，手工维护或由预估费用报告带入），用于计算配送费、仓储体积
+CREATE TABLE ecom_fba_item_dim (
+    id            BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id     BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    store_id      BIGINT         NOT NULL COMMENT '店铺',
+    seller_sku    VARCHAR(64)    NOT NULL COMMENT '平台 SKU',
+    length_cm     DECIMAL(10, 2) NOT NULL COMMENT '最长边（cm）',
+    width_cm      DECIMAL(10, 2) NOT NULL COMMENT '次长边（cm）',
+    height_cm     DECIMAL(10, 2) NOT NULL COMMENT '最短边（cm）',
+    weight_kg     DECIMAL(10, 3) NOT NULL COMMENT '单件重量（含包装，kg）',
+    source        VARCHAR(16)    NOT NULL DEFAULT 'MANUAL' COMMENT '来源 MANUAL手工 REPORT预估费用报告',
+    platform_tier VARCHAR(64)             DEFAULT NULL COMMENT '亚马逊给出的尺寸分段',
+    platform_fee  DECIMAL(18, 2)          DEFAULT NULL COMMENT '亚马逊预估配送费（每件）',
+    create_time   DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time   DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_fba_item_dim (store_id, seller_sku, tenant_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'FBA 商品尺寸重量';
+
+-- 移除订单：退回本地仓或弃置
+CREATE TABLE ecom_fba_removal (
+    id                     BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id              BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    doc_no                 VARCHAR(32)    NOT NULL COMMENT '单据号',
+    store_id               BIGINT         NOT NULL COMMENT '店铺',
+    removal_type           VARCHAR(16)    NOT NULL COMMENT '类型(字典 ecom_fba_removal_type) RETURN退回 DISPOSAL弃置',
+    platform_order_id      VARCHAR(64)             DEFAULT NULL COMMENT '亚马逊移除订单号',
+    status                 VARCHAR(16)    NOT NULL DEFAULT 'DRAFT' COMMENT '状态(字典 ecom_fba_removal_status)',
+    warehouse_id           BIGINT                  DEFAULT NULL COMMENT '退回的本地仓（良品）',
+    defective_warehouse_id BIGINT                  DEFAULT NULL COMMENT '不良品仓',
+    ship_address           VARCHAR(255)            DEFAULT NULL COMMENT '退回地址',
+    request_date           DATE                    DEFAULT NULL COMMENT '申请日期',
+    complete_date          DATE                    DEFAULT NULL COMMENT '亚马逊完成日期',
+    carrier                VARCHAR(64)             DEFAULT NULL COMMENT '承运商',
+    tracking_no            VARCHAR(255)            DEFAULT NULL COMMENT '运单号（多个逗号分隔）',
+    total_qty              DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '申请数量合计',
+    removal_fee            DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '移除 / 弃置费（店铺币种）',
+    currency               VARCHAR(8)              DEFAULT NULL COMMENT '币种',
+    fee_base               DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '移除费（本位币）',
+    stock_doc_nos          VARCHAR(500)            DEFAULT NULL COMMENT '生成的出入库 / 调拨单号',
+    last_sync_time         DATETIME                DEFAULT NULL COMMENT '最近一次按报告同步的时间',
+    remark                 VARCHAR(255)            DEFAULT NULL COMMENT '备注',
+    dept_id                BIGINT                  DEFAULT NULL COMMENT '制单人部门',
+    create_by              BIGINT                  DEFAULT NULL COMMENT '制单人（报告同步的为空）',
+    create_time            DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time            DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_fba_removal_no (doc_no, tenant_id),
+    KEY idx_ecom_fba_removal_order (store_id, platform_order_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'FBA 移除订单';
+
+CREATE TABLE ecom_fba_removal_item (
+    id              BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id       BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    removal_id      BIGINT         NOT NULL COMMENT '移除订单',
+    seller_sku      VARCHAR(64)    NOT NULL COMMENT '平台 SKU',
+    fnsku           VARCHAR(32)             DEFAULT NULL COMMENT 'FNSKU',
+    disposition     VARCHAR(16)    NOT NULL DEFAULT 'SELLABLE' COMMENT '库存状态(字典 ecom_fba_disposition) SELLABLE可售 UNSELLABLE不可售',
+    material_id     BIGINT                  DEFAULT NULL COMMENT '映射的物料',
+    pack_qty        DECIMAL(18, 4) NOT NULL DEFAULT 1 COMMENT '多件装数量',
+    requested_qty   DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '申请数量（件）',
+    cancelled_qty   DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '取消数量',
+    shipped_qty     DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '亚马逊已发数量',
+    disposed_qty    DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '已弃置数量',
+    received_qty    DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '本地已收良品',
+    defective_qty   DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '本地已收不良品',
+    scrapped_qty    DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '已做弃置出库的数量',
+    removal_fee     DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '移除费（店铺币种）',
+    create_time     DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time     DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_fba_removal_item (removal_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'FBA 移除订单明细';
+
+-- FBA 库存流水（库存分类账明细报告 GET_LEDGER_DETAIL_VIEW_DATA），按行内容去重
+CREATE TABLE ecom_fba_ledger (
+    id               BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id        BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    store_id         BIGINT         NOT NULL COMMENT '店铺',
+    row_key          VARCHAR(64)    NOT NULL COMMENT '行内容摘要（去重）',
+    event_date       DATE           NOT NULL COMMENT '日期',
+    fnsku            VARCHAR(32)             DEFAULT NULL COMMENT 'FNSKU',
+    asin             VARCHAR(32)             DEFAULT NULL COMMENT 'ASIN',
+    seller_sku       VARCHAR(64)             DEFAULT NULL COMMENT '平台 SKU（MSKU）',
+    event_type       VARCHAR(32)    NOT NULL COMMENT '事件类型 Receipts Shipments CustomerReturns VendorReturns WhseTransfers Adjustments',
+    reference_id     VARCHAR(64)             DEFAULT NULL COMMENT '参考号（货件号、订单号、调整单号）',
+    quantity         DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '数量（正为增加）',
+    fulfillment_center VARCHAR(16)           DEFAULT NULL COMMENT '运营中心',
+    disposition      VARCHAR(32)             DEFAULT NULL COMMENT '库存状态',
+    reason           VARCHAR(16)             DEFAULT NULL COMMENT '调整原因代码（M 丢失、F 找到、E 仓库损坏等）',
+    unreconciled_qty DECIMAL(18, 4)          DEFAULT NULL COMMENT '未核对数量',
+    create_time      DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time      DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_fba_ledger (store_id, row_key, tenant_id),
+    KEY idx_ecom_fba_ledger_sku (store_id, fnsku, event_date)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'FBA 库存流水';
+
+-- FBA 赔偿记录（赔偿报告 GET_FBA_REIMBURSEMENTS_DATA）
+CREATE TABLE ecom_fba_reimbursement (
+    id                 BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id          BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    store_id           BIGINT         NOT NULL COMMENT '店铺',
+    reimbursement_id   VARCHAR(64)    NOT NULL COMMENT '赔偿编号',
+    approval_date      DATE                    DEFAULT NULL COMMENT '批准日期',
+    case_id            VARCHAR(64)             DEFAULT NULL COMMENT 'Case 编号',
+    amazon_order_id    VARCHAR(64)             DEFAULT NULL COMMENT '订单号',
+    reason             VARCHAR(64)             DEFAULT NULL COMMENT '原因（Lost_Warehouse、Damaged_Warehouse、Lost_Inbound、CustomerReturn 等）',
+    seller_sku         VARCHAR(64)    NOT NULL DEFAULT '' COMMENT '平台 SKU',
+    fnsku              VARCHAR(32)             DEFAULT NULL COMMENT 'FNSKU',
+    asin               VARCHAR(32)             DEFAULT NULL COMMENT 'ASIN',
+    currency           VARCHAR(8)              DEFAULT NULL COMMENT '币种',
+    amount_per_unit    DECIMAL(18, 2)          DEFAULT NULL COMMENT '每件赔偿',
+    amount_total       DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '现金赔偿合计',
+    qty_cash           DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '现金赔偿件数',
+    qty_inventory      DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '库存赔偿件数',
+    amount_base        DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '现金赔偿（本位币）',
+    claim_id           BIGINT                  DEFAULT NULL COMMENT '匹配到的索赔',
+    create_time        DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time        DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_fba_reimbursement (store_id, reimbursement_id, seller_sku, tenant_id),
+    KEY idx_ecom_fba_reimbursement_claim (claim_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'FBA 赔偿记录';
+
+-- FBA 索赔：系统识别（丢失、损坏、入库短少、退货未退回、多收配送费）或手工登记，跟踪 Case 与赔付
+CREATE TABLE ecom_fba_claim (
+    id            BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id     BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    claim_no      VARCHAR(32)    NOT NULL COMMENT '索赔单号',
+    store_id      BIGINT         NOT NULL COMMENT '店铺',
+    claim_type    VARCHAR(32)    NOT NULL COMMENT '类型(字典 ecom_fba_claim_type)',
+    source_key    VARCHAR(128)   NOT NULL COMMENT '识别来源键（同一来源只生成一次）',
+    source_ref    VARCHAR(64)             DEFAULT NULL COMMENT '来源单号（货件号、订单号、流水参考号）',
+    seller_sku    VARCHAR(64)             DEFAULT NULL COMMENT '平台 SKU',
+    fnsku         VARCHAR(32)             DEFAULT NULL COMMENT 'FNSKU',
+    qty           DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '索赔数量',
+    unit_value    DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '估算单价（店铺币种）',
+    est_amount    DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '估算金额（店铺币种）',
+    currency      VARCHAR(8)              DEFAULT NULL COMMENT '币种',
+    event_date    DATE                    DEFAULT NULL COMMENT '发生日期',
+    deadline      DATE                    DEFAULT NULL COMMENT '索赔截止日期',
+    status        VARCHAR(16)    NOT NULL DEFAULT 'PENDING' COMMENT '状态(字典 ecom_fba_claim_status) PENDING待提交 SUBMITTED已提交 PAID已赔付 REJECTED已驳回 IGNORED已忽略',
+    case_no       VARCHAR(64)             DEFAULT NULL COMMENT 'Case 编号',
+    submit_date   DATE                    DEFAULT NULL COMMENT '提交日期',
+    paid_amount   DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '已赔付金额（店铺币种）',
+    paid_qty      DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '已赔付件数（含库存赔偿）',
+    paid_base     DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '已赔付金额（本位币）',
+    paid_date     DATE                    DEFAULT NULL COMMENT '赔付日期',
+    detail        VARCHAR(500)            DEFAULT NULL COMMENT '识别说明',
+    remark        VARCHAR(255)            DEFAULT NULL COMMENT '备注',
+    create_by     BIGINT                  DEFAULT NULL COMMENT '创建人（自动识别为空）',
+    create_time   DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time   DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_fba_claim_no (claim_no, tenant_id),
+    UNIQUE KEY uk_ecom_fba_claim_source (store_id, source_key, tenant_id),
+    KEY idx_ecom_fba_claim_status (status, deadline)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'FBA 索赔';
+
+-- 头程货件的亚马逊实收数量（货件对账，识别入库短少）
+CREATE TABLE ecom_fba_inbound_receipt (
+    id              BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id       BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    inbound_item_id BIGINT         NOT NULL COMMENT '头程货件明细',
+    inbound_id      BIGINT         NOT NULL COMMENT '头程货件',
+    shipped_qty     DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '发货件数（平台 SKU 件数）',
+    received_qty    DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '亚马逊实收件数',
+    source          VARCHAR(16)    NOT NULL DEFAULT 'MANUAL' COMMENT '来源 MANUAL手工 API亚马逊接口',
+    create_time     DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time     DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_fba_inbound_receipt (inbound_item_id, tenant_id),
+    KEY idx_ecom_fba_inbound_receipt (inbound_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'FBA 货件实收数量';
+
+-- 内置美国站费率（2025 年标准，非服装、售价 10–50 美元、非旺季附加费；请按亚马逊最新费率表核对维护）
+INSERT INTO ecom_fba_storage_rate (marketplace, fee_type, size_category, month_from, month_to, age_from, age_to, rate, volume_unit, currency, builtin, remark, create_time, update_time) VALUES
+('US', 'MONTHLY', 'STANDARD', 1, 9, NULL, NULL, 0.78, 'CUFT', 'USD', 1, '标准件 1–9 月', NOW(), NOW()),
+('US', 'MONTHLY', 'STANDARD', 10, 12, NULL, NULL, 2.40, 'CUFT', 'USD', 1, '标准件 10–12 月（旺季）', NOW(), NOW()),
+('US', 'MONTHLY', 'OVERSIZE', 1, 9, NULL, NULL, 0.56, 'CUFT', 'USD', 1, '大件 1–9 月', NOW(), NOW()),
+('US', 'MONTHLY', 'OVERSIZE', 10, 12, NULL, NULL, 1.40, 'CUFT', 'USD', 1, '大件 10–12 月（旺季）', NOW(), NOW()),
+('US', 'AGED', 'STANDARD', NULL, NULL, 181, 270, 1.00, 'CUFT', 'USD', 1, '181–270 天（181–210 / 211–240 / 241–270 天分别为 0.50 / 1.00 / 1.50 的平均）', NOW(), NOW()),
+('US', 'AGED', 'STANDARD', NULL, NULL, 271, 365, 5.68, 'CUFT', 'USD', 1, '271–365 天（5.45 / 5.70 / 5.90 的平均）', NOW(), NOW()),
+('US', 'AGED', 'STANDARD', NULL, NULL, 366, NULL, 6.90, 'CUFT', 'USD', 1, '365 天以上', NOW(), NOW()),
+('US', 'AGED', 'OVERSIZE', NULL, NULL, 181, 270, 1.00, 'CUFT', 'USD', 1, '181–270 天', NOW(), NOW()),
+('US', 'AGED', 'OVERSIZE', NULL, NULL, 271, 365, 5.68, 'CUFT', 'USD', 1, '271–365 天', NOW(), NOW()),
+('US', 'AGED', 'OVERSIZE', NULL, NULL, 366, NULL, 6.90, 'CUFT', 'USD', 1, '365 天以上', NOW(), NOW());
+
+INSERT INTO ecom_fba_size_tier (marketplace, code, name, size_category, unit_system, max_long, max_median, max_short, max_girth, max_weight, dim_divisor, sort, builtin, create_time, update_time) VALUES
+('US', 'SMALL_STD', '小号标准尺寸', 'STANDARD', 'IMPERIAL', 15, 12, 0.75, NULL, 1, NULL, 1, 1, NOW(), NOW()),
+('US', 'LARGE_STD', '大号标准尺寸', 'STANDARD', 'IMPERIAL', 18, 14, 8, NULL, 20, 139, 2, 1, NOW(), NOW()),
+('US', 'LARGE_BULKY', '大号大件', 'OVERSIZE', 'IMPERIAL', 59, 33, 33, 130, 50, 139, 3, 1, NOW(), NOW()),
+('US', 'XL_50', '超大件（0–50 磅）', 'OVERSIZE', 'IMPERIAL', NULL, NULL, NULL, NULL, 50, 139, 4, 1, NOW(), NOW()),
+('US', 'XL_70', '超大件（50–70 磅）', 'OVERSIZE', 'IMPERIAL', NULL, NULL, NULL, NULL, 70, 139, 5, 1, NOW(), NOW()),
+('US', 'XL_150', '超大件（70–150 磅）', 'OVERSIZE', 'IMPERIAL', NULL, NULL, NULL, NULL, 150, 139, 6, 1, NOW(), NOW()),
+('US', 'XL_150_PLUS', '超大件（150 磅以上）', 'OVERSIZE', 'IMPERIAL', NULL, NULL, NULL, NULL, NULL, 139, 7, 1, NOW(), NOW());
+
+INSERT INTO ecom_fba_fee_rate (marketplace, tier_code, weight_from, weight_to, fee, extra_from, extra_unit, extra_fee, currency, builtin, create_time, update_time) VALUES
+('US', 'SMALL_STD', 0, 0.125, 3.06, NULL, NULL, NULL, 'USD', 1, NOW(), NOW()),
+('US', 'SMALL_STD', 0.125, 0.25, 3.15, NULL, NULL, NULL, 'USD', 1, NOW(), NOW()),
+('US', 'SMALL_STD', 0.25, 0.375, 3.24, NULL, NULL, NULL, 'USD', 1, NOW(), NOW()),
+('US', 'SMALL_STD', 0.375, 0.5, 3.33, NULL, NULL, NULL, 'USD', 1, NOW(), NOW()),
+('US', 'SMALL_STD', 0.5, 0.625, 3.43, NULL, NULL, NULL, 'USD', 1, NOW(), NOW()),
+('US', 'SMALL_STD', 0.625, 0.75, 3.53, NULL, NULL, NULL, 'USD', 1, NOW(), NOW()),
+('US', 'SMALL_STD', 0.75, 0.875, 3.60, NULL, NULL, NULL, 'USD', 1, NOW(), NOW()),
+('US', 'SMALL_STD', 0.875, 1, 3.65, NULL, NULL, NULL, 'USD', 1, NOW(), NOW()),
+('US', 'LARGE_STD', 0, 0.25, 3.68, NULL, NULL, NULL, 'USD', 1, NOW(), NOW()),
+('US', 'LARGE_STD', 0.25, 0.5, 3.90, NULL, NULL, NULL, 'USD', 1, NOW(), NOW()),
+('US', 'LARGE_STD', 0.5, 0.75, 4.15, NULL, NULL, NULL, 'USD', 1, NOW(), NOW()),
+('US', 'LARGE_STD', 0.75, 1, 4.55, NULL, NULL, NULL, 'USD', 1, NOW(), NOW()),
+('US', 'LARGE_STD', 1, 1.25, 4.99, NULL, NULL, NULL, 'USD', 1, NOW(), NOW()),
+('US', 'LARGE_STD', 1.25, 1.5, 5.37, NULL, NULL, NULL, 'USD', 1, NOW(), NOW()),
+('US', 'LARGE_STD', 1.5, 1.75, 5.52, NULL, NULL, NULL, 'USD', 1, NOW(), NOW()),
+('US', 'LARGE_STD', 1.75, 2, 5.77, NULL, NULL, NULL, 'USD', 1, NOW(), NOW()),
+('US', 'LARGE_STD', 2, 2.25, 5.94, NULL, NULL, NULL, 'USD', 1, NOW(), NOW()),
+('US', 'LARGE_STD', 2.25, 2.5, 6.08, NULL, NULL, NULL, 'USD', 1, NOW(), NOW()),
+('US', 'LARGE_STD', 2.5, 2.75, 6.24, NULL, NULL, NULL, 'USD', 1, NOW(), NOW()),
+('US', 'LARGE_STD', 2.75, 3, 6.38, NULL, NULL, NULL, 'USD', 1, NOW(), NOW()),
+('US', 'LARGE_STD', 3, 20, 6.92, 3, 0.25, 0.08, 'USD', 1, NOW(), NOW()),
+('US', 'LARGE_BULKY', 0, 50, 9.61, 1, 1, 0.38, 'USD', 1, NOW(), NOW()),
+('US', 'XL_50', 0, 50, 26.33, 1, 1, 0.38, 'USD', 1, NOW(), NOW()),
+('US', 'XL_70', 50, 70, 40.12, 51, 1, 0.75, 'USD', 1, NOW(), NOW()),
+('US', 'XL_150', 70, 150, 54.81, 71, 1, 0.75, 'USD', 1, NOW(), NOW()),
+('US', 'XL_150_PLUS', 150, NULL, 194.95, 151, 1, 0.19, 'USD', 1, NOW(), NOW());
+
+-- 菜单：电商 → 库存与物流 下的 FBA 运营页面
+INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time) VALUES
+(510, 983, 'FBA 库存健康', 'C', 'fba-health', 'ecom/fba-health/index', 'ecom:fbaHealth:list', 'HeartOutlined', 11, 1, 1, NOW(), NOW()),
+(511, 983, '移除订单', 'C', 'fba-removal', 'ecom/fba-removal/index', 'ecom:fbaRemoval:list', 'ExportOutlined', 12, 1, 1, NOW(), NOW()),
+(512, 983, 'FBA 索赔', 'C', 'fba-claim', 'ecom/fba-claim/index', 'ecom:fbaClaim:list', 'SafetyCertificateOutlined', 13, 1, 1, NOW(), NOW()),
+(513, 983, 'FBA 费用核查', 'C', 'fba-fee-audit', 'ecom/fba-fee-audit/index', 'ecom:fbaFee:list', 'AuditOutlined', 14, 1, 1, NOW(), NOW()),
+(514, 983, '亚马逊报告', 'C', 'amz-report', 'ecom/amz-report/index', 'ecom:amzReport:list', 'FileSearchOutlined', 15, 1, 1, NOW(), NOW()),
+(5100, 510, '同步 / 推算库存健康', 'F', NULL, NULL, 'ecom:fbaHealth:sync', NULL, 1, 1, 1, NOW(), NOW()),
+(5101, 510, '维护仓储费费率', 'F', NULL, NULL, 'ecom:fbaHealth:rate', NULL, 2, 1, 1, NOW(), NOW()),
+(5110, 511, '移除订单新增', 'F', NULL, NULL, 'ecom:fbaRemoval:add', NULL, 1, 1, 1, NOW(), NOW()),
+(5111, 511, '移除订单修改', 'F', NULL, NULL, 'ecom:fbaRemoval:edit', NULL, 2, 1, 1, NOW(), NOW()),
+(5112, 511, '移除订单删除', 'F', NULL, NULL, 'ecom:fbaRemoval:remove', NULL, 3, 1, 1, NOW(), NOW()),
+(5113, 511, '移除收货 / 弃置出库', 'F', NULL, NULL, 'ecom:fbaRemoval:receive', NULL, 4, 1, 1, NOW(), NOW()),
+(5114, 511, '同步移除订单', 'F', NULL, NULL, 'ecom:fbaRemoval:sync', NULL, 5, 1, 1, NOW(), NOW()),
+(5120, 512, '识别 / 新增索赔', 'F', NULL, NULL, 'ecom:fbaClaim:add', NULL, 1, 1, 1, NOW(), NOW()),
+(5121, 512, '索赔处理', 'F', NULL, NULL, 'ecom:fbaClaim:edit', NULL, 2, 1, 1, NOW(), NOW()),
+(5122, 512, '索赔删除', 'F', NULL, NULL, 'ecom:fbaClaim:remove', NULL, 3, 1, 1, NOW(), NOW()),
+(5123, 512, '同步赔偿 / 流水', 'F', NULL, NULL, 'ecom:fbaClaim:sync', NULL, 4, 1, 1, NOW(), NOW()),
+(5130, 513, '维护尺寸与配送费费率', 'F', NULL, NULL, 'ecom:fbaFee:edit', NULL, 1, 1, 1, NOW(), NOW()),
+(5140, 514, '创建 / 上传报告', 'F', NULL, NULL, 'ecom:amzReport:add', NULL, 1, 1, 1, NOW(), NOW()),
+(5141, 514, '报告删除', 'F', NULL, NULL, 'ecom:amzReport:remove', NULL, 2, 1, 1, NOW(), NOW());
+
+-- 字典（系统字典，代码按取值判断）
+INSERT INTO sys_dict_type (id, name, type, kind, status, remark, create_time, update_time) VALUES
+(310, '亚马逊报告类型', 'ecom_amz_report_type', 'SYSTEM', 1, 'FBA 运营使用的亚马逊报告', NOW(), NOW()),
+(311, '报告任务状态', 'ecom_amz_report_status', 'SYSTEM', 1, '亚马逊报告任务的状态', NOW(), NOW()),
+(312, 'FBA 处理建议', 'ecom_fba_advice', 'SYSTEM', 1, '库存健康的处理建议', NOW(), NOW()),
+(313, '移除类型', 'ecom_fba_removal_type', 'SYSTEM', 1, 'FBA 移除订单的类型', NOW(), NOW()),
+(314, '移除订单状态', 'ecom_fba_removal_status', 'SYSTEM', 1, 'FBA 移除订单的状态', NOW(), NOW()),
+(315, 'FBA 库存状态', 'ecom_fba_disposition', 'SYSTEM', 1, '可售 / 不可售', NOW(), NOW()),
+(316, '索赔类型', 'ecom_fba_claim_type', 'SYSTEM', 1, 'FBA 索赔的类型', NOW(), NOW()),
+(317, '索赔状态', 'ecom_fba_claim_status', 'SYSTEM', 1, 'FBA 索赔的处理状态', NOW(), NOW()),
+(318, 'FBA 尺寸类别', 'ecom_fba_size_category', 'SYSTEM', 1, '标准件 / 大件，仓储费按它取费率', NOW(), NOW()),
+(319, 'FBA 仓储费类型', 'ecom_fba_storage_fee_type', 'SYSTEM', 1, '月度仓储费 / 超龄附加费', NOW(), NOW());
+INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, builtin, create_time, update_time) VALUES
+('ecom_amz_report_type', '库存规划（库龄）', 'FBA_INVENTORY_PLANNING', 'blue', 1, 1, 1, NOW(), NOW()),
+('ecom_amz_report_type', 'FBA 库存', 'FBA_MYI_INVENTORY', 'cyan', 2, 1, 1, NOW(), NOW()),
+('ecom_amz_report_type', '库存分类账明细', 'LEDGER_DETAIL', 'geekblue', 3, 1, 1, NOW(), NOW()),
+('ecom_amz_report_type', '赔偿', 'REIMBURSEMENTS', 'green', 4, 1, 1, NOW(), NOW()),
+('ecom_amz_report_type', '移除订单详情', 'REMOVAL_ORDERS', 'orange', 5, 1, 1, NOW(), NOW()),
+('ecom_amz_report_type', '预估 FBA 费用', 'ESTIMATED_FEES', 'purple', 6, 1, 1, NOW(), NOW()),
+('ecom_amz_report_status', '已提交', 'SUBMITTED', 'default', 1, 1, 1, NOW(), NOW()),
+('ecom_amz_report_status', '生成中', 'PROCESSING', 'processing', 2, 1, 1, NOW(), NOW()),
+('ecom_amz_report_status', '已完成', 'DONE', 'green', 3, 1, 1, NOW(), NOW()),
+('ecom_amz_report_status', '失败', 'FAILED', 'red', 4, 1, 1, NOW(), NOW()),
+('ecom_amz_report_status', '已取消', 'CANCELLED', 'default', 5, 1, 1, NOW(), NOW()),
+('ecom_fba_advice', '健康', 'HEALTHY', 'green', 1, 1, 1, NOW(), NOW()),
+('ecom_fba_advice', '站外推广', 'PROMOTE', 'blue', 2, 1, 1, NOW(), NOW()),
+('ecom_fba_advice', '降价清仓', 'PRICE_DOWN', 'orange', 3, 1, 1, NOW(), NOW()),
+('ecom_fba_advice', '移除 / 弃置', 'REMOVE', 'red', 4, 1, 1, NOW(), NOW()),
+('ecom_fba_removal_type', '退回', 'RETURN', 'blue', 1, 1, 1, NOW(), NOW()),
+('ecom_fba_removal_type', '弃置', 'DISPOSAL', 'red', 2, 1, 1, NOW(), NOW()),
+('ecom_fba_removal_status', '草稿', 'DRAFT', 'default', 1, 1, 1, NOW(), NOW()),
+('ecom_fba_removal_status', '已提交', 'SUBMITTED', 'cyan', 2, 1, 1, NOW(), NOW()),
+('ecom_fba_removal_status', '处理中', 'PROCESSING', 'processing', 3, 1, 1, NOW(), NOW()),
+('ecom_fba_removal_status', '亚马逊已完成', 'COMPLETED', 'orange', 4, 1, 1, NOW(), NOW()),
+('ecom_fba_removal_status', '已收货', 'RECEIVED', 'green', 5, 1, 1, NOW(), NOW()),
+('ecom_fba_removal_status', '已取消', 'CANCELLED', 'red', 6, 1, 1, NOW(), NOW()),
+('ecom_fba_disposition', '可售', 'SELLABLE', 'green', 1, 1, 1, NOW(), NOW()),
+('ecom_fba_disposition', '不可售', 'UNSELLABLE', 'red', 2, 1, 1, NOW(), NOW()),
+('ecom_fba_claim_type', '仓库丢失', 'LOST', 'red', 1, 1, 1, NOW(), NOW()),
+('ecom_fba_claim_type', '仓库损坏', 'DAMAGED', 'volcano', 2, 1, 1, NOW(), NOW()),
+('ecom_fba_claim_type', '入库短少', 'INBOUND_SHORTAGE', 'orange', 3, 1, 1, NOW(), NOW()),
+('ecom_fba_claim_type', '退货未退回', 'RETURN_NOT_RECEIVED', 'gold', 4, 1, 1, NOW(), NOW()),
+('ecom_fba_claim_type', '多收配送费', 'FEE_OVERCHARGE', 'purple', 5, 1, 1, NOW(), NOW()),
+('ecom_fba_claim_type', '其他', 'OTHER', 'default', 6, 1, 1, NOW(), NOW()),
+('ecom_fba_claim_status', '待提交', 'PENDING', 'orange', 1, 1, 1, NOW(), NOW()),
+('ecom_fba_claim_status', '已提交', 'SUBMITTED', 'processing', 2, 1, 1, NOW(), NOW()),
+('ecom_fba_claim_status', '已赔付', 'PAID', 'green', 3, 1, 1, NOW(), NOW()),
+('ecom_fba_claim_status', '已驳回', 'REJECTED', 'red', 4, 1, 1, NOW(), NOW()),
+('ecom_fba_claim_status', '已忽略', 'IGNORED', 'default', 5, 1, 1, NOW(), NOW()),
+('ecom_fba_size_category', '标准件', 'STANDARD', 'blue', 1, 1, 1, NOW(), NOW()),
+('ecom_fba_size_category', '大件', 'OVERSIZE', 'orange', 2, 1, 1, NOW(), NOW()),
+('ecom_fba_storage_fee_type', '月度仓储费', 'MONTHLY', 'blue', 1, 1, 1, NOW(), NOW()),
+('ecom_fba_storage_fee_type', '超龄附加费', 'AGED', 'red', 2, 1, 1, NOW(), NOW());
+
+-- 内置角色：超级管理员、电商运营全部；总经理只读；仓库管理员负责移除订单收货 / 弃置出库
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT r.id, m.id FROM sys_role r JOIN sys_menu m ON (m.id BETWEEN 510 AND 519 OR m.parent_id BETWEEN 510 AND 519)
+WHERE r.id IN (1, 5) AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r.id AND x.menu_id = m.id);
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT r.id, m.id FROM sys_role r JOIN sys_menu m ON m.id BETWEEN 510 AND 519
+WHERE r.id = 3 AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r.id AND x.menu_id = m.id);
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT r.id, m.id FROM sys_role r JOIN sys_menu m ON m.id IN (511, 5113)
+WHERE r.id = 6 AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r.id AND x.menu_id = m.id);
+
+-- ===== 第四轮：产品开发与 1688 采购 =====
+-- 开发项目（选品 → 调研 → 打样 → 审批 → 生成物料）、样品记录、流转记录；利润试算方案与平台佣金费率；
+-- 1688 开放平台账号（OAuth 授权，凭证加密保存）、物料关联 1688 商品与价格变动、由采购订单下单生成的 1688 采购单
+DROP TABLE IF EXISTS ecom_dev_project;
+CREATE TABLE ecom_dev_project (
+    id                 BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id          BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    doc_no             VARCHAR(32)    NOT NULL COMMENT '项目编号（编码规则 KF）',
+    name               VARCHAR(128)   NOT NULL COMMENT '候选产品名称',
+    category           VARCHAR(64)             DEFAULT NULL COMMENT '品类（物料分类编码 wms_material_category.code）',
+    brand              VARCHAR(64)             DEFAULT NULL COMMENT '品牌（业务字典 wms_material_brand）',
+    source             VARCHAR(32)             DEFAULT NULL COMMENT '产品来源(业务字典 ecom_dev_source)',
+    platform           VARCHAR(32)             DEFAULT NULL COMMENT '目标平台(字典 ecom_platform)',
+    marketplace        VARCHAR(16)             DEFAULT NULL COMMENT '目标站点(业务字典 ecom_marketplace)',
+    currency           VARCHAR(8)              DEFAULT NULL COMMENT '站点币种（竞品价格、目标售价的币种）',
+    competitor_url     VARCHAR(500)            DEFAULT NULL COMMENT '参考竞品链接',
+    competitor_price   DECIMAL(18, 2)          DEFAULT NULL COMMENT '竞品售价（站点币种）',
+    competitor_reviews INT                     DEFAULT NULL COMMENT '竞品评论数',
+    competitor_rating  DECIMAL(3, 1)           DEFAULT NULL COMMENT '竞品评分',
+    est_monthly_sales  INT                     DEFAULT NULL COMMENT '预估月销量',
+    target_price       DECIMAL(18, 2)          DEFAULT NULL COMMENT '目标售价（站点币种）',
+    est_purchase_price DECIMAL(18, 4)          DEFAULT NULL COMMENT '预估采购价（本位币，含税）',
+    weight_kg          DECIMAL(10, 3)          DEFAULT NULL COMMENT '预估单件重量（kg）',
+    length_cm          DECIMAL(10, 2)          DEFAULT NULL COMMENT '包装长（cm）',
+    width_cm           DECIMAL(10, 2)          DEFAULT NULL COMMENT '包装宽（cm）',
+    height_cm          DECIMAL(10, 2)          DEFAULT NULL COMMENT '包装高（cm）',
+    est_profit         DECIMAL(18, 2)          DEFAULT NULL COMMENT '试算单件利润（本位币，保存试算方案时回写）',
+    est_margin         DECIMAL(10, 2)          DEFAULT NULL COMMENT '试算利润率（%）',
+    owner_id           BIGINT                  DEFAULT NULL COMMENT '开发负责人',
+    images             VARCHAR(2000)           DEFAULT NULL COMMENT '图片地址（JSON 数组）',
+    selling_points     VARCHAR(1000)           DEFAULT NULL COMMENT '卖点 / 差异化',
+    description        VARCHAR(2000)           DEFAULT NULL COMMENT '调研说明',
+    status             VARCHAR(20)    NOT NULL DEFAULT 'PENDING_RESEARCH' COMMENT '状态(字典 ecom_dev_status)',
+    prev_status        VARCHAR(20)             DEFAULT NULL COMMENT '提交审批前的状态（撤回、驳回后可恢复）',
+    flow_instance_id   VARCHAR(64)             DEFAULT NULL COMMENT '审批流程实例',
+    material_id        BIGINT                  DEFAULT NULL COMMENT '审批通过后生成的物料',
+    approve_by         BIGINT                  DEFAULT NULL COMMENT '审批人（手工审批时）',
+    approve_time       DATETIME                DEFAULT NULL COMMENT '审批通过 / 驳回时间',
+    reject_reason      VARCHAR(255)            DEFAULT NULL COMMENT '驳回 / 放弃原因',
+    remark             VARCHAR(255)            DEFAULT NULL COMMENT '备注',
+    dept_id            BIGINT                  DEFAULT NULL COMMENT '创建人部门（数据权限）',
+    create_by          BIGINT                  DEFAULT NULL COMMENT '创建人',
+    create_time        DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time        DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_dev_project_no (doc_no, tenant_id),
+    KEY idx_ecom_dev_project_status (status),
+    KEY idx_ecom_dev_project_owner (owner_id),
+    KEY idx_ecom_dev_project_dept (dept_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '产品开发项目（候选产品）';
+
+DROP TABLE IF EXISTS ecom_dev_sample;
+CREATE TABLE ecom_dev_sample (
+    id            BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id     BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    project_id    BIGINT         NOT NULL COMMENT '开发项目',
+    supplier_id   BIGINT                  DEFAULT NULL COMMENT '供应商(scm_supplier)，未建档时填名称',
+    supplier_name VARCHAR(128)            DEFAULT NULL COMMENT '供应商名称（未建档的工厂 / 1688 店铺）',
+    sample_url    VARCHAR(500)            DEFAULT NULL COMMENT '样品链接（如 1688 商品链接）',
+    sample_qty    INT                     DEFAULT NULL COMMENT '样品数量',
+    sample_fee    DECIMAL(18, 2)          DEFAULT NULL COMMENT '样品费（本位币，含运费）',
+    quote_price   DECIMAL(18, 4)          DEFAULT NULL COMMENT '大货报价（本位币）',
+    request_date  DATE                    DEFAULT NULL COMMENT '申请打样日期',
+    arrival_date  DATE                    DEFAULT NULL COMMENT '到样日期',
+    result        VARCHAR(16)    NOT NULL DEFAULT 'PENDING' COMMENT '评估结论(字典 ecom_dev_sample_result) PENDING待评估 PASSED合格 FAILED不合格',
+    evaluation    VARCHAR(1000)           DEFAULT NULL COMMENT '评估意见',
+    create_by     BIGINT                  DEFAULT NULL COMMENT '创建人',
+    create_time   DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time   DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_dev_sample_project (project_id),
+    KEY idx_ecom_dev_sample_supplier (supplier_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '开发项目的样品记录';
+
+DROP TABLE IF EXISTS ecom_dev_log;
+CREATE TABLE ecom_dev_log (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id   BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    project_id  BIGINT       NOT NULL COMMENT '开发项目',
+    action      VARCHAR(16)  NOT NULL COMMENT '操作 CREATE MOVE SUBMIT WITHDRAW APPROVE REJECT ABANDON MATERIAL',
+    from_status VARCHAR(20)           DEFAULT NULL COMMENT '原状态',
+    to_status   VARCHAR(20)           DEFAULT NULL COMMENT '新状态',
+    remark      VARCHAR(500)          DEFAULT NULL COMMENT '说明（驳回原因、审批意见等）',
+    create_by   BIGINT                DEFAULT NULL COMMENT '操作人（审批流程回调时为空）',
+    create_time DATETIME              DEFAULT NULL COMMENT '操作时间',
+    update_time DATETIME              DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_dev_log_project (project_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '开发项目流转记录';
+
+DROP TABLE IF EXISTS ecom_commission_rate;
+CREATE TABLE ecom_commission_rate (
+    id          BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id   BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    platform    VARCHAR(32)    NOT NULL COMMENT '平台(字典 ecom_platform)',
+    marketplace VARCHAR(16)    NOT NULL DEFAULT '' COMMENT '站点，空为该平台全部站点',
+    category    VARCHAR(64)    NOT NULL DEFAULT '' COMMENT '平台类目名称，空为默认类目',
+    rate        DECIMAL(6, 2)  NOT NULL DEFAULT 0 COMMENT '佣金率（%）',
+    min_fee     DECIMAL(18, 2)          DEFAULT NULL COMMENT '单件最低佣金（站点币种）',
+    fixed_fee   DECIMAL(18, 2)          DEFAULT NULL COMMENT '每单固定费 / 交易手续费（站点币种）',
+    currency    VARCHAR(8)              DEFAULT NULL COMMENT '站点币种',
+    vat_rate    DECIMAL(6, 2)           DEFAULT NULL COMMENT '默认 VAT / GST 税率（%，价内税），空则取税务中的税率',
+    builtin     TINYINT        NOT NULL DEFAULT 0 COMMENT '内置 1是（新租户复制）',
+    status      TINYINT        NOT NULL DEFAULT 1 COMMENT '状态 1启用 0停用',
+    remark      VARCHAR(255)            DEFAULT NULL COMMENT '备注',
+    create_time DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_commission_rate (platform, marketplace, category, tenant_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '平台佣金费率（利润试算用）';
+
+DROP TABLE IF EXISTS ecom_profit_scheme;
+CREATE TABLE ecom_profit_scheme (
+    id          BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id   BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    name        VARCHAR(64)    NOT NULL COMMENT '方案名称',
+    project_id  BIGINT                  DEFAULT NULL COMMENT '开发项目（在项目详情中保存时）',
+    platform    VARCHAR(32)             DEFAULT NULL COMMENT '平台',
+    marketplace VARCHAR(16)             DEFAULT NULL COMMENT '站点',
+    currency    VARCHAR(8)              DEFAULT NULL COMMENT '站点币种',
+    sale_price  DECIMAL(18, 2)          DEFAULT NULL COMMENT '售价（站点币种）',
+    profit      DECIMAL(18, 2)          DEFAULT NULL COMMENT '单件利润（本位币）',
+    margin      DECIMAL(10, 2)          DEFAULT NULL COMMENT '利润率（%）',
+    roi         DECIMAL(10, 2)          DEFAULT NULL COMMENT '投资回报率（%）',
+    params      TEXT COMMENT '试算参数（JSON，载入方案时还原）',
+    create_by   BIGINT                  DEFAULT NULL COMMENT '创建人',
+    create_time DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_profit_scheme_project (project_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '利润试算方案';
+
+DROP TABLE IF EXISTS ecom_1688_account;
+CREATE TABLE ecom_1688_account (
+    id              BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id       BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    name            VARCHAR(64)  NOT NULL COMMENT '账号名称',
+    app_key         VARCHAR(64)  NOT NULL COMMENT '1688 开放平台 AppKey',
+    app_secret      VARCHAR(500)          DEFAULT NULL COMMENT 'AppSecret（加密保存，enc: 前缀）',
+    access_token    VARCHAR(1000)         DEFAULT NULL COMMENT '访问令牌（加密）',
+    refresh_token   VARCHAR(1000)         DEFAULT NULL COMMENT '刷新令牌（加密）',
+    token_expire    DATETIME              DEFAULT NULL COMMENT '访问令牌过期时间',
+    refresh_expire  DATETIME              DEFAULT NULL COMMENT '刷新令牌过期时间',
+    member_id       VARCHAR(64)           DEFAULT NULL COMMENT '授权买家的 memberId',
+    login_id        VARCHAR(64)           DEFAULT NULL COMMENT '授权买家的登录名（resource_owner）',
+    authorized_time DATETIME              DEFAULT NULL COMMENT '授权时间',
+    api_url         VARCHAR(255)          DEFAULT NULL COMMENT '自定义网关地址，为空用 https://gw.open.1688.com/openapi',
+    receiver_name   VARCHAR(64)           DEFAULT NULL COMMENT '收货人',
+    receiver_mobile VARCHAR(32)           DEFAULT NULL COMMENT '收货手机',
+    province        VARCHAR(32)           DEFAULT NULL COMMENT '省',
+    city            VARCHAR(32)           DEFAULT NULL COMMENT '市',
+    district        VARCHAR(32)           DEFAULT NULL COMMENT '区 / 县',
+    town            VARCHAR(32)           DEFAULT NULL COMMENT '镇 / 街道',
+    address         VARCHAR(255)          DEFAULT NULL COMMENT '详细地址',
+    post_code       VARCHAR(16)           DEFAULT NULL COMMENT '邮编',
+    is_default      TINYINT      NOT NULL DEFAULT 0 COMMENT '默认下单账号 1是',
+    status          TINYINT      NOT NULL DEFAULT 1 COMMENT '状态 1启用 0停用',
+    last_message    VARCHAR(500)          DEFAULT NULL COMMENT '最近一次调用失败的原因，成功为空',
+    remark          VARCHAR(255)          DEFAULT NULL COMMENT '备注',
+    create_time     DATETIME              DEFAULT NULL COMMENT '创建时间',
+    update_time     DATETIME              DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_1688_account_name (name, tenant_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '1688 开放平台采购账号';
+
+DROP TABLE IF EXISTS ecom_1688_offer;
+CREATE TABLE ecom_1688_offer (
+    id                BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id         BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    material_id       BIGINT         NOT NULL COMMENT '物料',
+    offer_id          VARCHAR(32)    NOT NULL COMMENT '1688 商品 ID（offerId）',
+    spec_id           VARCHAR(64)             DEFAULT NULL COMMENT '规格 ID（specId），单规格商品为空',
+    sku_id            VARCHAR(32)             DEFAULT NULL COMMENT 'SKU ID',
+    supplier_id       BIGINT                  DEFAULT NULL COMMENT '对应的供应商(scm_supplier)',
+    seller_login_id   VARCHAR(64)             DEFAULT NULL COMMENT '卖家登录名（下单时按它拆单）',
+    seller_name       VARCHAR(128)            DEFAULT NULL COMMENT '卖家公司 / 店铺名称',
+    title             VARCHAR(255)            DEFAULT NULL COMMENT '1688 商品标题',
+    spec_text         VARCHAR(255)            DEFAULT NULL COMMENT '规格属性',
+    image_url         VARCHAR(500)            DEFAULT NULL COMMENT '主图',
+    unit              VARCHAR(16)             DEFAULT NULL COMMENT '1688 计量单位',
+    price             DECIMAL(18, 4)          DEFAULT NULL COMMENT '当前价格（元，按起批量的价格）',
+    last_price        DECIMAL(18, 4)          DEFAULT NULL COMMENT '上次价格（价格变动前）',
+    price_ranges      VARCHAR(500)            DEFAULT NULL COMMENT '阶梯价（JSON [{startQuantity, price}]）',
+    min_order_qty     INT                     DEFAULT NULL COMMENT '起批量',
+    stock             INT                     DEFAULT NULL COMMENT '可售库存',
+    qty_ratio         DECIMAL(10, 4) NOT NULL DEFAULT 1 COMMENT '1 个 1688 单位 = 多少物料单位（下单数量 = 采购数量 ÷ 换算，向上取整）',
+    price_alert       TINYINT        NOT NULL DEFAULT 0 COMMENT '价格变动未确认 1是',
+    alert_threshold   DECIMAL(6, 2)           DEFAULT NULL COMMENT '提醒阈值（%），变动幅度超过它才提醒，空为任何变动都提醒',
+    price_change_time DATETIME                DEFAULT NULL COMMENT '最近一次价格变动时间',
+    sync_time         DATETIME                DEFAULT NULL COMMENT '最近同步时间',
+    sync_message      VARCHAR(255)            DEFAULT NULL COMMENT '最近一次同步失败的原因（如商品下架），成功为空',
+    remark            VARCHAR(255)            DEFAULT NULL COMMENT '备注',
+    create_time       DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time       DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_1688_offer_material (material_id, tenant_id),
+    KEY idx_ecom_1688_offer_offer (offer_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '物料关联的 1688 商品（货源）';
+
+DROP TABLE IF EXISTS ecom_1688_price_log;
+CREATE TABLE ecom_1688_price_log (
+    id          BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id   BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    offer_id    BIGINT         NOT NULL COMMENT '1688 关联(ecom_1688_offer)',
+    material_id BIGINT         NOT NULL COMMENT '物料',
+    old_price   DECIMAL(18, 4)          DEFAULT NULL COMMENT '原价格',
+    new_price   DECIMAL(18, 4)          DEFAULT NULL COMMENT '新价格',
+    change_rate DECIMAL(10, 2)          DEFAULT NULL COMMENT '变动幅度（%）',
+    create_time DATETIME                DEFAULT NULL COMMENT '发现时间',
+    update_time DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_1688_price_log_offer (offer_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '1688 价格变动记录';
+
+DROP TABLE IF EXISTS ecom_1688_order;
+CREATE TABLE ecom_1688_order (
+    id                BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id         BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    account_id        BIGINT         NOT NULL COMMENT '下单账号(ecom_1688_account)',
+    scm_order_id      BIGINT                  DEFAULT NULL COMMENT '采购订单(scm_order)',
+    ali_order_id      VARCHAR(32)    NOT NULL COMMENT '1688 订单号',
+    seller_login_id   VARCHAR(64)             DEFAULT NULL COMMENT '卖家登录名',
+    seller_name       VARCHAR(128)            DEFAULT NULL COMMENT '卖家名称',
+    status            VARCHAR(24)    NOT NULL DEFAULT 'WAIT_BUYER_PAY' COMMENT '状态(字典 ecom_1688_order_status)',
+    ali_status        VARCHAR(32)             DEFAULT NULL COMMENT '1688 原始状态',
+    product_amount    DECIMAL(18, 2)          DEFAULT NULL COMMENT '货款（元）',
+    shipping_fee      DECIMAL(18, 2)          DEFAULT NULL COMMENT '运费（元）',
+    total_amount      DECIMAL(18, 2)          DEFAULT NULL COMMENT '实付金额（元，含运费）',
+    total_qty         DECIMAL(18, 4)          DEFAULT NULL COMMENT '1688 下单数量合计',
+    logistics_company VARCHAR(64)             DEFAULT NULL COMMENT '物流公司',
+    logistics_no      VARCHAR(64)             DEFAULT NULL COMMENT '物流单号（多个用逗号分隔）',
+    trace             TEXT COMMENT '物流轨迹（JSON [{time, remark}]）',
+    message           VARCHAR(500)            DEFAULT NULL COMMENT '买家留言',
+    ali_create_time   DATETIME                DEFAULT NULL COMMENT '1688 下单时间',
+    pay_time          DATETIME                DEFAULT NULL COMMENT '付款时间',
+    ship_time         DATETIME                DEFAULT NULL COMMENT '发货时间',
+    receive_time      DATETIME                DEFAULT NULL COMMENT '收货时间',
+    sync_time         DATETIME                DEFAULT NULL COMMENT '最近同步时间',
+    sync_message      VARCHAR(500)            DEFAULT NULL COMMENT '最近一次同步失败的原因，成功为空',
+    create_by         BIGINT                  DEFAULT NULL COMMENT '下单人',
+    create_time       DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time       DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_1688_order_no (ali_order_id, tenant_id),
+    KEY idx_ecom_1688_order_po (scm_order_id),
+    KEY idx_ecom_1688_order_status (status)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '1688 采购单（由采购订单一键下单生成）';
+
+DROP TABLE IF EXISTS ecom_1688_order_item;
+CREATE TABLE ecom_1688_order_item (
+    id                BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id         BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    order_id          BIGINT         NOT NULL COMMENT '1688 采购单(ecom_1688_order)',
+    scm_order_item_id BIGINT                  DEFAULT NULL COMMENT '采购订单明细(scm_order_item)',
+    material_id       BIGINT         NOT NULL COMMENT '物料',
+    offer_id          VARCHAR(32)    NOT NULL COMMENT '1688 商品 ID',
+    spec_id           VARCHAR(64)             DEFAULT NULL COMMENT '规格 ID',
+    qty               DECIMAL(18, 4) NOT NULL COMMENT '1688 下单数量',
+    material_qty      DECIMAL(18, 4)          DEFAULT NULL COMMENT '对应的物料数量',
+    price             DECIMAL(18, 4)          DEFAULT NULL COMMENT '下单时的 1688 单价',
+    amount            DECIMAL(18, 2)          DEFAULT NULL COMMENT '金额',
+    create_time       DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time       DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_1688_order_item_order (order_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '1688 采购单明细';
+
+-- 内置平台佣金费率（常见平台的默认值，请按平台最新规则维护；空站点 = 该平台全部站点）
+INSERT INTO ecom_commission_rate (platform, marketplace, category, rate, min_fee, fixed_fee, currency, vat_rate, builtin, status, remark, create_time, update_time) VALUES
+('AMAZON', 'US', '', 15.00, 0.30, NULL, 'USD', 0.00, 1, 1, '亚马逊美国站大多数类目 15%，单件最低 0.30 美元；销售税由平台代收代缴', NOW(), NOW()),
+('AMAZON', 'US', '消费电子', 8.00, 0.30, NULL, 'USD', 0.00, 1, 1, '消费类电子产品', NOW(), NOW()),
+('AMAZON', 'US', '服装与配饰', 17.00, 0.30, NULL, 'USD', 0.00, 1, 1, '售价超过 20 美元的部分', NOW(), NOW()),
+('AMAZON', 'US', '家居与厨房', 15.00, 0.30, NULL, 'USD', 0.00, 1, 1, NULL, NOW(), NOW()),
+('AMAZON', 'US', '运动户外', 15.00, 0.30, NULL, 'USD', 0.00, 1, 1, NULL, NOW(), NOW()),
+('AMAZON', 'CA', '', 15.00, 0.30, NULL, 'CAD', 0.00, 1, 1, NULL, NOW(), NOW()),
+('AMAZON', 'MX', '', 15.00, 10.00, NULL, 'MXN', 16.00, 1, 1, NULL, NOW(), NOW()),
+('AMAZON', 'UK', '', 15.30, 0.25, NULL, 'GBP', 20.00, 1, 1, '欧洲站佣金按含税售价计算', NOW(), NOW()),
+('AMAZON', 'DE', '', 15.00, 0.30, NULL, 'EUR', 19.00, 1, 1, NULL, NOW(), NOW()),
+('AMAZON', 'FR', '', 15.00, 0.30, NULL, 'EUR', 20.00, 1, 1, NULL, NOW(), NOW()),
+('AMAZON', 'IT', '', 15.00, 0.30, NULL, 'EUR', 22.00, 1, 1, NULL, NOW(), NOW()),
+('AMAZON', 'ES', '', 15.00, 0.30, NULL, 'EUR', 21.00, 1, 1, NULL, NOW(), NOW()),
+('AMAZON', 'JP', '', 10.00, 30.00, NULL, 'JPY', 10.00, 1, 1, '消费税 10%', NOW(), NOW()),
+('AMAZON', 'AU', '', 15.00, 0.30, NULL, 'AUD', 10.00, 1, 1, 'GST 10%', NOW(), NOW()),
+('EBAY', 'US', '', 13.25, NULL, 0.30, 'USD', 0.00, 1, 1, '成交费 13.25% + 每单 0.30 美元（售价超过 10 美元为 0.40）', NOW(), NOW()),
+('WALMART', 'US', '', 15.00, NULL, NULL, 'USD', 0.00, 1, 1, NULL, NOW(), NOW()),
+('TIKTOK', 'US', '', 8.00, NULL, 0.30, 'USD', 0.00, 1, 1, '推荐费 + 每单固定费', NOW(), NOW()),
+('SHOPEE', '', '', 12.00, NULL, NULL, NULL, NULL, 1, 1, '佣金 + 交易手续费，按站点不同', NOW(), NOW()),
+('LAZADA', '', '', 10.00, NULL, NULL, NULL, NULL, 1, 1, '佣金 + 支付手续费，按站点不同', NOW(), NOW()),
+('ALIEXPRESS', '', '', 8.00, NULL, NULL, 'USD', NULL, 1, 1, NULL, NOW(), NOW()),
+('SHOPIFY', '', '', 2.90, NULL, 0.30, 'USD', NULL, 1, 1, '独立站支付手续费 2.9% + 0.30 美元', NOW(), NOW()),
+('MERCADO_LIBRE', '', '', 16.00, NULL, NULL, NULL, NULL, 1, 1, NULL, NOW(), NOW()),
+('OZON', '', '', 15.00, NULL, NULL, NULL, NULL, 1, 1, NULL, NOW(), NOW()),
+('TEMU', '', '', 0.00, NULL, NULL, NULL, NULL, 1, 1, '全托管按供货价结算，平台不收佣金', NOW(), NOW());
+
+-- 菜单：电商下的分组「产品开发」（开发项目、开发看板、利润试算），「库存与物流」下的 1688 采购
+INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time) VALUES
+(980, 17, '产品开发', 'M', NULL, NULL, NULL, NULL, 7, 1, 1, NOW(), NOW()),
+(550, 980, '开发项目', 'C', 'dev-project', 'ecom/dev-project/index', 'ecom:devProject:list', 'ExperimentOutlined', 1, 1, 1, NOW(), NOW()),
+(551, 980, '开发看板', 'C', 'dev-board', 'ecom/dev-board/index', 'ecom:devProject:list', 'ProjectOutlined', 2, 1, 1, NOW(), NOW()),
+(552, 980, '利润试算', 'C', 'profit-calc', 'ecom/profit-calc/index', 'ecom:profitCalc:list', 'CalculatorOutlined', 3, 1, 1, NOW(), NOW()),
+(553, 983, '1688 账号', 'C', 'ali1688-account', 'ecom/ali1688-account/index', 'ecom:ali1688Account:list', 'KeyOutlined', 6, 1, 1, NOW(), NOW()),
+(554, 983, '1688 货源', 'C', 'ali1688-offer', 'ecom/ali1688-offer/index', 'ecom:ali1688Offer:list', 'LinkOutlined', 7, 1, 1, NOW(), NOW()),
+(555, 983, '1688 采购单', 'C', 'ali1688-order', 'ecom/ali1688-order/index', 'ecom:ali1688Order:list', 'ShoppingCartOutlined', 8, 1, 1, NOW(), NOW()),
+(5500, 550, '开发项目新增', 'F', NULL, NULL, 'ecom:devProject:add', NULL, 1, 1, 1, NOW(), NOW()),
+(5501, 550, '开发项目修改（含样品、状态流转、提交审批）', 'F', NULL, NULL, 'ecom:devProject:edit', NULL, 2, 1, 1, NOW(), NOW()),
+(5502, 550, '开发项目删除', 'F', NULL, NULL, 'ecom:devProject:remove', NULL, 3, 1, 1, NOW(), NOW()),
+(5503, 550, '开发项目审批', 'F', NULL, NULL, 'ecom:devProject:approve', NULL, 4, 1, 1, NOW(), NOW()),
+(5504, 550, '生成物料', 'F', NULL, NULL, 'ecom:devProject:material', NULL, 5, 1, 1, NOW(), NOW()),
+(5520, 552, '保存试算方案', 'F', NULL, NULL, 'ecom:profitCalc:save', NULL, 1, 1, 1, NOW(), NOW()),
+(5521, 552, '佣金费率维护', 'F', NULL, NULL, 'ecom:profitCalc:rate', NULL, 2, 1, 1, NOW(), NOW()),
+(5530, 553, '账号维护与授权', 'F', NULL, NULL, 'ecom:ali1688Account:edit', NULL, 1, 1, 1, NOW(), NOW()),
+(5540, 554, '货源关联维护', 'F', NULL, NULL, 'ecom:ali1688Offer:edit', NULL, 1, 1, 1, NOW(), NOW()),
+(5541, 554, '同步价格库存', 'F', NULL, NULL, 'ecom:ali1688Offer:sync', NULL, 2, 1, 1, NOW(), NOW()),
+(5550, 555, '下单到 1688', 'F', NULL, NULL, 'ecom:ali1688Order:create', NULL, 1, 1, 1, NOW(), NOW()),
+(5551, 555, '同步订单与物流', 'F', NULL, NULL, 'ecom:ali1688Order:sync', NULL, 2, 1, 1, NOW(), NOW()),
+(5552, 555, '取消 1688 订单', 'F', NULL, NULL, 'ecom:ali1688Order:cancel', NULL, 3, 1, 1, NOW(), NOW());
+
+-- 字典：开发状态、样品结论、1688 订单状态（系统字典），产品来源（业务字典）
+INSERT INTO sys_dict_type (id, name, type, kind, status, remark, create_time, update_time) VALUES
+(350, '开发状态', 'ecom_dev_status', 'SYSTEM', 1, '产品开发项目的状态', NOW(), NOW()),
+(351, '样品结论', 'ecom_dev_sample_result', 'SYSTEM', 1, '开发样品的评估结论', NOW(), NOW()),
+(352, '1688 订单状态', 'ecom_1688_order_status', 'SYSTEM', 1, '1688 采购单的交易状态', NOW(), NOW()),
+(353, '产品来源', 'ecom_dev_source', 'BUSINESS', 1, '开发项目的选品来源，可自行扩展', NOW(), NOW());
+INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, builtin, create_time, update_time) VALUES
+('ecom_dev_status', '待调研', 'PENDING_RESEARCH', 'default', 1, 1, 1, NOW(), NOW()),
+('ecom_dev_status', '调研中', 'RESEARCHING', 'blue', 2, 1, 1, NOW(), NOW()),
+('ecom_dev_status', '打样中', 'SAMPLING', 'cyan', 3, 1, 1, NOW(), NOW()),
+('ecom_dev_status', '待审批', 'PENDING_APPROVAL', 'orange', 4, 1, 1, NOW(), NOW()),
+('ecom_dev_status', '已通过', 'APPROVED', 'green', 5, 1, 1, NOW(), NOW()),
+('ecom_dev_status', '已驳回', 'REJECTED', 'red', 6, 1, 1, NOW(), NOW()),
+('ecom_dev_status', '已放弃', 'ABANDONED', 'default', 7, 1, 1, NOW(), NOW()),
+('ecom_dev_sample_result', '待评估', 'PENDING', 'orange', 1, 1, 1, NOW(), NOW()),
+('ecom_dev_sample_result', '合格', 'PASSED', 'green', 2, 1, 1, NOW(), NOW()),
+('ecom_dev_sample_result', '不合格', 'FAILED', 'red', 3, 1, 1, NOW(), NOW()),
+('ecom_1688_order_status', '待付款', 'WAIT_BUYER_PAY', 'orange', 1, 1, 1, NOW(), NOW()),
+('ecom_1688_order_status', '待发货', 'WAIT_SELLER_SEND', 'blue', 2, 1, 1, NOW(), NOW()),
+('ecom_1688_order_status', '待收货', 'WAIT_BUYER_RECEIVE', 'cyan', 3, 1, 1, NOW(), NOW()),
+('ecom_1688_order_status', '已收货', 'CONFIRM_GOODS', 'geekblue', 4, 1, 1, NOW(), NOW()),
+('ecom_1688_order_status', '交易成功', 'SUCCESS', 'green', 5, 1, 1, NOW(), NOW()),
+('ecom_1688_order_status', '已取消', 'CANCEL', 'default', 6, 1, 1, NOW(), NOW()),
+('ecom_1688_order_status', '交易终止', 'TERMINATED', 'red', 7, 1, 1, NOW(), NOW()),
+('ecom_dev_source', '1688 选品', 'ALI1688', 'orange', 1, 1, 0, NOW(), NOW()),
+('ecom_dev_source', '平台热卖', 'BESTSELLER', 'red', 2, 1, 0, NOW(), NOW()),
+('ecom_dev_source', '展会 / 工厂', 'FACTORY', 'blue', 3, 1, 0, NOW(), NOW()),
+('ecom_dev_source', '自主设计', 'DESIGN', 'purple', 4, 1, 0, NOW(), NOW()),
+('ecom_dev_source', '其他', 'OTHER', 'default', 5, 1, 0, NOW(), NOW());
+
+-- 内置流程（未发布）：开发项目审批
+INSERT INTO wf_model (model_key, name, category, sort, status, design_json, remark, create_time, update_time) VALUES
+('ecom_dev_project', '开发项目审批', 'ECOM', 40, 1, '{"form": [], "flow": {"id": "start", "type": "START", "name": "发起人", "next": {"id": "leader", "type": "APPROVER", "name": "部门主管审批", "assignee": {"type": "DEPT_LEADER", "ids": [], "names": [], "level": 1}, "approveMode": "OR", "emptyAction": "TO_ADMIN", "next": {"id": "margin_check", "type": "CONDITION", "name": "按试算利润率", "next": null, "branches": [{"id": "margin_check_low", "name": "利润率 < 20%", "defaultBranch": false, "conditions": [[{"field": "estMargin", "operator": "LT", "value": "20"}]], "next": {"id": "gm", "type": "APPROVER", "name": "总经理审批", "assignee": {"type": "ROLE", "ids": [3], "names": ["总经理"]}, "approveMode": "OR", "emptyAction": "TO_ADMIN", "next": null}}, {"id": "margin_check_else", "name": "其他情况", "defaultBranch": true, "conditions": [], "next": null}]}}}}', '内置流程（未发布）：部门主管 → 试算利润率低于 20% 时总经理审批。未发布时开发项目提交后进入待审批，由有审批权限的人在项目中通过或驳回；发布后提交即发起审批，通过后自动生成物料', NOW(), NOW());
+
+-- 内置角色：电商运营全部；采购员 1688 采购全部、利润试算；总经理查看全部并可审批开发项目；普通用户只读
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT g.role_id, g.menu_id FROM (
+    SELECT 5 AS role_id, 980 AS menu_id UNION ALL SELECT 5, 550 UNION ALL SELECT 5, 551 UNION ALL SELECT 5, 552 UNION ALL SELECT 5, 553
+    UNION ALL SELECT 5, 554 UNION ALL SELECT 5, 555 UNION ALL SELECT 5, 5500 UNION ALL SELECT 5, 5501 UNION ALL SELECT 5, 5502
+    UNION ALL SELECT 5, 5504 UNION ALL SELECT 5, 5520 UNION ALL SELECT 5, 5521 UNION ALL SELECT 5, 5530 UNION ALL SELECT 5, 5540
+    UNION ALL SELECT 5, 5541 UNION ALL SELECT 5, 5550 UNION ALL SELECT 5, 5551 UNION ALL SELECT 5, 5552
+    UNION ALL SELECT 4, 17 UNION ALL SELECT 4, 983 UNION ALL SELECT 4, 980 UNION ALL SELECT 4, 552 UNION ALL SELECT 4, 5520
+    UNION ALL SELECT 4, 553 UNION ALL SELECT 4, 554 UNION ALL SELECT 4, 555 UNION ALL SELECT 4, 5530 UNION ALL SELECT 4, 5540
+    UNION ALL SELECT 4, 5541 UNION ALL SELECT 4, 5550 UNION ALL SELECT 4, 5551 UNION ALL SELECT 4, 5552
+    UNION ALL SELECT 3, 980 UNION ALL SELECT 3, 550 UNION ALL SELECT 3, 551 UNION ALL SELECT 3, 552 UNION ALL SELECT 3, 553
+    UNION ALL SELECT 3, 554 UNION ALL SELECT 3, 555 UNION ALL SELECT 3, 5503
+    UNION ALL SELECT 2, 980 UNION ALL SELECT 2, 550 UNION ALL SELECT 2, 551 UNION ALL SELECT 2, 552 UNION ALL SELECT 2, 554 UNION ALL SELECT 2, 555
+) g
+WHERE EXISTS (SELECT 1 FROM sys_role r WHERE r.id = g.role_id)
+  AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = g.role_id AND x.menu_id = g.menu_id);
+
+-- ===== 第四轮：订单增强（补充） =====
+ALTER TABLE ecom_order_setting ADD COLUMN track_api_url VARCHAR(255) DEFAULT NULL COMMENT '17TRACK 自定义接口地址（代理或测试），为空用默认地址';
+
+-- ===== 第四轮：运营监控与团队 =====
+-- 店铺授权（店铺数据权限）、ASIN / 商品监控（快照、预警）、促销管理、运营目标与绩效
+
+CREATE TABLE ecom_store_member (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id   BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    store_id    BIGINT       NOT NULL COMMENT '店铺',
+    user_id     BIGINT       NOT NULL COMMENT '被授权的用户',
+    member_role VARCHAR(16)  NOT NULL DEFAULT 'OPERATOR' COMMENT '岗位(业务字典 ecom_store_member_role) OPERATOR运营 CS客服 ASSISTANT助理',
+    remark      VARCHAR(255)          DEFAULT NULL COMMENT '备注',
+    create_by   BIGINT                DEFAULT NULL COMMENT '授权人',
+    create_time DATETIME              DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME              DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_store_member (store_id, user_id, tenant_id),
+    KEY idx_ecom_store_member_user (user_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '店铺授权：用户只能看到负责的店铺和被授权店铺的电商数据（全部数据权限的角色不受限制）';
+
+CREATE TABLE ecom_monitor (
+    id                 BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id          BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    monitor_type       VARCHAR(16)   NOT NULL DEFAULT 'OWN' COMMENT '类型(字典 ecom_monitor_type) OWN自己的商品 COMPETITOR竞品',
+    platform           VARCHAR(16)   NOT NULL COMMENT '平台(字典 ecom_platform)',
+    marketplace        VARCHAR(16)   NOT NULL COMMENT '站点(业务字典 ecom_marketplace)',
+    item_id            VARCHAR(64)   NOT NULL COMMENT 'ASIN / 平台商品 ID',
+    store_id           BIGINT                 DEFAULT NULL COMMENT '所属店铺（自己的商品必填；竞品可为空，不受店铺数据权限限制）',
+    listing_id         BIGINT                 DEFAULT NULL COMMENT '对应的在线商品（自己的商品）',
+    seller_sku         VARCHAR(64)            DEFAULT NULL COMMENT '平台 SKU（自己的商品）',
+    benchmark_id       BIGINT                 DEFAULT NULL COMMENT '竞品对标的自己商品（监控 ID）',
+    brand              VARCHAR(128)           DEFAULT NULL COMMENT '品牌',
+    title              VARCHAR(500)           DEFAULT NULL COMMENT '最新标题',
+    main_image         VARCHAR(500)           DEFAULT NULL COMMENT '最新主图',
+    category           VARCHAR(128)           DEFAULT NULL COMMENT 'BSR 大类',
+    rank_main          INT                    DEFAULT NULL COMMENT '大类排名',
+    sub_category       VARCHAR(128)           DEFAULT NULL COMMENT 'BSR 小类',
+    rank_sub           INT                    DEFAULT NULL COMMENT '小类排名',
+    rating             DECIMAL(3, 2)          DEFAULT NULL COMMENT '评分',
+    review_count       INT                    DEFAULT NULL COMMENT '评论数',
+    seller_count       INT                    DEFAULT NULL COMMENT '在售卖家数（含自己），大于 1 表示有跟卖',
+    price              DECIMAL(18, 2)         DEFAULT NULL COMMENT '售价（Buy Box / 最低价）',
+    currency           VARCHAR(8)             DEFAULT NULL COMMENT '币种',
+    listing_status     VARCHAR(16)            DEFAULT NULL COMMENT '上下架(字典 ecom_listing_status) ACTIVE在售 INACTIVE下架',
+    last_snapshot_date DATE                   DEFAULT NULL COMMENT '最近一次快照日期',
+    auto_fetch         TINYINT       NOT NULL DEFAULT 1 COMMENT '每天自动通过接口取数 1是 0否（没有接口的平台只能手工录入 / 导入）',
+    last_fetch_time    DATETIME               DEFAULT NULL COMMENT '最近一次接口取数时间',
+    last_fetch_message VARCHAR(500)           DEFAULT NULL COMMENT '最近一次接口取数失败的原因，成功为空',
+    rank_drop_percent  DECIMAL(6, 2) NOT NULL DEFAULT 30 COMMENT '预警：大类排名比上一次快照变差超过该百分比',
+    rating_drop        DECIMAL(3, 2) NOT NULL DEFAULT 0.1 COMMENT '预警：评分比上一次快照下降达到该值',
+    notify_user_id     BIGINT                 DEFAULT NULL COMMENT '预警通知人，为空通知店铺负责人（竞品为创建人）',
+    status             TINYINT       NOT NULL DEFAULT 1 COMMENT '状态 1监控中 0暂停',
+    remark             VARCHAR(255)           DEFAULT NULL COMMENT '备注',
+    create_by          BIGINT                 DEFAULT NULL COMMENT '创建人',
+    create_time        DATETIME               DEFAULT NULL COMMENT '创建时间',
+    update_time        DATETIME               DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_monitor_item (platform, marketplace, item_id, tenant_id),
+    KEY idx_ecom_monitor_store (store_id),
+    KEY idx_ecom_monitor_benchmark (benchmark_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'ASIN / 商品监控：自己的商品与竞品的排名、评分、评论、跟卖、标题主图五点、上下架';
+
+CREATE TABLE ecom_monitor_snapshot (
+    id             BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id      BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    monitor_id     BIGINT         NOT NULL COMMENT '监控',
+    snapshot_date  DATE           NOT NULL COMMENT '日期（每天一条，同一天再次取数覆盖）',
+    category       VARCHAR(128)            DEFAULT NULL COMMENT 'BSR 大类',
+    rank_main      INT                     DEFAULT NULL COMMENT '大类排名',
+    sub_category   VARCHAR(128)            DEFAULT NULL COMMENT 'BSR 小类',
+    rank_sub       INT                     DEFAULT NULL COMMENT '小类排名',
+    rating         DECIMAL(3, 2)           DEFAULT NULL COMMENT '评分',
+    review_count   INT                     DEFAULT NULL COMMENT '评论数',
+    seller_count   INT                     DEFAULT NULL COMMENT '在售卖家数',
+    price          DECIMAL(18, 2)          DEFAULT NULL COMMENT '售价',
+    title          VARCHAR(500)            DEFAULT NULL COMMENT '标题',
+    main_image     VARCHAR(500)            DEFAULT NULL COMMENT '主图',
+    bullets        VARCHAR(4000)           DEFAULT NULL COMMENT '五点描述（每点一行）',
+    listing_status VARCHAR(16)             DEFAULT NULL COMMENT '上下架(字典 ecom_listing_status)',
+    source         VARCHAR(16)    NOT NULL DEFAULT 'MANUAL' COMMENT '来源(字典 ecom_monitor_source) API接口 MANUAL手工 IMPORT导入',
+    create_time    DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time    DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_monitor_snapshot (monitor_id, snapshot_date, tenant_id),
+    KEY idx_ecom_monitor_snapshot_date (snapshot_date)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '商品监控每日快照（趋势图与变化预警的依据）';
+
+CREATE TABLE ecom_monitor_alert (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id   BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    monitor_id  BIGINT       NOT NULL COMMENT '监控',
+    store_id    BIGINT                DEFAULT NULL COMMENT '所属店铺（取自监控，店铺数据权限用）',
+    alert_date  DATE         NOT NULL COMMENT '快照日期',
+    alert_type  VARCHAR(16)  NOT NULL COMMENT '预警类型(字典 ecom_monitor_alert_type) RANK_DROP排名大跌 RATING_DROP评分下降 NEW_SELLER新增跟卖 TITLE_CHANGED标题被改 IMAGE_CHANGED主图被改 BULLETS_CHANGED五点被改 DELISTED被下架',
+    old_value   VARCHAR(500)          DEFAULT NULL COMMENT '变化前',
+    new_value   VARCHAR(500)          DEFAULT NULL COMMENT '变化后',
+    status      VARCHAR(16)  NOT NULL DEFAULT 'NEW' COMMENT '状态(字典 ecom_monitor_alert_status) NEW未处理 HANDLED已处理 IGNORED已忽略',
+    handler_id  BIGINT                DEFAULT NULL COMMENT '处理人',
+    handle_time DATETIME              DEFAULT NULL COMMENT '处理时间',
+    handle_note VARCHAR(255)          DEFAULT NULL COMMENT '处理说明',
+    create_time DATETIME              DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME              DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_monitor_alert (monitor_id, alert_date, alert_type, tenant_id),
+    KEY idx_ecom_monitor_alert_status (status, alert_date)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '商品监控预警（同一监控同一天同一类型一条）';
+
+CREATE TABLE ecom_promotion (
+    id                BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id         BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    name              VARCHAR(128)   NOT NULL COMMENT '活动名称',
+    store_id          BIGINT         NOT NULL COMMENT '店铺',
+    promo_type        VARCHAR(32)    NOT NULL COMMENT '类型(业务字典 ecom_promo_type)',
+    start_time        DATETIME       NOT NULL COMMENT '开始时间',
+    end_time          DATETIME       NOT NULL COMMENT '结束时间',
+    discount_percent  DECIMAL(6, 2)           DEFAULT NULL COMMENT '默认折扣（% off），明细未填促销价时按它计算',
+    threshold_amount  DECIMAL(18, 2)          DEFAULT NULL COMMENT '满减门槛（店铺币种）',
+    reduce_amount     DECIMAL(18, 2)          DEFAULT NULL COMMENT '满减金额 / 优惠券面额（店铺币种）',
+    currency          VARCHAR(8)     NOT NULL COMMENT '币种（店铺币种）',
+    fee_amount        DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '活动费用（店铺币种）：秒杀费、优惠券费等，计入活动利润',
+    fee_base          DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '活动费用（本位币，按开始日所在月汇率）',
+    budget            DECIMAL(18, 2)          DEFAULT NULL COMMENT '预算（店铺币种）',
+    status            VARCHAR(16)    NOT NULL DEFAULT 'DRAFT' COMMENT '状态(字典 ecom_promo_status) DRAFT草稿 ACTIVE已生效 CANCELLED已取消；进行阶段按时间计算',
+    push_status       VARCHAR(16)    NOT NULL DEFAULT 'NONE' COMMENT '平台推送(字典 ecom_promo_push_status) NONE未推送 PUSHED已推送 FAILED推送失败',
+    platform_promo_id VARCHAR(64)             DEFAULT NULL COMMENT '平台活动 ID（虾皮 discount_id、TikTok activity_id）',
+    push_message      VARCHAR(500)            DEFAULT NULL COMMENT '最近一次推送失败的原因',
+    push_time         DATETIME                DEFAULT NULL COMMENT '最近一次推送时间',
+    owner_id          BIGINT                  DEFAULT NULL COMMENT '负责人',
+    remark            VARCHAR(255)            DEFAULT NULL COMMENT '备注',
+    create_by         BIGINT                  DEFAULT NULL COMMENT '创建人',
+    create_time       DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time       DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_promotion_store (store_id, start_time),
+    KEY idx_ecom_promotion_time (start_time, end_time)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '促销活动（优惠券、秒杀、Prime 折扣、虾皮折扣、TikTok 闪购、满减等）';
+
+CREATE TABLE ecom_promotion_item (
+    id               BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id        BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    promotion_id     BIGINT         NOT NULL COMMENT '促销活动',
+    listing_id       BIGINT                  DEFAULT NULL COMMENT '在线商品',
+    seller_sku       VARCHAR(64)    NOT NULL COMMENT '平台 SKU',
+    platform_item_id VARCHAR(64)             DEFAULT NULL COMMENT '平台商品 ID',
+    parent_item_id   VARCHAR(64)             DEFAULT NULL COMMENT '父商品 ID（虾皮 item_id、TikTok product_id）',
+    title            VARCHAR(255)            DEFAULT NULL COMMENT '标题',
+    original_price   DECIMAL(18, 2)          DEFAULT NULL COMMENT '原价（店铺币种）',
+    promo_price      DECIMAL(18, 2)          DEFAULT NULL COMMENT '促销价（店铺币种）',
+    discount_percent DECIMAL(6, 2)           DEFAULT NULL COMMENT '折扣（% off）',
+    promo_qty        INT                     DEFAULT NULL COMMENT '活动库存',
+    limit_per_buyer  INT                     DEFAULT NULL COMMENT '每人限购',
+    sort             INT            NOT NULL DEFAULT 0 COMMENT '行号',
+    create_time      DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time      DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_promotion_item_promo (promotion_id),
+    KEY idx_ecom_promotion_item_sku (seller_sku)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '促销活动的参与 SKU';
+
+CREATE TABLE ecom_ops_target (
+    id            BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id     BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    target_month  VARCHAR(7)     NOT NULL COMMENT '月份 yyyy-MM',
+    target_type   VARCHAR(16)    NOT NULL COMMENT '对象(字典 ecom_ops_target_type) STORE店铺 USER运营人员',
+    ref_id        BIGINT         NOT NULL COMMENT '店铺 ID / 用户 ID',
+    store_id      BIGINT                  DEFAULT NULL COMMENT '店铺目标的店铺（运营人员目标为空，店铺数据权限用）',
+    sales_target  DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '销售额目标（本位币）',
+    profit_target DECIMAL(18, 2) NOT NULL DEFAULT 0 COMMENT '利润目标（本位币）',
+    order_target  INT            NOT NULL DEFAULT 0 COMMENT '订单数目标',
+    remark        VARCHAR(255)            DEFAULT NULL COMMENT '备注',
+    create_by     BIGINT                  DEFAULT NULL COMMENT '设置人',
+    create_time   DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time   DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_ops_target (target_month, target_type, ref_id, tenant_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '运营月度目标（店铺 / 运营人员的销售额、利润、订单数）';
+
+-- 菜单：电商下的「运营」分组（ASIN 监控、促销管理、运营目标、运营绩效、店铺授权）
+INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time) VALUES
+(989, 17, '运营', 'M', NULL, NULL, NULL, NULL, 7, 1, 1, NOW(), NOW()),
+(540, 989, 'ASIN 监控', 'C', 'asin-monitor', 'ecom/asin-monitor/index', 'ecom:monitor:list', 'EyeOutlined', 1, 1, 1, NOW(), NOW()),
+(541, 989, '促销管理', 'C', 'promotion', 'ecom/promotion/index', 'ecom:promotion:list', 'GiftOutlined', 2, 1, 1, NOW(), NOW()),
+(542, 989, '运营目标', 'C', 'ops-target', 'ecom/ops-target/index', 'ecom:opsTarget:list', 'AimOutlined', 3, 1, 1, NOW(), NOW()),
+(543, 989, '运营绩效', 'C', 'ops-performance', 'ecom/ops-performance/index', 'ecom:opsPerf:list', 'TrophyOutlined', 4, 1, 1, NOW(), NOW()),
+(544, 989, '店铺授权', 'C', 'store-auth', 'ecom/store-auth/index', 'ecom:storeAuth:list', 'SafetyCertificateOutlined', 5, 1, 1, NOW(), NOW()),
+(5400, 540, '新增监控', 'F', NULL, NULL, 'ecom:monitor:add', NULL, 1, 1, 1, NOW(), NOW()),
+(5401, 540, '修改监控', 'F', NULL, NULL, 'ecom:monitor:edit', NULL, 2, 1, 1, NOW(), NOW()),
+(5402, 540, '删除监控', 'F', NULL, NULL, 'ecom:monitor:remove', NULL, 3, 1, 1, NOW(), NOW()),
+(5403, 540, '接口取数', 'F', NULL, NULL, 'ecom:monitor:fetch', NULL, 4, 1, 1, NOW(), NOW()),
+(5404, 540, '录入 / 导入快照', 'F', NULL, NULL, 'ecom:monitor:snapshot', NULL, 5, 1, 1, NOW(), NOW()),
+(5405, 540, '处理预警', 'F', NULL, NULL, 'ecom:monitor:alert', NULL, 6, 1, 1, NOW(), NOW()),
+(5410, 541, '新增促销', 'F', NULL, NULL, 'ecom:promotion:add', NULL, 1, 1, 1, NOW(), NOW()),
+(5411, 541, '修改促销', 'F', NULL, NULL, 'ecom:promotion:edit', NULL, 2, 1, 1, NOW(), NOW()),
+(5412, 541, '删除促销', 'F', NULL, NULL, 'ecom:promotion:remove', NULL, 3, 1, 1, NOW(), NOW()),
+(5413, 541, '生效 / 取消', 'F', NULL, NULL, 'ecom:promotion:confirm', NULL, 4, 1, 1, NOW(), NOW()),
+(5414, 541, '推送平台', 'F', NULL, NULL, 'ecom:promotion:push', NULL, 5, 1, 1, NOW(), NOW()),
+(5420, 542, '设置目标', 'F', NULL, NULL, 'ecom:opsTarget:edit', NULL, 1, 1, 1, NOW(), NOW()),
+(5440, 544, '修改授权', 'F', NULL, NULL, 'ecom:storeAuth:edit', NULL, 1, 1, 1, NOW(), NOW());
+
+-- 字典：店铺岗位、促销类型（业务字典），其余为系统字典
+INSERT INTO sys_dict_type (id, name, type, kind, status, remark, create_time, update_time) VALUES
+(340, '店铺岗位', 'ecom_store_member_role', 'BUSINESS', 1, '店铺授权中用户在店铺的岗位', NOW(), NOW()),
+(341, '监控类型', 'ecom_monitor_type', 'SYSTEM', 1, 'ASIN / 商品监控的对象：自己的商品或竞品', NOW(), NOW()),
+(342, '快照来源', 'ecom_monitor_source', 'SYSTEM', 1, '商品监控快照的数据来源', NOW(), NOW()),
+(343, '监控预警类型', 'ecom_monitor_alert_type', 'SYSTEM', 1, '商品监控的变化预警', NOW(), NOW()),
+(344, '预警处理状态', 'ecom_monitor_alert_status', 'SYSTEM', 1, '商品监控预警的处理状态', NOW(), NOW()),
+(345, '促销类型', 'ecom_promo_type', 'BUSINESS', 1, '促销活动的类型', NOW(), NOW()),
+(346, '促销状态', 'ecom_promo_status', 'SYSTEM', 1, '促销活动的状态', NOW(), NOW()),
+(347, '促销阶段', 'ecom_promo_phase', 'SYSTEM', 1, '已生效的促销按时间计算的阶段', NOW(), NOW()),
+(348, '促销推送状态', 'ecom_promo_push_status', 'SYSTEM', 1, '促销活动推送到平台的状态', NOW(), NOW()),
+(349, '目标对象', 'ecom_ops_target_type', 'SYSTEM', 1, '运营目标的对象', NOW(), NOW());
+INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, builtin, create_time, update_time) VALUES
+('ecom_store_member_role', '运营', 'OPERATOR', 'blue', 1, 1, 1, NOW(), NOW()),
+('ecom_store_member_role', '客服', 'CS', 'green', 2, 1, 0, NOW(), NOW()),
+('ecom_store_member_role', '助理', 'ASSISTANT', 'default', 3, 1, 0, NOW(), NOW()),
+('ecom_monitor_type', '自己的商品', 'OWN', 'blue', 1, 1, 1, NOW(), NOW()),
+('ecom_monitor_type', '竞品', 'COMPETITOR', 'orange', 2, 1, 1, NOW(), NOW()),
+('ecom_monitor_source', '接口', 'API', 'green', 1, 1, 1, NOW(), NOW()),
+('ecom_monitor_source', '手工', 'MANUAL', 'default', 2, 1, 1, NOW(), NOW()),
+('ecom_monitor_source', '导入', 'IMPORT', 'blue', 3, 1, 1, NOW(), NOW()),
+('ecom_monitor_alert_type', '排名大跌', 'RANK_DROP', 'red', 1, 1, 1, NOW(), NOW()),
+('ecom_monitor_alert_type', '评分下降', 'RATING_DROP', 'volcano', 2, 1, 1, NOW(), NOW()),
+('ecom_monitor_alert_type', '新增跟卖', 'NEW_SELLER', 'magenta', 3, 1, 1, NOW(), NOW()),
+('ecom_monitor_alert_type', '标题被改', 'TITLE_CHANGED', 'orange', 4, 1, 1, NOW(), NOW()),
+('ecom_monitor_alert_type', '主图被改', 'IMAGE_CHANGED', 'gold', 5, 1, 1, NOW(), NOW()),
+('ecom_monitor_alert_type', '五点被改', 'BULLETS_CHANGED', 'purple', 6, 1, 1, NOW(), NOW()),
+('ecom_monitor_alert_type', '被下架', 'DELISTED', 'red', 7, 1, 1, NOW(), NOW()),
+('ecom_monitor_alert_status', '未处理', 'NEW', 'red', 1, 1, 1, NOW(), NOW()),
+('ecom_monitor_alert_status', '已处理', 'HANDLED', 'green', 2, 1, 1, NOW(), NOW()),
+('ecom_monitor_alert_status', '已忽略', 'IGNORED', 'default', 3, 1, 1, NOW(), NOW()),
+('ecom_promo_type', '优惠券', 'COUPON', 'blue', 1, 1, 0, NOW(), NOW()),
+('ecom_promo_type', '秒杀 / Lightning Deal', 'LIGHTNING_DEAL', 'red', 2, 1, 0, NOW(), NOW()),
+('ecom_promo_type', 'Prime 专享折扣', 'PRIME_DISCOUNT', 'cyan', 3, 1, 0, NOW(), NOW()),
+('ecom_promo_type', '虾皮折扣活动', 'SHOPEE_DISCOUNT', 'orange', 4, 1, 0, NOW(), NOW()),
+('ecom_promo_type', 'TikTok 闪购', 'TIKTOK_FLASH_SALE', 'magenta', 5, 1, 0, NOW(), NOW()),
+('ecom_promo_type', '店铺满减', 'FULL_REDUCTION', 'purple', 6, 1, 0, NOW(), NOW()),
+('ecom_promo_type', '直降', 'PRICE_DISCOUNT', 'green', 7, 1, 0, NOW(), NOW()),
+('ecom_promo_type', '其他', 'OTHER', 'default', 8, 1, 0, NOW(), NOW()),
+('ecom_promo_status', '草稿', 'DRAFT', 'default', 1, 1, 1, NOW(), NOW()),
+('ecom_promo_status', '已生效', 'ACTIVE', 'green', 2, 1, 1, NOW(), NOW()),
+('ecom_promo_status', '已取消', 'CANCELLED', 'red', 3, 1, 1, NOW(), NOW()),
+('ecom_promo_phase', '未开始', 'NOT_STARTED', 'blue', 1, 1, 1, NOW(), NOW()),
+('ecom_promo_phase', '进行中', 'ONGOING', 'processing', 2, 1, 1, NOW(), NOW()),
+('ecom_promo_phase', '已结束', 'ENDED', 'default', 3, 1, 1, NOW(), NOW()),
+('ecom_promo_push_status', '未推送', 'NONE', 'default', 1, 1, 1, NOW(), NOW()),
+('ecom_promo_push_status', '已推送', 'PUSHED', 'green', 2, 1, 1, NOW(), NOW()),
+('ecom_promo_push_status', '推送失败', 'FAILED', 'red', 3, 1, 1, NOW(), NOW()),
+('ecom_ops_target_type', '店铺', 'STORE', 'blue', 1, 1, 1, NOW(), NOW()),
+('ecom_ops_target_type', '运营人员', 'USER', 'purple', 2, 1, 1, NOW(), NOW());
+
+-- 内置角色：超级管理员、电商运营（店铺授权页面除外：授权由管理员维护），总经理只读
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT r.id, m.id FROM sys_role r JOIN sys_menu m ON (m.id = 989 OR m.parent_id = 989 OR m.parent_id BETWEEN 540 AND 544)
+WHERE r.id = 1 AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r.id AND x.menu_id = m.id);
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT r.id, m.id FROM sys_role r JOIN sys_menu m ON (m.id = 989 OR m.id BETWEEN 540 AND 543 OR m.parent_id BETWEEN 540 AND 543)
+WHERE r.id = 5 AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r.id AND x.menu_id = m.id);
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT r.id, m.id FROM sys_role r JOIN sys_menu m ON (m.id = 989 OR m.parent_id = 989)
+WHERE r.id = 3 AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r.id AND x.menu_id = m.id);
+UPDATE sys_role SET remark = '店铺与在线商品、平台订单出库发货、退货退款、头程货件、平台结算与广告、补货建议、运营监控与促销，可查看库存与物料；电商数据只能看到负责和被授权的店铺'
+WHERE id = 5;
+
+-- ===== 第四轮：海外仓（owh） =====
+-- 第三方海外仓（谷仓、万邑通、4PX 海外仓）：服务商账号、仓库映射、物流产品、库存同步、入库单（ASN）、一件代发出库单、费用
+
+CREATE TABLE ecom_owh_account (
+    id                 BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id          BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    code               VARCHAR(32)  NOT NULL COMMENT '账号编码',
+    name               VARCHAR(64)  NOT NULL COMMENT '账号名称',
+    provider           VARCHAR(16)  NOT NULL COMMENT '海外仓服务商(字典 ecom_owh_provider) GOODCANG谷仓 WINIT万邑通 FOURPX_FB4递四方海外仓',
+    credentials        TEXT                  DEFAULT NULL COMMENT '授权（JSON，CredentialCipher 加密，只写不读）',
+    sandbox            TINYINT      NOT NULL DEFAULT 0 COMMENT '测试环境 1是',
+    api_base_url       VARCHAR(255)          DEFAULT NULL COMMENT '自定义接口地址（为空按环境取服务商的地址）',
+    currency           VARCHAR(8)            DEFAULT NULL COMMENT '费用币种（服务商返回的费用没有币种时使用）',
+    status             TINYINT      NOT NULL DEFAULT 1 COMMENT '状态 1启用 0停用',
+    stock_sync_time    DATETIME              DEFAULT NULL COMMENT '最近一次库存同步时间',
+    fee_sync_time      DATETIME              DEFAULT NULL COMMENT '最近一次费用同步时间',
+    last_error         VARCHAR(500)          DEFAULT NULL COMMENT '最近一次同步失败的原因',
+    remark             VARCHAR(255)          DEFAULT NULL COMMENT '备注',
+    create_by          BIGINT                DEFAULT NULL COMMENT '创建人',
+    create_time        DATETIME              DEFAULT NULL COMMENT '创建时间',
+    update_time        DATETIME              DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_owh_account_code (code, tenant_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '海外仓服务商账号';
+
+CREATE TABLE ecom_owh_warehouse (
+    id                   BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id            BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    account_id           BIGINT       NOT NULL COMMENT '海外仓账号',
+    warehouse_id         BIGINT       NOT NULL COMMENT '系统仓库（wms_warehouse）',
+    owh_code             VARCHAR(64)  NOT NULL COMMENT '服务商仓库代码',
+    owh_name             VARCHAR(128)          DEFAULT NULL COMMENT '服务商仓库名称',
+    country              VARCHAR(8)            DEFAULT NULL COMMENT '仓库所在国家 / 地区',
+    default_product_code VARCHAR(64)           DEFAULT NULL COMMENT '默认物流产品代码（出库单没有指定、物流渠道也没有对应产品时使用）',
+    auto_push            TINYINT      NOT NULL DEFAULT 0 COMMENT '审核后自动推送出库单 1是（定时任务推送待推送的包裹）',
+    status               TINYINT      NOT NULL DEFAULT 1 COMMENT '状态 1启用 0停用',
+    remark               VARCHAR(255)          DEFAULT NULL COMMENT '备注',
+    create_time          DATETIME              DEFAULT NULL COMMENT '创建时间',
+    update_time          DATETIME              DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_owh_warehouse_wh (warehouse_id, tenant_id),
+    KEY idx_ecom_owh_warehouse_account (account_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '海外仓仓库映射（系统仓库 → 服务商仓库代码）';
+
+CREATE TABLE ecom_owh_product (
+    id             BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id      BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    account_id     BIGINT       NOT NULL COMMENT '海外仓账号',
+    product_code   VARCHAR(64)  NOT NULL COMMENT '服务商物流产品代码',
+    product_name   VARCHAR(128)          DEFAULT NULL COMMENT '物流产品名称',
+    owh_code       VARCHAR(64)           DEFAULT NULL COMMENT '适用的服务商仓库代码（为空表示通用）',
+    carrier_name   VARCHAR(64)           DEFAULT NULL COMMENT '承运商（回传平台用，为空取产品名称）',
+    channel_id     BIGINT                DEFAULT NULL COMMENT '对应的物流渠道（审单规则指定该渠道时使用此产品）',
+    status         TINYINT      NOT NULL DEFAULT 1 COMMENT '状态 1启用 0停用（服务商列表中已没有的停用）',
+    sync_time      DATETIME              DEFAULT NULL COMMENT '最近一次从服务商拉取的时间',
+    create_time    DATETIME              DEFAULT NULL COMMENT '创建时间',
+    update_time    DATETIME              DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_owh_product (account_id, product_code, tenant_id),
+    KEY idx_ecom_owh_product_channel (channel_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '海外仓物流产品（从服务商拉取）';
+
+CREATE TABLE ecom_owh_stock (
+    id             BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id      BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    mapping_id     BIGINT         NOT NULL COMMENT '仓库映射',
+    warehouse_id   BIGINT         NOT NULL COMMENT '系统仓库',
+    sku            VARCHAR(64)    NOT NULL COMMENT '海外仓 SKU（与物料编码相同）',
+    material_id    BIGINT                  DEFAULT NULL COMMENT '物料（按编码匹配，匹配不到为空）',
+    available_qty  DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '可用',
+    transit_qty    DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '在途（已发往海外仓未上架）',
+    locked_qty     DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '锁定（待出库占用）',
+    sync_time      DATETIME                DEFAULT NULL COMMENT '同步时间',
+    create_time    DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time    DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_owh_stock (mapping_id, sku, tenant_id),
+    KEY idx_ecom_owh_stock_material (warehouse_id, material_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '海外仓库存（最近一次同步）';
+
+CREATE TABLE ecom_owh_inbound (
+    id              BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id       BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    inbound_no      VARCHAR(32)    NOT NULL COMMENT '入库单号（编码规则 OWI），也是向服务商提交的参考号',
+    account_id      BIGINT         NOT NULL COMMENT '海外仓账号',
+    mapping_id      BIGINT         NOT NULL COMMENT '仓库映射',
+    warehouse_id    BIGINT         NOT NULL COMMENT '系统仓库（调入仓）',
+    source_type     VARCHAR(16)    NOT NULL COMMENT '来源(字典 ecom_owh_inbound_source) INBOUND头程货件 TRANSFER调拨单',
+    source_id       BIGINT         NOT NULL COMMENT '来源单据 ID',
+    source_no       VARCHAR(32)             DEFAULT NULL COMMENT '来源单号',
+    owh_order_no    VARCHAR(64)             DEFAULT NULL COMMENT '服务商入库单号',
+    status          VARCHAR(16)    NOT NULL DEFAULT 'DRAFT' COMMENT '状态(字典 ecom_owh_inbound_status) DRAFT草稿 PUSHED已推送 RECEIVING收货中 RECEIVED已收货 CANCELLED已取消',
+    owh_status      VARCHAR(64)             DEFAULT NULL COMMENT '服务商返回的原始状态',
+    transport_mode  VARCHAR(16)             DEFAULT NULL COMMENT '运输方式(业务字典 ecom_transport_mode)',
+    carrier         VARCHAR(64)             DEFAULT NULL COMMENT '头程承运商',
+    tracking_no     VARCHAR(64)             DEFAULT NULL COMMENT '头程运单号',
+    eta_date        DATE                    DEFAULT NULL COMMENT '预计到仓',
+    box_count       INT            NOT NULL DEFAULT 0 COMMENT '箱数',
+    total_qty       DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '数量合计',
+    received_qty    DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '已收货数量合计',
+    push_time       DATETIME                DEFAULT NULL COMMENT '推送时间',
+    receive_time    DATETIME                DEFAULT NULL COMMENT '收货完成时间',
+    erp_received    TINYINT        NOT NULL DEFAULT 0 COMMENT 'ERP 已签收（在途转可用）1是',
+    sync_time       DATETIME                DEFAULT NULL COMMENT '最近一次同步时间',
+    error_msg       VARCHAR(500)            DEFAULT NULL COMMENT '最近一次推送 / 同步 / 签收失败的原因',
+    remark          VARCHAR(255)            DEFAULT NULL COMMENT '备注',
+    create_by       BIGINT                  DEFAULT NULL COMMENT '创建人',
+    create_time     DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time     DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_owh_inbound_no (inbound_no, tenant_id),
+    KEY idx_ecom_owh_inbound_source (source_type, source_id),
+    KEY idx_ecom_owh_inbound_status (status)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '海外仓入库单（ASN，头程到海外仓）';
+
+CREATE TABLE ecom_owh_inbound_box (
+    id           BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id    BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    inbound_id   BIGINT         NOT NULL COMMENT '海外仓入库单',
+    box_no       INT            NOT NULL COMMENT '箱号（从 1 开始）',
+    box_mark     VARCHAR(64)    NOT NULL COMMENT '箱唛号（入库单号-箱号）',
+    length       DECIMAL(10, 2)          DEFAULT NULL COMMENT '长（cm）',
+    width        DECIMAL(10, 2)          DEFAULT NULL COMMENT '宽（cm）',
+    height       DECIMAL(10, 2)          DEFAULT NULL COMMENT '高（cm）',
+    weight       DECIMAL(10, 3)          DEFAULT NULL COMMENT '毛重（kg）',
+    create_time  DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time  DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_owh_inbound_box (inbound_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '海外仓入库单的箱子（箱唛）';
+
+CREATE TABLE ecom_owh_inbound_item (
+    id            BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id     BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    inbound_id    BIGINT         NOT NULL COMMENT '海外仓入库单',
+    box_no        INT            NOT NULL DEFAULT 1 COMMENT '箱号',
+    material_id   BIGINT         NOT NULL COMMENT '物料',
+    sku           VARCHAR(64)    NOT NULL COMMENT '海外仓 SKU（物料编码）',
+    qty           DECIMAL(18, 4) NOT NULL COMMENT '数量',
+    received_qty  DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '已收货数量（同步自服务商，同一 SKU 多箱时记在第一行）',
+    create_time   DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time   DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_owh_inbound_item (inbound_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '海外仓入库单明细（箱 × SKU）';
+
+CREATE TABLE ecom_owh_outbound (
+    id              BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id       BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    outbound_no     VARCHAR(32)    NOT NULL COMMENT '出库单号（编码规则 OWO）',
+    package_id      BIGINT         NOT NULL COMMENT '包裹',
+    store_id        BIGINT         NOT NULL COMMENT '店铺',
+    account_id      BIGINT         NOT NULL COMMENT '海外仓账号',
+    mapping_id      BIGINT         NOT NULL COMMENT '仓库映射',
+    warehouse_id    BIGINT         NOT NULL COMMENT '系统仓库（发货仓）',
+    product_code    VARCHAR(64)             DEFAULT NULL COMMENT '物流产品代码',
+    owh_order_no    VARCHAR(64)             DEFAULT NULL COMMENT '服务商出库单号',
+    status          VARCHAR(16)    NOT NULL COMMENT '状态(字典 ecom_owh_outbound_status) FAILED推送失败 PUSHED已推送 INTERCEPTING截单中 OUTBOUND已出库 SHIPPED已发货 CANCELLED已取消',
+    owh_status      VARCHAR(64)             DEFAULT NULL COMMENT '服务商返回的原始状态',
+    carrier_name    VARCHAR(64)             DEFAULT NULL COMMENT '承运商',
+    tracking_no     VARCHAR(64)             DEFAULT NULL COMMENT '运单号',
+    estimate_fee    DECIMAL(18, 2)          DEFAULT NULL COMMENT '服务商预估费用（原币）',
+    fee_currency    VARCHAR(8)              DEFAULT NULL COMMENT '预估费用币种',
+    push_time       DATETIME                DEFAULT NULL COMMENT '推送时间',
+    outbound_time   DATETIME                DEFAULT NULL COMMENT '海外仓出库时间',
+    ship_time       DATETIME                DEFAULT NULL COMMENT 'ERP 发货（出库、回传平台）时间',
+    sync_time       DATETIME                DEFAULT NULL COMMENT '最近一次同步时间',
+    push_count      INT            NOT NULL DEFAULT 0 COMMENT '推送次数',
+    error_msg       VARCHAR(500)            DEFAULT NULL COMMENT '最近一次推送 / 同步 / 发货失败的原因',
+    remark          VARCHAR(255)            DEFAULT NULL COMMENT '备注',
+    create_by       BIGINT                  DEFAULT NULL COMMENT '创建人',
+    create_time     DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time     DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_owh_outbound_no (outbound_no, tenant_id),
+    KEY idx_ecom_owh_outbound_package (package_id),
+    KEY idx_ecom_owh_outbound_status (status),
+    KEY idx_ecom_owh_outbound_owh_no (owh_order_no)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '海外仓出库单（一件代发）';
+
+CREATE TABLE ecom_owh_fee (
+    id             BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id      BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    account_id     BIGINT         NOT NULL COMMENT '海外仓账号',
+    external_id    VARCHAR(128)   NOT NULL COMMENT '服务商费用流水号（去重）',
+    fee_type       VARCHAR(16)    NOT NULL COMMENT '费用类型(字典 ecom_owh_fee_type) STORAGE仓租 OPERATION操作费 FREIGHT尾程运费 INBOUND入库费 OTHER其他',
+    fee_date       DATE           NOT NULL COMMENT '费用日期',
+    ref_no         VARCHAR(64)             DEFAULT NULL COMMENT '关联单号（服务商出库 / 入库单号或参考号）',
+    owh_code       VARCHAR(64)             DEFAULT NULL COMMENT '服务商仓库代码',
+    warehouse_id   BIGINT                  DEFAULT NULL COMMENT '系统仓库',
+    sku            VARCHAR(64)             DEFAULT NULL COMMENT 'SKU',
+    material_id    BIGINT                  DEFAULT NULL COMMENT '物料',
+    outbound_id    BIGINT                  DEFAULT NULL COMMENT '关联的海外仓出库单',
+    inbound_id     BIGINT                  DEFAULT NULL COMMENT '关联的海外仓入库单',
+    currency       VARCHAR(8)     NOT NULL COMMENT '币种',
+    amount         DECIMAL(18, 2) NOT NULL COMMENT '金额（原币，正数）',
+    exchange_rate  DECIMAL(18, 6)          DEFAULT NULL COMMENT '汇率（费用日期所在月）',
+    amount_base    DECIMAL(18, 2)          DEFAULT NULL COMMENT '金额（本位币）',
+    status         VARCHAR(16)    NOT NULL DEFAULT 'PENDING' COMMENT '入账状态(字典 ecom_owh_fee_status) PENDING待入账 POSTED已入账 UNALLOCATED无法归属',
+    post_target    VARCHAR(255)            DEFAULT NULL COMMENT '入账去向说明（订单号 / SKU）',
+    post_time      DATETIME                DEFAULT NULL COMMENT '入账时间',
+    remark         VARCHAR(255)            DEFAULT NULL COMMENT '备注（服务商的费用说明）',
+    create_time    DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time    DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_owh_fee (account_id, external_id, tenant_id),
+    KEY idx_ecom_owh_fee_date (fee_date),
+    KEY idx_ecom_owh_fee_outbound (outbound_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '海外仓费用明细（仓租、操作费、尾程运费等）';
+
+CREATE TABLE ecom_owh_fee_alloc (
+    id            BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id     BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    fee_id        BIGINT         NOT NULL COMMENT '海外仓费用',
+    store_id      BIGINT         NOT NULL COMMENT '店铺',
+    seller_sku    VARCHAR(64)             DEFAULT NULL COMMENT '平台 SKU（为空表示计入店铺）',
+    order_id      BIGINT                  DEFAULT NULL COMMENT '订单（出库费用计入订单物流成本时）',
+    item_type     VARCHAR(16)    NOT NULL COMMENT '利润报表费用类型(字典 ecom_settlement_item_type)：仓租 STORAGE、入库费 INBOUND_FEE、其他 OTHER',
+    alloc_date    DATE           NOT NULL COMMENT '费用日期',
+    basis_value   DECIMAL(18, 4)          DEFAULT NULL COMMENT '分摊依据（销量）',
+    amount_base   DECIMAL(18, 2) NOT NULL COMMENT '金额（本位币，费用为负；计入订单的为正数的物流成本）',
+    create_time   DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time   DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_owh_fee_alloc_fee (fee_id),
+    KEY idx_ecom_owh_fee_alloc_date (alloc_date)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '海外仓费用入账明细（计入订单物流成本或分摊到店铺 SKU）';
+
+-- 菜单：电商下的「海外仓」分组（海外仓账号、海外仓库存、海外仓入库、海外仓出库、海外仓费用）
+INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time) VALUES
+(988, 17, '海外仓', 'M', NULL, NULL, NULL, NULL, 7, 1, 1, NOW(), NOW()),
+(520, 988, '海外仓账号', 'C', 'owh-account', 'ecom/owh-account/index', 'ecom:owhAccount:list', 'CloudServerOutlined', 1, 1, 1, NOW(), NOW()),
+(521, 988, '海外仓库存', 'C', 'owh-stock', 'ecom/owh-stock/index', 'ecom:owhStock:list', 'DatabaseOutlined', 2, 1, 1, NOW(), NOW()),
+(522, 988, '海外仓入库', 'C', 'owh-inbound', 'ecom/owh-inbound/index', 'ecom:owhInbound:list', 'ImportOutlined', 3, 1, 1, NOW(), NOW()),
+(523, 988, '海外仓出库', 'C', 'owh-outbound', 'ecom/owh-outbound/index', 'ecom:owhOutbound:list', 'ExportOutlined', 4, 1, 1, NOW(), NOW()),
+(524, 988, '海外仓费用', 'C', 'owh-fee', 'ecom/owh-fee/index', 'ecom:owhFee:list', 'AccountBookOutlined', 5, 1, 1, NOW(), NOW()),
+(5200, 520, '账号新增', 'F', NULL, NULL, 'ecom:owhAccount:add', NULL, 1, 1, 1, NOW(), NOW()),
+(5201, 520, '账号修改', 'F', NULL, NULL, 'ecom:owhAccount:edit', NULL, 2, 1, 1, NOW(), NOW()),
+(5202, 520, '账号删除', 'F', NULL, NULL, 'ecom:owhAccount:remove', NULL, 3, 1, 1, NOW(), NOW()),
+(5203, 520, '仓库映射与物流产品', 'F', NULL, NULL, 'ecom:owhAccount:mapping', NULL, 4, 1, 1, NOW(), NOW()),
+(5210, 521, '同步库存', 'F', NULL, NULL, 'ecom:owhStock:sync', NULL, 1, 1, 1, NOW(), NOW()),
+(5211, 521, '按海外仓调整库存', 'F', NULL, NULL, 'ecom:owhStock:adjust', NULL, 2, 1, 1, NOW(), NOW()),
+(5220, 522, '新建入库单', 'F', NULL, NULL, 'ecom:owhInbound:add', NULL, 1, 1, 1, NOW(), NOW()),
+(5221, 522, '推送入库单', 'F', NULL, NULL, 'ecom:owhInbound:push', NULL, 2, 1, 1, NOW(), NOW()),
+(5222, 522, '同步收货', 'F', NULL, NULL, 'ecom:owhInbound:sync', NULL, 3, 1, 1, NOW(), NOW()),
+(5223, 522, '取消入库单', 'F', NULL, NULL, 'ecom:owhInbound:cancel', NULL, 4, 1, 1, NOW(), NOW()),
+(5230, 523, '推送海外仓', 'F', NULL, NULL, 'ecom:owhOutbound:push', NULL, 1, 1, 1, NOW(), NOW()),
+(5231, 523, '同步出库状态', 'F', NULL, NULL, 'ecom:owhOutbound:sync', NULL, 2, 1, 1, NOW(), NOW()),
+(5232, 523, '取消 / 截单', 'F', NULL, NULL, 'ecom:owhOutbound:cancel', NULL, 3, 1, 1, NOW(), NOW()),
+(5240, 524, '同步费用', 'F', NULL, NULL, 'ecom:owhFee:sync', NULL, 1, 1, 1, NOW(), NOW());
+
+-- 字典：海外仓服务商、入库单状态、出库单状态、费用类型、入库来源、费用入账状态（系统字典）
+INSERT INTO sys_dict_type (id, name, type, kind, status, remark, create_time, update_time) VALUES
+(320, '海外仓服务商', 'ecom_owh_provider', 'SYSTEM', 1, '已对接接口的第三方海外仓', NOW(), NOW()),
+(321, '海外仓入库单状态', 'ecom_owh_inbound_status', 'SYSTEM', 1, '海外仓入库单（ASN）的状态', NOW(), NOW()),
+(322, '海外仓出库单状态', 'ecom_owh_outbound_status', 'SYSTEM', 1, '一件代发出库单的状态', NOW(), NOW()),
+(323, '海外仓费用类型', 'ecom_owh_fee_type', 'SYSTEM', 1, '海外仓账单的费用类型', NOW(), NOW()),
+(324, '海外仓入库来源', 'ecom_owh_inbound_source', 'SYSTEM', 1, '海外仓入库单的来源单据', NOW(), NOW()),
+(325, '海外仓费用入账状态', 'ecom_owh_fee_status', 'SYSTEM', 1, '海外仓费用计入订单 / SKU 的状态', NOW(), NOW());
+INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, builtin, create_time, update_time) VALUES
+('ecom_owh_provider', '谷仓', 'GOODCANG', 'blue', 1, 1, 1, NOW(), NOW()),
+('ecom_owh_provider', '万邑通', 'WINIT', 'green', 2, 1, 1, NOW(), NOW()),
+('ecom_owh_provider', '递四方海外仓', 'FOURPX_FB4', 'orange', 3, 1, 1, NOW(), NOW()),
+('ecom_owh_inbound_status', '草稿', 'DRAFT', 'default', 1, 1, 1, NOW(), NOW()),
+('ecom_owh_inbound_status', '已推送', 'PUSHED', 'processing', 2, 1, 1, NOW(), NOW()),
+('ecom_owh_inbound_status', '收货中', 'RECEIVING', 'orange', 3, 1, 1, NOW(), NOW()),
+('ecom_owh_inbound_status', '已收货', 'RECEIVED', 'green', 4, 1, 1, NOW(), NOW()),
+('ecom_owh_inbound_status', '已取消', 'CANCELLED', 'default', 5, 1, 1, NOW(), NOW()),
+('ecom_owh_outbound_status', '推送失败', 'FAILED', 'red', 1, 1, 1, NOW(), NOW()),
+('ecom_owh_outbound_status', '已推送', 'PUSHED', 'processing', 2, 1, 1, NOW(), NOW()),
+('ecom_owh_outbound_status', '截单中', 'INTERCEPTING', 'gold', 3, 1, 1, NOW(), NOW()),
+('ecom_owh_outbound_status', '已出库', 'OUTBOUND', 'cyan', 4, 1, 1, NOW(), NOW()),
+('ecom_owh_outbound_status', '已发货', 'SHIPPED', 'green', 5, 1, 1, NOW(), NOW()),
+('ecom_owh_outbound_status', '已取消', 'CANCELLED', 'default', 6, 1, 1, NOW(), NOW()),
+('ecom_owh_fee_type', '仓租', 'STORAGE', 'purple', 1, 1, 1, NOW(), NOW()),
+('ecom_owh_fee_type', '操作费', 'OPERATION', 'blue', 2, 1, 1, NOW(), NOW()),
+('ecom_owh_fee_type', '尾程运费', 'FREIGHT', 'orange', 3, 1, 1, NOW(), NOW()),
+('ecom_owh_fee_type', '入库费', 'INBOUND', 'cyan', 4, 1, 1, NOW(), NOW()),
+('ecom_owh_fee_type', '其他', 'OTHER', 'default', 5, 1, 1, NOW(), NOW()),
+('ecom_owh_inbound_source', '头程货件', 'INBOUND', 'blue', 1, 1, 1, NOW(), NOW()),
+('ecom_owh_inbound_source', '调拨单', 'TRANSFER', 'green', 2, 1, 1, NOW(), NOW()),
+('ecom_owh_fee_status', '待入账', 'PENDING', 'orange', 1, 1, 1, NOW(), NOW()),
+('ecom_owh_fee_status', '已入账', 'POSTED', 'green', 2, 1, 1, NOW(), NOW()),
+('ecom_owh_fee_status', '无法归属', 'UNALLOCATED', 'red', 3, 1, 1, NOW(), NOW());
+
+-- 内置角色：电商运营全部；总经理只读
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT r.id, m.id FROM sys_role r JOIN sys_menu m ON (m.id = 988 OR m.parent_id = 988 OR m.parent_id BETWEEN 520 AND 529)
+WHERE r.id = 5 AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r.id AND x.menu_id = m.id);
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT r.id, m.id FROM sys_role r JOIN sys_menu m ON (m.id = 988 OR m.parent_id = 988)
+WHERE r.id = 3 AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r.id AND x.menu_id = m.id);
+
+-- ===== 第四轮：演示数据 =====
+-- 电商看板没有数据时的「生成演示数据」按钮（接口 POST /ecom/demo/generate）：超级管理员、电商运营
+INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time) VALUES
+(5700, 420, '生成演示数据', 'F', NULL, NULL, 'ecom:demo:generate', NULL, 90, 1, 1, NOW(), NOW());
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT r.id, 5700 FROM sys_role r
+WHERE r.id IN (1, 5) AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r.id AND x.menu_id = 5700);
+-- 退货原因补充（业务字典，平台租户；其他租户生成演示数据时按需补充）
+INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, builtin, create_time, update_time) VALUES
+('ecom_return_reason', '尺寸 / 规格不合适', 'SIZE', 'cyan', 8, 1, 0, NOW(), NOW()),
+('ecom_return_reason', '未收到货', 'NOT_RECEIVED', 'magenta', 9, 1, 0, NOW(), NOW());
+
+-- ===== 第四轮：遗留补齐、AI 与看板 =====
+-- 销量预测排除断货日：断货阈值（快照可售数不大于它为断货日）、是否排除；预测汇总记录断货天数与排除后的日均
+ALTER TABLE ecom_forecast_setting ADD COLUMN exclude_stockout TINYINT NOT NULL DEFAULT 1 COMMENT '排除断货日 1是 0否（预测补偿断货日销量，补货加权日均不计断货日）';
+ALTER TABLE ecom_forecast_setting ADD COLUMN stockout_threshold DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '断货阈值：快照可售数不大于它记为断货日';
+ALTER TABLE ecom_forecast_sku ADD COLUMN stockout_days INT NOT NULL DEFAULT 0 COMMENT '最近 120 天中的断货天数';
+ALTER TABLE ecom_forecast_sku ADD COLUMN adjusted_daily DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '最近 28 天断货日补偿后的日均';
+-- AI 写作（业务模块经 AiTextGenerator 生成文本：客服回复草拟与翻译、评价回复、刊登文案）
+ALTER TABLE ai_config ADD COLUMN write_enabled TINYINT NOT NULL DEFAULT 0 COMMENT 'AI 写作 1开启 0关闭';
+-- 按钮：买家消息「AI 草拟 / 翻译」、评价「AI 草拟回复 / 翻译」（会消耗模型用量，单独授权）
+INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time) VALUES
+(5600, 485, 'AI 草拟 / 翻译', 'F', NULL, NULL, 'ecom:csMessage:ai', NULL, 10, 1, 1, NOW(), NOW()),
+(5601, 486, 'AI 草拟回复 / 翻译', 'F', NULL, NULL, 'ecom:csReview:ai', NULL, 10, 1, 1, NOW(), NOW());
+-- 内置角色：超级管理员、电商运营
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT r.id, m.id FROM sys_role r JOIN sys_menu m ON m.id IN (5600, 5601)
+WHERE r.id IN (1, 5) AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r.id AND x.menu_id = m.id);
+
+-- ===== 第四轮：刊登与定价（补充） =====
+-- 在线商品：手工库存（锁定）标记，批量改库存时可设置，自动库存回传（ecom.inventoryPush）跳过锁定的商品
+ALTER TABLE ecom_listing ADD COLUMN stock_locked TINYINT NOT NULL DEFAULT 0 COMMENT '手工库存（锁定）1是：自动库存回传跳过，解除锁定后恢复按可售数回传';
+
+-- ===== 第四轮：FBA 运营（补充：欧洲 / 日本站内置费率） =====
+-- 尺寸分段增加「三边合计上限」（日本站按三辺合計分段）；分段的重量上限按单件实重判断
+ALTER TABLE ecom_fba_size_tier ADD COLUMN max_sides_sum DECIMAL(10, 2) DEFAULT NULL COMMENT '三边合计上限（cm / 英寸），为空不限';
+-- 德国（DE Only 列，参加中欧计划 CEP 时每件少 0.26 欧元）、英国：亚马逊 2025 年欧洲 FBA 费率表（2025-02-01 起，标准 FBA，非服装、非危险品、非低价 FBA）；
+-- 日本：2025 年 4 月改定后的配送代行手数料（售价 1,000 日元以上一档）与在庫保管手数料 / 長期在庫追加手数料。特殊大件、服装、危险品、低价商品等附加规则未内置
+INSERT INTO ecom_fba_size_tier (marketplace, code, name, size_category, unit_system, max_long, max_median, max_short, max_girth, max_sides_sum, max_weight, dim_divisor, sort, builtin, create_time, update_time) VALUES
+('DE', 'LIGHT_ENV', '轻型信封', 'STANDARD', 'METRIC', 33, 23, 2.5, NULL, NULL, 0.1, NULL, 1, 1, NOW(), NOW()),
+('DE', 'STD_ENV', '标准信封', 'STANDARD', 'METRIC', 33, 23, 2.5, NULL, NULL, 0.46, NULL, 2, 1, NOW(), NOW()),
+('DE', 'LARGE_ENV', '大号信封', 'STANDARD', 'METRIC', 33, 23, 4, NULL, NULL, 0.96, NULL, 3, 1, NOW(), NOW()),
+('DE', 'XL_ENV', '超大号信封', 'STANDARD', 'METRIC', 33, 23, 6, NULL, NULL, 0.96, NULL, 4, 1, NOW(), NOW()),
+('DE', 'SMALL_PARCEL', '小包裹', 'STANDARD', 'METRIC', 35, 25, 12, NULL, NULL, 3.9, 5000, 5, 1, NOW(), NOW()),
+('DE', 'STD_PARCEL', '标准包裹', 'STANDARD', 'METRIC', 45, 34, 26, NULL, NULL, 11.9, 5000, 6, 1, NOW(), NOW()),
+('DE', 'SMALL_OVER', '小号大件', 'OVERSIZE', 'METRIC', 61, 46, 46, NULL, NULL, 1.76, 5000, 7, 1, NOW(), NOW()),
+('DE', 'STD_OVER_LIGHT', '标准大件（轻）', 'OVERSIZE', 'METRIC', 101, 60, 60, NULL, NULL, 15, 5000, 8, 1, NOW(), NOW()),
+('DE', 'STD_OVER_HEAVY', '标准大件（重）', 'OVERSIZE', 'METRIC', 101, 60, 60, NULL, NULL, 23, 5000, 9, 1, NOW(), NOW()),
+('DE', 'STD_OVER_LARGE', '标准大件（大）', 'OVERSIZE', 'METRIC', 120, 60, 60, NULL, NULL, 23, 5000, 10, 1, NOW(), NOW()),
+('DE', 'BULKY_OVER', '超大件', 'OVERSIZE', 'METRIC', NULL, NULL, NULL, NULL, NULL, 23, 5000, 11, 1, NOW(), NOW()),
+('DE', 'HEAVY_OVER', '重型大件', 'OVERSIZE', 'METRIC', NULL, NULL, NULL, NULL, NULL, 31.5, 5000, 12, 1, NOW(), NOW()),
+('UK', 'LIGHT_ENV', '轻型信封', 'STANDARD', 'METRIC', 33, 23, 2.5, NULL, NULL, 0.1, NULL, 1, 1, NOW(), NOW()),
+('UK', 'STD_ENV', '标准信封', 'STANDARD', 'METRIC', 33, 23, 2.5, NULL, NULL, 0.46, NULL, 2, 1, NOW(), NOW()),
+('UK', 'LARGE_ENV', '大号信封', 'STANDARD', 'METRIC', 33, 23, 4, NULL, NULL, 0.96, NULL, 3, 1, NOW(), NOW()),
+('UK', 'XL_ENV', '超大号信封', 'STANDARD', 'METRIC', 33, 23, 6, NULL, NULL, 0.96, NULL, 4, 1, NOW(), NOW()),
+('UK', 'SMALL_PARCEL', '小包裹', 'STANDARD', 'METRIC', 35, 25, 12, NULL, NULL, 3.9, 5000, 5, 1, NOW(), NOW()),
+('UK', 'STD_PARCEL', '标准包裹', 'STANDARD', 'METRIC', 45, 34, 26, NULL, NULL, 11.9, 5000, 6, 1, NOW(), NOW()),
+('UK', 'SMALL_OVER', '小号大件', 'OVERSIZE', 'METRIC', 61, 46, 46, NULL, NULL, 1.76, 5000, 7, 1, NOW(), NOW()),
+('UK', 'STD_OVER_LIGHT', '标准大件（轻）', 'OVERSIZE', 'METRIC', 101, 60, 60, NULL, NULL, 15, 5000, 8, 1, NOW(), NOW()),
+('UK', 'STD_OVER_HEAVY', '标准大件（重）', 'OVERSIZE', 'METRIC', 101, 60, 60, NULL, NULL, 23, 5000, 9, 1, NOW(), NOW()),
+('UK', 'STD_OVER_LARGE', '标准大件（大）', 'OVERSIZE', 'METRIC', 120, 60, 60, NULL, NULL, 23, 5000, 10, 1, NOW(), NOW()),
+('UK', 'BULKY_OVER', '超大件', 'OVERSIZE', 'METRIC', NULL, NULL, NULL, NULL, NULL, 23, 5000, 11, 1, NOW(), NOW()),
+('UK', 'HEAVY_OVER', '重型大件', 'OVERSIZE', 'METRIC', NULL, NULL, NULL, NULL, NULL, 31.5, 5000, 12, 1, NOW(), NOW()),
+('JP', 'SMALL', '小型', 'STANDARD', 'METRIC', 25, 18, 2.0, NULL, NULL, 0.25, NULL, 1, 1, NOW(), NOW()),
+('JP', 'STD1', '标准 1', 'STANDARD', 'METRIC', 35, 30, 3.3, NULL, NULL, 1, NULL, 2, 1, NOW(), NOW()),
+('JP', 'STD2A', '标准 2a', 'STANDARD', 'METRIC', 45, 35, 20, NULL, 20, 2, NULL, 3, 1, NOW(), NOW()),
+('JP', 'STD2B', '标准 2b', 'STANDARD', 'METRIC', 45, 35, 20, NULL, 30, 2, NULL, 4, 1, NOW(), NOW()),
+('JP', 'STD2C', '标准 2c', 'STANDARD', 'METRIC', 45, 35, 20, NULL, 40, 2, NULL, 5, 1, NOW(), NOW()),
+('JP', 'STD2D', '标准 2d', 'STANDARD', 'METRIC', 45, 35, 20, NULL, 50, 2, NULL, 6, 1, NOW(), NOW()),
+('JP', 'STD2E', '标准 2e', 'STANDARD', 'METRIC', 45, 35, 20, NULL, 60, 2, NULL, 7, 1, NOW(), NOW()),
+('JP', 'STD3', '标准 3', 'STANDARD', 'METRIC', 45, 35, 20, NULL, 80, 5, NULL, 8, 1, NOW(), NOW()),
+('JP', 'STD4', '标准 4', 'STANDARD', 'METRIC', 45, 35, 20, NULL, 100, 9, NULL, 9, 1, NOW(), NOW()),
+('JP', 'LARGE1', '大型 1', 'OVERSIZE', 'METRIC', NULL, NULL, NULL, NULL, 60, 2, NULL, 10, 1, NOW(), NOW()),
+('JP', 'LARGE2', '大型 2', 'OVERSIZE', 'METRIC', NULL, NULL, NULL, NULL, 80, 5, NULL, 11, 1, NOW(), NOW()),
+('JP', 'LARGE3', '大型 3', 'OVERSIZE', 'METRIC', NULL, NULL, NULL, NULL, 100, 10, NULL, 12, 1, NOW(), NOW()),
+('JP', 'LARGE4', '大型 4', 'OVERSIZE', 'METRIC', NULL, NULL, NULL, NULL, 120, 15, NULL, 13, 1, NOW(), NOW()),
+('JP', 'LARGE5', '大型 5', 'OVERSIZE', 'METRIC', NULL, NULL, NULL, NULL, 140, 20, NULL, 14, 1, NOW(), NOW()),
+('JP', 'LARGE6', '大型 6', 'OVERSIZE', 'METRIC', NULL, NULL, NULL, NULL, 160, 25, NULL, 15, 1, NOW(), NOW()),
+('JP', 'LARGE7', '大型 7', 'OVERSIZE', 'METRIC', NULL, NULL, NULL, NULL, 180, 30, NULL, 16, 1, NOW(), NOW()),
+('JP', 'LARGE8', '大型 8', 'OVERSIZE', 'METRIC', NULL, NULL, NULL, NULL, 200, 40, NULL, 17, 1, NOW(), NOW()),
+('JP', 'XL1', '特大型 1', 'OVERSIZE', 'METRIC', NULL, NULL, NULL, NULL, 200, 50, NULL, 18, 1, NOW(), NOW()),
+('JP', 'XL2', '特大型 2', 'OVERSIZE', 'METRIC', NULL, NULL, NULL, NULL, 220, 50, NULL, 19, 1, NOW(), NOW()),
+('JP', 'XL3', '特大型 3', 'OVERSIZE', 'METRIC', NULL, NULL, NULL, NULL, 240, 50, NULL, 20, 1, NOW(), NOW()),
+('JP', 'XL4A', '特大型 4a', 'OVERSIZE', 'METRIC', NULL, NULL, NULL, NULL, 260, 50, NULL, 21, 1, NOW(), NOW()),
+('JP', 'XL4B', '特大型 4b', 'OVERSIZE', 'METRIC', NULL, NULL, NULL, NULL, 400, 50, NULL, 22, 1, NOW(), NOW());
+INSERT INTO ecom_fba_fee_rate (marketplace, tier_code, weight_from, weight_to, fee, extra_from, extra_unit, extra_fee, currency, builtin, create_time, update_time) VALUES
+('DE', 'LIGHT_ENV', 0, 0.02, 2.33, NULL, NULL, NULL, 'EUR', 1, NOW(), NOW()),
+('DE', 'LIGHT_ENV', 0.02, 0.04, 2.37, NULL, NULL, NULL, 'EUR', 1, NOW(), NOW()),
+('DE', 'LIGHT_ENV', 0.04, 0.06, 2.39, NULL, NULL, NULL, 'EUR', 1, NOW(), NOW()),
+('DE', 'LIGHT_ENV', 0.06, 0.08, 2.52, NULL, NULL, NULL, 'EUR', 1, NOW(), NOW()),
+('DE', 'LIGHT_ENV', 0.08, 0.1, 2.54, NULL, NULL, NULL, 'EUR', 1, NOW(), NOW()),
+('DE', 'STD_ENV', 0, 0.21, 2.57, NULL, NULL, NULL, 'EUR', 1, NOW(), NOW()),
+('DE', 'STD_ENV', 0.21, 0.46, 2.68, NULL, NULL, NULL, 'EUR', 1, NOW(), NOW()),
+('DE', 'LARGE_ENV', 0, 0.96, 3.04, NULL, NULL, NULL, 'EUR', 1, NOW(), NOW()),
+('DE', 'XL_ENV', 0, 0.96, 3.42, NULL, NULL, NULL, 'EUR', 1, NOW(), NOW()),
+('DE', 'SMALL_PARCEL', 0, 0.15, 3.38, NULL, NULL, NULL, 'EUR', 1, NOW(), NOW()),
+('DE', 'SMALL_PARCEL', 0.15, 0.4, 3.4, NULL, NULL, NULL, 'EUR', 1, NOW(), NOW()),
+('DE', 'SMALL_PARCEL', 0.4, 0.9, 3.67, NULL, NULL, NULL, 'EUR', 1, NOW(), NOW()),
+('DE', 'SMALL_PARCEL', 0.9, 1.4, 4.29, NULL, NULL, NULL, 'EUR', 1, NOW(), NOW()),
+('DE', 'SMALL_PARCEL', 1.4, 1.9, 4.49, NULL, NULL, NULL, 'EUR', 1, NOW(), NOW()),
+('DE', 'SMALL_PARCEL', 1.9, 3.9, 5.57, NULL, NULL, NULL, 'EUR', 1, NOW(), NOW()),
+('DE', 'STD_PARCEL', 0, 0.15, 3.39, NULL, NULL, NULL, 'EUR', 1, NOW(), NOW()),
+('DE', 'STD_PARCEL', 0.15, 0.4, 3.78, NULL, NULL, NULL, 'EUR', 1, NOW(), NOW()),
+('DE', 'STD_PARCEL', 0.4, 0.9, 3.9, NULL, NULL, NULL, 'EUR', 1, NOW(), NOW()),
+('DE', 'STD_PARCEL', 0.9, 1.4, 4.54, NULL, NULL, NULL, 'EUR', 1, NOW(), NOW()),
+('DE', 'STD_PARCEL', 1.4, 1.9, 4.97, NULL, NULL, NULL, 'EUR', 1, NOW(), NOW()),
+('DE', 'STD_PARCEL', 1.9, 2.9, 5.2, NULL, NULL, NULL, 'EUR', 1, NOW(), NOW()),
+('DE', 'STD_PARCEL', 2.9, 3.9, 5.67, NULL, NULL, NULL, 'EUR', 1, NOW(), NOW()),
+('DE', 'STD_PARCEL', 3.9, 5.9, 5.95, NULL, NULL, NULL, 'EUR', 1, NOW(), NOW()),
+('DE', 'STD_PARCEL', 5.9, 8.9, 6.41, NULL, NULL, NULL, 'EUR', 1, NOW(), NOW()),
+('DE', 'STD_PARCEL', 8.9, 11.9, 6.65, NULL, NULL, NULL, 'EUR', 1, NOW(), NOW()),
+('DE', 'SMALL_OVER', 0, NULL, 4.79, 0.76, 1, 0.48, 'EUR', 1, NOW(), NOW()),
+('DE', 'STD_OVER_LIGHT', 0, NULL, 4.91, 0.76, 1, 0.29, 'EUR', 1, NOW(), NOW()),
+('DE', 'STD_OVER_HEAVY', 0, NULL, 9.19, 15.76, 1, 0.14, 'EUR', 1, NOW(), NOW()),
+('DE', 'STD_OVER_LARGE', 0, NULL, 6.67, 0.76, 1, 0.18, 'EUR', 1, NOW(), NOW()),
+('DE', 'BULKY_OVER', 0, NULL, 9.78, 0.76, 1, 0.36, 'EUR', 1, NOW(), NOW()),
+('DE', 'HEAVY_OVER', 0, NULL, 13.0, 31.5, 1, 0.15, 'EUR', 1, NOW(), NOW()),
+('UK', 'LIGHT_ENV', 0, 0.02, 1.83, NULL, NULL, NULL, 'GBP', 1, NOW(), NOW()),
+('UK', 'LIGHT_ENV', 0.02, 0.04, 1.87, NULL, NULL, NULL, 'GBP', 1, NOW(), NOW()),
+('UK', 'LIGHT_ENV', 0.04, 0.06, 1.89, NULL, NULL, NULL, 'GBP', 1, NOW(), NOW()),
+('UK', 'LIGHT_ENV', 0.06, 0.08, 2.07, NULL, NULL, NULL, 'GBP', 1, NOW(), NOW()),
+('UK', 'LIGHT_ENV', 0.08, 0.1, 2.08, NULL, NULL, NULL, 'GBP', 1, NOW(), NOW()),
+('UK', 'STD_ENV', 0, 0.21, 2.1, NULL, NULL, NULL, 'GBP', 1, NOW(), NOW()),
+('UK', 'STD_ENV', 0.21, 0.46, 2.16, NULL, NULL, NULL, 'GBP', 1, NOW(), NOW()),
+('UK', 'LARGE_ENV', 0, 0.96, 2.72, NULL, NULL, NULL, 'GBP', 1, NOW(), NOW()),
+('UK', 'XL_ENV', 0, 0.96, 2.94, NULL, NULL, NULL, 'GBP', 1, NOW(), NOW()),
+('UK', 'SMALL_PARCEL', 0, 0.15, 2.91, NULL, NULL, NULL, 'GBP', 1, NOW(), NOW()),
+('UK', 'SMALL_PARCEL', 0.15, 0.4, 3.0, NULL, NULL, NULL, 'GBP', 1, NOW(), NOW()),
+('UK', 'SMALL_PARCEL', 0.4, 0.9, 3.04, NULL, NULL, NULL, 'GBP', 1, NOW(), NOW()),
+('UK', 'SMALL_PARCEL', 0.9, 1.4, 3.05, NULL, NULL, NULL, 'GBP', 1, NOW(), NOW()),
+('UK', 'SMALL_PARCEL', 1.4, 1.9, 3.25, NULL, NULL, NULL, 'GBP', 1, NOW(), NOW()),
+('UK', 'SMALL_PARCEL', 1.9, 3.9, 5.1, NULL, NULL, NULL, 'GBP', 1, NOW(), NOW()),
+('UK', 'STD_PARCEL', 0, 0.15, 2.94, NULL, NULL, NULL, 'GBP', 1, NOW(), NOW()),
+('UK', 'STD_PARCEL', 0.15, 0.4, 3.01, NULL, NULL, NULL, 'GBP', 1, NOW(), NOW()),
+('UK', 'STD_PARCEL', 0.4, 0.9, 3.06, NULL, NULL, NULL, 'GBP', 1, NOW(), NOW()),
+('UK', 'STD_PARCEL', 0.9, 1.4, 3.26, NULL, NULL, NULL, 'GBP', 1, NOW(), NOW()),
+('UK', 'STD_PARCEL', 1.4, 1.9, 3.48, NULL, NULL, NULL, 'GBP', 1, NOW(), NOW()),
+('UK', 'STD_PARCEL', 1.9, 2.9, 4.73, NULL, NULL, NULL, 'GBP', 1, NOW(), NOW()),
+('UK', 'STD_PARCEL', 2.9, 3.9, 5.16, NULL, NULL, NULL, 'GBP', 1, NOW(), NOW()),
+('UK', 'STD_PARCEL', 3.9, 5.9, 5.19, NULL, NULL, NULL, 'GBP', 1, NOW(), NOW()),
+('UK', 'STD_PARCEL', 5.9, 8.9, 5.57, NULL, NULL, NULL, 'GBP', 1, NOW(), NOW()),
+('UK', 'STD_PARCEL', 8.9, 11.9, 5.77, NULL, NULL, NULL, 'GBP', 1, NOW(), NOW()),
+('UK', 'SMALL_OVER', 0, NULL, 3.65, 0.76, 1, 0.25, 'GBP', 1, NOW(), NOW()),
+('UK', 'STD_OVER_LIGHT', 0, NULL, 4.67, 0.76, 1, 0.24, 'GBP', 1, NOW(), NOW()),
+('UK', 'STD_OVER_HEAVY', 0, NULL, 8.28, 15.76, 1, 0.2, 'GBP', 1, NOW(), NOW()),
+('UK', 'STD_OVER_LARGE', 0, NULL, 6.2, 0.76, 1, 0.16, 'GBP', 1, NOW(), NOW()),
+('UK', 'BULKY_OVER', 0, NULL, 11.53, 0.76, 1, 0.31, 'GBP', 1, NOW(), NOW()),
+('UK', 'HEAVY_OVER', 0, NULL, 13.04, 31.5, 1, 0.9, 'GBP', 1, NOW(), NOW()),
+('JP', 'SMALL', 0, NULL, 288, NULL, NULL, NULL, 'JPY', 1, NOW(), NOW()),
+('JP', 'STD1', 0, NULL, 318, NULL, NULL, NULL, 'JPY', 1, NOW(), NOW()),
+('JP', 'STD2A', 0, NULL, 410, NULL, NULL, NULL, 'JPY', 1, NOW(), NOW()),
+('JP', 'STD2B', 0, NULL, 415, NULL, NULL, NULL, 'JPY', 1, NOW(), NOW()),
+('JP', 'STD2C', 0, NULL, 420, NULL, NULL, NULL, 'JPY', 1, NOW(), NOW()),
+('JP', 'STD2D', 0, NULL, 425, NULL, NULL, NULL, 'JPY', 1, NOW(), NOW()),
+('JP', 'STD2E', 0, NULL, 430, NULL, NULL, NULL, 'JPY', 1, NOW(), NOW()),
+('JP', 'STD3', 0, NULL, 472, NULL, NULL, NULL, 'JPY', 1, NOW(), NOW()),
+('JP', 'STD4', 0, NULL, 532, NULL, NULL, NULL, 'JPY', 1, NOW(), NOW()),
+('JP', 'LARGE1', 0, NULL, 589, NULL, NULL, NULL, 'JPY', 1, NOW(), NOW()),
+('JP', 'LARGE2', 0, NULL, 624, NULL, NULL, NULL, 'JPY', 1, NOW(), NOW()),
+('JP', 'LARGE3', 0, NULL, 675, NULL, NULL, NULL, 'JPY', 1, NOW(), NOW()),
+('JP', 'LARGE4', 0, NULL, 781, NULL, NULL, NULL, 'JPY', 1, NOW(), NOW()),
+('JP', 'LARGE5', 0, NULL, 1020, NULL, NULL, NULL, 'JPY', 1, NOW(), NOW()),
+('JP', 'LARGE6', 0, NULL, 1100, NULL, NULL, NULL, 'JPY', 1, NOW(), NOW()),
+('JP', 'LARGE7', 0, NULL, 1532, NULL, NULL, NULL, 'JPY', 1, NOW(), NOW()),
+('JP', 'LARGE8', 0, NULL, 1756, NULL, NULL, NULL, 'JPY', 1, NOW(), NOW()),
+('JP', 'XL1', 0, NULL, 2755, NULL, NULL, NULL, 'JPY', 1, NOW(), NOW()),
+('JP', 'XL2', 0, NULL, 3573, NULL, NULL, NULL, 'JPY', 1, NOW(), NOW()),
+('JP', 'XL3', 0, NULL, 4496, NULL, NULL, NULL, 'JPY', 1, NOW(), NOW()),
+('JP', 'XL4A', 0, NULL, 5625, NULL, NULL, NULL, 'JPY', 1, NOW(), NOW()),
+('JP', 'XL4B', 0, NULL, 13950, NULL, NULL, NULL, 'JPY', 1, NOW(), NOW());
+INSERT INTO ecom_fba_storage_rate (marketplace, fee_type, size_category, month_from, month_to, age_from, age_to, rate, volume_unit, currency, builtin, remark, create_time, update_time) VALUES
+('DE', 'MONTHLY', 'STANDARD', 1, 9, NULL, NULL, 27.54, 'CBM', 'EUR', 1, '标准件 1–9 月，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('DE', 'MONTHLY', 'STANDARD', 10, 12, NULL, NULL, 47.45, 'CBM', 'EUR', 1, '标准件 10–12 月，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('DE', 'MONTHLY', 'OVERSIZE', 1, 9, NULL, NULL, 19.8, 'CBM', 'EUR', 1, '大件 1–9 月，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('DE', 'MONTHLY', 'OVERSIZE', 10, 12, NULL, NULL, 31.35, 'CBM', 'EUR', 1, '大件 10–12 月，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('DE', 'AGED', 'STANDARD', NULL, NULL, 241, 270, 47.99, 'CBM', 'EUR', 1, '241–270 天，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('DE', 'AGED', 'STANDARD', NULL, NULL, 271, 300, 125.16, 'CBM', 'EUR', 1, '271–300 天，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('DE', 'AGED', 'STANDARD', NULL, NULL, 301, 330, 129.92, 'CBM', 'EUR', 1, '301–330 天，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('DE', 'AGED', 'STANDARD', NULL, NULL, 331, 365, 135.98, 'CBM', 'EUR', 1, '331–365 天，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('DE', 'AGED', 'STANDARD', NULL, NULL, 366, NULL, 227.63, 'CBM', 'EUR', 1, '366 天以上，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('DE', 'AGED', 'OVERSIZE', NULL, NULL, 241, 270, 47.99, 'CBM', 'EUR', 1, '241–270 天，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('DE', 'AGED', 'OVERSIZE', NULL, NULL, 271, 300, 125.16, 'CBM', 'EUR', 1, '271–300 天，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('DE', 'AGED', 'OVERSIZE', NULL, NULL, 301, 330, 129.92, 'CBM', 'EUR', 1, '301–330 天，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('DE', 'AGED', 'OVERSIZE', NULL, NULL, 331, 365, 135.98, 'CBM', 'EUR', 1, '331–365 天，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('DE', 'AGED', 'OVERSIZE', NULL, NULL, 366, NULL, 227.63, 'CBM', 'EUR', 1, '366 天以上，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('UK', 'MONTHLY', 'STANDARD', 1, 9, NULL, NULL, 0.76, 'CUFT', 'GBP', 1, '标准件 1–9 月，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('UK', 'MONTHLY', 'STANDARD', 10, 12, NULL, NULL, 1.37, 'CUFT', 'GBP', 1, '标准件 10–12 月，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('UK', 'MONTHLY', 'OVERSIZE', 1, 9, NULL, NULL, 0.5, 'CUFT', 'GBP', 1, '大件 1–9 月，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('UK', 'MONTHLY', 'OVERSIZE', 10, 12, NULL, NULL, 0.79, 'CUFT', 'GBP', 1, '大件 10–12 月，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('UK', 'AGED', 'STANDARD', NULL, NULL, 241, 270, 1.18, 'CUFT', 'GBP', 1, '241–270 天，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('UK', 'AGED', 'STANDARD', NULL, NULL, 271, 300, 3.14, 'CUFT', 'GBP', 1, '271–300 天，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('UK', 'AGED', 'STANDARD', NULL, NULL, 301, 330, 3.26, 'CUFT', 'GBP', 1, '301–330 天，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('UK', 'AGED', 'STANDARD', NULL, NULL, 331, 365, 3.41, 'CUFT', 'GBP', 1, '331–365 天，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('UK', 'AGED', 'STANDARD', NULL, NULL, 366, NULL, 5.71, 'CUFT', 'GBP', 1, '366 天以上，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('UK', 'AGED', 'OVERSIZE', NULL, NULL, 241, 270, 1.18, 'CUFT', 'GBP', 1, '241–270 天，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('UK', 'AGED', 'OVERSIZE', NULL, NULL, 271, 300, 3.14, 'CUFT', 'GBP', 1, '271–300 天，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('UK', 'AGED', 'OVERSIZE', NULL, NULL, 301, 330, 3.26, 'CUFT', 'GBP', 1, '301–330 天，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('UK', 'AGED', 'OVERSIZE', NULL, NULL, 331, 365, 3.41, 'CUFT', 'GBP', 1, '331–365 天，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('UK', 'AGED', 'OVERSIZE', NULL, NULL, 366, NULL, 5.71, 'CUFT', 'GBP', 1, '366 天以上，2025 年欧洲费率表（2025-02-01 起）', NOW(), NOW()),
+('JP', 'MONTHLY', 'STANDARD', 1, 9, NULL, NULL, 5676, 'CBM', 'JPY', 1, '标准件 1–9 月，2025 年 4 月改定后的日本站标准', NOW(), NOW()),
+('JP', 'MONTHLY', 'STANDARD', 10, 12, NULL, NULL, 10087, 'CBM', 'JPY', 1, '标准件 10–12 月，2025 年 4 月改定后的日本站标准', NOW(), NOW()),
+('JP', 'MONTHLY', 'OVERSIZE', 1, 9, NULL, NULL, 3278, 'CBM', 'JPY', 1, '大件 1–9 月，2025 年 4 月改定后的日本站标准', NOW(), NOW()),
+('JP', 'MONTHLY', 'OVERSIZE', 10, 12, NULL, NULL, 6984, 'CBM', 'JPY', 1, '大件 10–12 月，2025 年 4 月改定后的日本站标准', NOW(), NOW()),
+('JP', 'AGED', 'STANDARD', NULL, NULL, 271, 300, 16662, 'CBM', 'JPY', 1, '271–300 天，2025 年 4 月改定后的日本站标准', NOW(), NOW()),
+('JP', 'AGED', 'STANDARD', NULL, NULL, 301, 330, 17475, 'CBM', 'JPY', 1, '301–330 天，2025 年 4 月改定后的日本站标准', NOW(), NOW()),
+('JP', 'AGED', 'STANDARD', NULL, NULL, 331, 365, 18085, 'CBM', 'JPY', 1, '331–365 天，2025 年 4 月改定后的日本站标准', NOW(), NOW()),
+('JP', 'AGED', 'STANDARD', NULL, NULL, 366, NULL, 27431, 'CBM', 'JPY', 1, '366 天以上，2025 年 4 月改定后的日本站标准', NOW(), NOW()),
+('JP', 'AGED', 'OVERSIZE', NULL, NULL, 271, 300, 16662, 'CBM', 'JPY', 1, '271–300 天，2025 年 4 月改定后的日本站标准', NOW(), NOW()),
+('JP', 'AGED', 'OVERSIZE', NULL, NULL, 301, 330, 17475, 'CBM', 'JPY', 1, '301–330 天，2025 年 4 月改定后的日本站标准', NOW(), NOW()),
+('JP', 'AGED', 'OVERSIZE', NULL, NULL, 331, 365, 18085, 'CBM', 'JPY', 1, '331–365 天，2025 年 4 月改定后的日本站标准', NOW(), NOW()),
+('JP', 'AGED', 'OVERSIZE', NULL, NULL, 366, NULL, 27431, 'CBM', 'JPY', 1, '366 天以上，2025 年 4 月改定后的日本站标准', NOW(), NOW());
+
+-- ===== 第四轮：海外仓（owh）补充：自动同步开关、SKU 映射、退件、海外仓调拨 =====
+ALTER TABLE ecom_owh_account ADD COLUMN auto_sync TINYINT NOT NULL DEFAULT 1 COMMENT '自动同步 1是：定时任务推送 / 同步该账号（演示、测试账号关闭）';
+ALTER TABLE ecom_owh_warehouse ADD COLUMN defect_warehouse_id BIGINT DEFAULT NULL COMMENT '不良品仓（退件质检不良的转入；为空时报废出库）';
+ALTER TABLE ecom_owh_warehouse ADD COLUMN contact VARCHAR(64) DEFAULT NULL COMMENT '收货联系人（海外仓之间调拨时作为收件人）';
+ALTER TABLE ecom_owh_warehouse ADD COLUMN phone VARCHAR(32) DEFAULT NULL COMMENT '联系电话';
+ALTER TABLE ecom_owh_warehouse ADD COLUMN state VARCHAR(64) DEFAULT NULL COMMENT '州 / 省';
+ALTER TABLE ecom_owh_warehouse ADD COLUMN city VARCHAR(64) DEFAULT NULL COMMENT '城市';
+ALTER TABLE ecom_owh_warehouse ADD COLUMN postcode VARCHAR(16) DEFAULT NULL COMMENT '邮编';
+ALTER TABLE ecom_owh_warehouse ADD COLUMN address VARCHAR(255) DEFAULT NULL COMMENT '仓库地址';
+
+CREATE TABLE ecom_owh_sku (
+    id           BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id    BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    account_id   BIGINT       NOT NULL COMMENT '海外仓账号',
+    material_id  BIGINT       NOT NULL COMMENT '物料',
+    owh_sku      VARCHAR(64)  NOT NULL COMMENT '服务商 SKU（没有映射的物料按物料编码）',
+    remark       VARCHAR(255)          DEFAULT NULL COMMENT '备注',
+    create_time  DATETIME              DEFAULT NULL COMMENT '创建时间',
+    update_time  DATETIME              DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_owh_sku_material (account_id, material_id, tenant_id),
+    UNIQUE KEY uk_ecom_owh_sku_code (account_id, owh_sku, tenant_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '海外仓 SKU 映射（物料 ↔ 服务商 SKU）';
+
+CREATE TABLE ecom_owh_return (
+    id              BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id       BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    return_no       VARCHAR(32)    NOT NULL COMMENT '退件单号（编码规则 OWR）',
+    account_id      BIGINT         NOT NULL COMMENT '海外仓账号',
+    mapping_id      BIGINT         NOT NULL COMMENT '仓库映射',
+    warehouse_id    BIGINT         NOT NULL COMMENT '系统仓库（退回的海外仓）',
+    store_id        BIGINT         NOT NULL COMMENT '店铺',
+    ecom_return_id  BIGINT         NOT NULL COMMENT 'ERP 退货退款单',
+    ecom_return_no  VARCHAR(32)             DEFAULT NULL COMMENT 'ERP 退货退款单号',
+    platform_order_no VARCHAR(64)           DEFAULT NULL COMMENT '平台订单号',
+    owh_order_no    VARCHAR(64)             DEFAULT NULL COMMENT '服务商退件单号',
+    status          VARCHAR(16)    NOT NULL DEFAULT 'DRAFT' COMMENT '状态(字典 ecom_owh_return_status) DRAFT草稿 PUSHED已推送 RECEIVED已收货 CANCELLED已取消',
+    owh_status      VARCHAR(64)             DEFAULT NULL COMMENT '服务商返回的原始状态',
+    carrier         VARCHAR(64)             DEFAULT NULL COMMENT '退件承运商',
+    tracking_no     VARCHAR(64)             DEFAULT NULL COMMENT '退件运单号（买家寄回）',
+    total_qty       DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '退件数量',
+    good_qty        DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '良品数量',
+    bad_qty         DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '不良品数量',
+    push_time       DATETIME                DEFAULT NULL COMMENT '推送时间',
+    receive_time    DATETIME                DEFAULT NULL COMMENT '服务商收货时间',
+    erp_received    TINYINT        NOT NULL DEFAULT 0 COMMENT 'ERP 已退货入库 1是',
+    defect_doc_no   VARCHAR(32)             DEFAULT NULL COMMENT '不良品转仓 / 报废出库单号',
+    sync_time       DATETIME                DEFAULT NULL COMMENT '最近一次同步时间',
+    error_msg       VARCHAR(500)            DEFAULT NULL COMMENT '最近一次推送 / 同步 / 入库失败的原因',
+    remark          VARCHAR(255)            DEFAULT NULL COMMENT '备注',
+    create_by       BIGINT                  DEFAULT NULL COMMENT '创建人',
+    create_time     DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time     DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_owh_return_no (return_no, tenant_id),
+    KEY idx_ecom_owh_return_src (ecom_return_id),
+    KEY idx_ecom_owh_return_status (status)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '海外仓退件单';
+
+CREATE TABLE ecom_owh_return_item (
+    id            BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id     BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    owh_return_id BIGINT         NOT NULL COMMENT '海外仓退件单',
+    material_id   BIGINT         NOT NULL COMMENT '物料',
+    sku           VARCHAR(64)    NOT NULL COMMENT '服务商 SKU',
+    qty           DECIMAL(18, 4) NOT NULL COMMENT '退件数量（物料数量）',
+    good_qty      DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '良品',
+    bad_qty       DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '不良品',
+    create_time   DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time   DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_owh_return_item (owh_return_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '海外仓退件单明细';
+
+CREATE TABLE ecom_owh_transfer (
+    id               BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id        BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    transfer_no      VARCHAR(32)    NOT NULL COMMENT '调拨单号（编码规则 OWT），也是向服务商提交的参考号',
+    from_warehouse_id BIGINT        NOT NULL COMMENT '调出仓',
+    to_warehouse_id  BIGINT         NOT NULL COMMENT '调入仓',
+    from_mapping_id  BIGINT                  DEFAULT NULL COMMENT '调出仓的海外仓映射（本地仓为空）',
+    to_mapping_id    BIGINT                  DEFAULT NULL COMMENT '调入仓的海外仓映射（本地仓为空）',
+    status           VARCHAR(16)    NOT NULL DEFAULT 'DRAFT' COMMENT '状态(字典 ecom_owh_transfer_status) DRAFT草稿 OUT_PUSHED调出仓处理中 IN_TRANSIT在途 RECEIVED已收货 CANCELLED已取消',
+    product_code     VARCHAR(64)             DEFAULT NULL COMMENT '调出海外仓的物流产品',
+    owh_out_no       VARCHAR(64)             DEFAULT NULL COMMENT '调出海外仓的出库单号',
+    owh_status       VARCHAR(64)             DEFAULT NULL COMMENT '调出海外仓返回的原始状态',
+    carrier          VARCHAR(64)             DEFAULT NULL COMMENT '承运商',
+    tracking_no      VARCHAR(64)             DEFAULT NULL COMMENT '运单号',
+    transfer_doc_id  BIGINT                  DEFAULT NULL COMMENT 'ERP 在途调拨单',
+    transfer_doc_no  VARCHAR(32)             DEFAULT NULL COMMENT 'ERP 在途调拨单号',
+    inbound_id       BIGINT                  DEFAULT NULL COMMENT '调入海外仓的入库单',
+    total_qty        DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '数量合计',
+    push_time        DATETIME                DEFAULT NULL COMMENT '提交时间',
+    ship_time        DATETIME                DEFAULT NULL COMMENT '调出时间',
+    receive_time     DATETIME                DEFAULT NULL COMMENT '收货时间',
+    sync_time        DATETIME                DEFAULT NULL COMMENT '最近一次同步时间',
+    error_msg        VARCHAR(500)            DEFAULT NULL COMMENT '最近一次失败的原因',
+    remark           VARCHAR(255)            DEFAULT NULL COMMENT '备注',
+    create_by        BIGINT                  DEFAULT NULL COMMENT '创建人',
+    create_time      DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time      DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_owh_transfer_no (transfer_no, tenant_id),
+    KEY idx_ecom_owh_transfer_status (status)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '海外仓调拨单（海外仓之间、海外仓与本地仓之间）';
+
+CREATE TABLE ecom_owh_transfer_item (
+    id            BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id     BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    transfer_id   BIGINT         NOT NULL COMMENT '海外仓调拨单',
+    material_id   BIGINT         NOT NULL COMMENT '物料',
+    qty           DECIMAL(18, 4) NOT NULL COMMENT '数量',
+    create_time   DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time   DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_owh_transfer_item (transfer_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '海外仓调拨单明细';
+
+INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time) VALUES
+(525, 988, '海外仓退件', 'C', 'owh-return', 'ecom/owh-return/index', 'ecom:owhReturn:list', 'RollbackOutlined', 6, 1, 1, NOW(), NOW()),
+(526, 988, '海外仓调拨', 'C', 'owh-transfer', 'ecom/owh-transfer/index', 'ecom:owhTransfer:list', 'SwapOutlined', 7, 1, 1, NOW(), NOW()),
+(5250, 525, '新建退件单', 'F', NULL, NULL, 'ecom:owhReturn:add', NULL, 1, 1, 1, NOW(), NOW()),
+(5251, 525, '推送退件单', 'F', NULL, NULL, 'ecom:owhReturn:push', NULL, 2, 1, 1, NOW(), NOW()),
+(5252, 525, '同步退件', 'F', NULL, NULL, 'ecom:owhReturn:sync', NULL, 3, 1, 1, NOW(), NOW()),
+(5253, 525, '取消退件单', 'F', NULL, NULL, 'ecom:owhReturn:cancel', NULL, 4, 1, 1, NOW(), NOW()),
+(5260, 526, '新建调拨单', 'F', NULL, NULL, 'ecom:owhTransfer:add', NULL, 1, 1, 1, NOW(), NOW()),
+(5261, 526, '提交调拨', 'F', NULL, NULL, 'ecom:owhTransfer:push', NULL, 2, 1, 1, NOW(), NOW()),
+(5262, 526, '同步调拨', 'F', NULL, NULL, 'ecom:owhTransfer:sync', NULL, 3, 1, 1, NOW(), NOW()),
+(5263, 526, '确认收货', 'F', NULL, NULL, 'ecom:owhTransfer:receive', NULL, 4, 1, 1, NOW(), NOW()),
+(5264, 526, '取消调拨单', 'F', NULL, NULL, 'ecom:owhTransfer:cancel', NULL, 5, 1, 1, NOW(), NOW());
+
+INSERT INTO sys_dict_type (id, name, type, kind, status, remark, create_time, update_time) VALUES
+(326, '海外仓退件单状态', 'ecom_owh_return_status', 'SYSTEM', 1, '海外仓退件单的状态', NOW(), NOW()),
+(327, '海外仓调拨单状态', 'ecom_owh_transfer_status', 'SYSTEM', 1, '海外仓之间、海外仓与本地仓之间调拨单的状态', NOW(), NOW());
+INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, builtin, create_time, update_time) VALUES
+('ecom_owh_return_status', '草稿', 'DRAFT', 'default', 1, 1, 1, NOW(), NOW()),
+('ecom_owh_return_status', '已推送', 'PUSHED', 'processing', 2, 1, 1, NOW(), NOW()),
+('ecom_owh_return_status', '已收货', 'RECEIVED', 'green', 3, 1, 1, NOW(), NOW()),
+('ecom_owh_return_status', '已取消', 'CANCELLED', 'default', 4, 1, 1, NOW(), NOW()),
+('ecom_owh_transfer_status', '草稿', 'DRAFT', 'default', 1, 1, 1, NOW(), NOW()),
+('ecom_owh_transfer_status', '调出仓处理中', 'OUT_PUSHED', 'processing', 2, 1, 1, NOW(), NOW()),
+('ecom_owh_transfer_status', '在途', 'IN_TRANSIT', 'orange', 3, 1, 1, NOW(), NOW()),
+('ecom_owh_transfer_status', '已收货', 'RECEIVED', 'green', 4, 1, 1, NOW(), NOW()),
+('ecom_owh_transfer_status', '已取消', 'CANCELLED', 'default', 5, 1, 1, NOW(), NOW());
+
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT r.id, m.id FROM sys_role r JOIN sys_menu m ON (m.id IN (525, 526) OR m.parent_id IN (525, 526))
+WHERE r.id = 5 AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r.id AND x.menu_id = m.id);
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT r.id, m.id FROM sys_role r JOIN sys_menu m ON m.id IN (525, 526)
+WHERE r.id = 3 AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r.id AND x.menu_id = m.id);
+
+-- ===== 第四轮：演示店铺标记 =====
+ALTER TABLE ecom_store ADD COLUMN demo TINYINT NOT NULL DEFAULT 0 COMMENT '演示店铺 1是 0否（由演示数据生成，不调用平台接口，定时任务跳过）';
+
+-- ===== 第四轮：海外仓（owh）补充：推送后取消 / 标记已作废、按实收收货与收货差异 =====
+CREATE TABLE ecom_owh_diff (
+    id               BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id        BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    source_type      VARCHAR(16)    NOT NULL COMMENT '来源(字典 ecom_owh_diff_source) INBOUND入库单 RETURN退件单 TRANSFER调拨单',
+    source_id        BIGINT         NOT NULL COMMENT '来源单据 ID',
+    source_no        VARCHAR(32)             DEFAULT NULL COMMENT '来源单号',
+    ref_no           VARCHAR(64)             DEFAULT NULL COMMENT '关联单据（头程货件号 / 调拨单号 / 退货单号）',
+    ecom_inbound_id  BIGINT                  DEFAULT NULL COMMENT '关联的头程货件',
+    warehouse_id     BIGINT         NOT NULL COMMENT '收货仓',
+    material_id      BIGINT         NOT NULL COMMENT '物料',
+    sku              VARCHAR(64)             DEFAULT NULL COMMENT '服务商 SKU',
+    expected_qty     DECIMAL(18, 4) NOT NULL COMMENT '单据数量',
+    received_qty     DECIMAL(18, 4) NOT NULL COMMENT '实收数量',
+    diff_qty         DECIMAL(18, 4) NOT NULL COMMENT '差异 = 单据 − 实收（正数短少、负数溢收）',
+    status           VARCHAR(16)    NOT NULL DEFAULT 'PENDING' COMMENT '状态(字典 ecom_owh_diff_status) PENDING待处理 LOSS确认损耗 FOUND找回补收 ACCEPTED确认溢收',
+    reason           VARCHAR(255)            DEFAULT NULL COMMENT '差异原因',
+    diff_doc_no      VARCHAR(32)             DEFAULT NULL COMMENT '收货时生成的差异出库 / 溢收入库单号',
+    handle_doc_no    VARCHAR(32)             DEFAULT NULL COMMENT '找回补收的其他入库单号',
+    handle_time      DATETIME                DEFAULT NULL COMMENT '处理时间',
+    handle_by        BIGINT                  DEFAULT NULL COMMENT '处理人',
+    create_time      DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time      DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_owh_diff_source (source_type, source_id),
+    KEY idx_ecom_owh_diff_status (status)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '海外仓收货差异（实收与单据数量不一致）';
+
+INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time) VALUES
+(527, 988, '收货差异', 'C', 'owh-diff', 'ecom/owh-diff/index', 'ecom:owhDiff:list', 'IssuesCloseOutlined', 8, 1, 1, NOW(), NOW()),
+(5270, 527, '处理差异', 'F', NULL, NULL, 'ecom:owhDiff:handle', NULL, 1, 1, 1, NOW(), NOW());
+
+INSERT INTO sys_dict_type (id, name, type, kind, status, remark, create_time, update_time) VALUES
+(328, '海外仓收货差异状态', 'ecom_owh_diff_status', 'SYSTEM', 1, '实收与单据数量不一致的处理状态', NOW(), NOW()),
+(329, '海外仓收货差异来源', 'ecom_owh_diff_source', 'SYSTEM', 1, '收货差异来自哪类单据', NOW(), NOW());
+INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, builtin, create_time, update_time) VALUES
+('ecom_owh_diff_status', '待处理', 'PENDING', 'orange', 1, 1, 1, NOW(), NOW()),
+('ecom_owh_diff_status', '确认损耗', 'LOSS', 'red', 2, 1, 1, NOW(), NOW()),
+('ecom_owh_diff_status', '找回补收', 'FOUND', 'green', 3, 1, 1, NOW(), NOW()),
+('ecom_owh_diff_status', '确认溢收', 'ACCEPTED', 'blue', 4, 1, 1, NOW(), NOW()),
+('ecom_owh_diff_source', '入库单', 'INBOUND', 'blue', 1, 1, 1, NOW(), NOW()),
+('ecom_owh_diff_source', '退件单', 'RETURN', 'purple', 2, 1, 1, NOW(), NOW()),
+('ecom_owh_diff_source', '调拨单', 'TRANSFER', 'cyan', 3, 1, 1, NOW(), NOW());
+
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT r.id, m.id FROM sys_role r JOIN sys_menu m ON m.id IN (527, 5270)
+WHERE r.id = 5 AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r.id AND x.menu_id = m.id);
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT r.id, m.id FROM sys_role r JOIN sys_menu m ON m.id = 527
+WHERE r.id = 3 AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r.id AND x.menu_id = m.id);

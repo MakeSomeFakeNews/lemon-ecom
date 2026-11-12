@@ -23,7 +23,7 @@
             <span v-if="detail.exchangeRate != null" class="sub-text"> @{{ Number(detail.exchangeRate) }}</span>
           </a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOrder.return.warehouse')">{{ detail.warehouseName || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.return.tradeDoc')">{{ detail.tradeDocNo || '-' }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomOrder.return.tradeDoc')">{{ detail.tradeDocNos || detail.tradeDocNo || '-' }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOrder.return.refundTime')">{{ detail.refundTime || '-' }}</a-descriptions-item>
           <a-descriptions-item :label="$t('common.field.createTime')">{{ detail.createTime }}</a-descriptions-item>
           <a-descriptions-item v-if="detail.remark" :label="$t('common.field.remark')" :span="2">{{ detail.remark }}</a-descriptions-item>
@@ -80,7 +80,8 @@ const itemColumns = [
   { title: t('ecomOrder.return.itemTitle'), dataIndex: 'title', width: 260, ellipsis: true },
   { title: t('ecomOrder.common.material'), key: 'material', width: 220 },
   { title: t('ecomOrder.return.returnQty'), key: 'qty', width: 110, align: 'right' },
-  { title: t('ecomOrder.return.lineRefund'), key: 'refundAmount', width: 140, align: 'right' }
+  { title: t('ecomOrder.return.lineRefund'), key: 'refundAmount', width: 140, align: 'right' },
+  { title: t('ecomOrd.returnPkg.package'), dataIndex: 'packageNo', width: 170 }
 ]
 
 const open = ref(false)

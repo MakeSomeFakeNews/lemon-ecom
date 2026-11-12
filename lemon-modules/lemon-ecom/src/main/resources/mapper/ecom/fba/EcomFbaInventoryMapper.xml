@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.fba.mapper.EcomFbaInventoryMapper">
+
+    <!-- 库存健康：快照 + 店铺 + 在线商品（映射物料、售价）+ 尺寸 + since 之后的订单件数（不含取消） -->
+    <select id="selectHealthRows" resultType="com.lemon.erp.modules.ecom.fba.dto.FbaViews$HealthRow">
+        SELECT i.id, i.store_id, s.name AS store_name, s.marketplace, COALESCE(i.currency, s.currency) AS currency,
+               i.seller_sku, COALESCE(i.fnsku, l.fnsku) AS fnsku, COALESCE(i.asin, l.platform_item_id) AS asin, COALESCE(i.title, l.title) AS title,
+               i.snapshot_date, i.available_qty, i.inbound_qty, i.reserved_qty, i.unfulfillable_qty, i.researching_qty,
+               i.age_0_90 AS age0To90, i.age_91_180 AS age91To180, i.age_181_270 AS age181To270, i.age_271_365 AS age271To365,
+               i.age_365_plus AS age365Plus, i.age_source, i.units_shipped_30 AS unitsShipped30, i.report_storage_fee,
+               l.material_id, m.code AS material_code, m.name AS material_name, l.price,
+               COALESCE(so.qty, 0) AS sold30,
+               d.length_cm, d.width_cm, d.height_cm, d.weight_kg
+        FROM ecom_fba_inventory i
+        JOIN ecom_store s ON s.id = i.store_id
+        LEFT JOIN ecom_listing l ON l.store_id = i.store_id AND l.seller_sku = i.seller_sku
+        LEFT JOIN wms_material m ON m.id = l.material_id
+        LEFT JOIN ecom_fba_item_dim d ON d.store_id = i.store_id AND d.seller_sku = i.seller_sku
+        LEFT JOIN (
+            SELECT o.store_id, oi.seller_sku, SUM(oi.qty) AS qty
+            FROM ecom_order o JOIN ecom_order_item oi ON oi.order_id = o.id
+            WHERE o.order_time &gt;= #{since} AND o.status &lt;&gt; 'CANCELLED'
+            <if test="storeId != null">AND o.store_id = #{storeId}</if>
+            GROUP BY o.store_id, oi.seller_sku
+        ) so ON so.store_id = i.store_id AND so.seller_sku = i.seller_sku
+        <where>
+            <if test="storeId != null">i.store_id = #{storeId}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (i.seller_sku LIKE CONCAT('%', #{keyword}, '%') OR i.fnsku LIKE CONCAT('%', #{keyword}, '%')
+                     OR i.asin LIKE CONCAT('%', #{keyword}, '%') OR i.title LIKE CONCAT('%', #{keyword}, '%')
+                     OR m.code LIKE CONCAT('%', #{keyword}, '%') OR m.name LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY i.store_id, i.seller_sku
+    </select>
+
+    <!-- 已签收头程货件中本店铺平台 SKU 的件数（物料数量 ÷ 多件装），组合商品只取计入件数的行 -->
+    <select id="selectReceiptLots" resultType="com.lemon.erp.modules.ecom.fba.dto.FbaViews$ReceiptLot">
+        SELECT ib.store_id, it.seller_sku, COALESCE(ib.receive_date, ib.ship_date) AS receive_date,
+               SUM(it.received_qty / COALESCE(l.pack_qty, 1)) AS qty
+        FROM ecom_inbound ib
+        JOIN ecom_inbound_item it ON it.inbound_id = ib.id
+        LEFT JOIN ecom_listing l ON l.store_id = ib.store_id AND l.seller_sku = it.seller_sku
+        WHERE ib.store_id = #{storeId} AND ib.status = 'RECEIVED' AND it.seller_sku IS NOT NULL AND it.part_main = 1
+          AND it.received_qty &gt; 0
+        GROUP BY ib.store_id, it.seller_sku, COALESCE(ib.receive_date, ib.ship_date)
+        ORDER BY receive_date DESC
+    </select>
+
+    <!-- 平台仓配送的在线商品：平台库存快照的数量、系统平台仓库存（件 = 物料库存 ÷ 多件装） -->
+    <select id="selectStockBase" resultType="com.lemon.erp.modules.ecom.fba.dto.FbaViews$StockBase">
+        SELECT l.seller_sku, l.platform_item_id AS asin, l.fnsku, l.title, ps.snapshot_date,
+               ps.fulfillable_qty, ps.inbound_qty, ps.reserved_qty, ps.unfulfillable_qty,
+               CASE WHEN l.material_id IS NULL OR s.platform_warehouse_id IS NULL THEN NULL
+                    ELSE COALESCE((SELECT SUM(st.qty) FROM wms_stock st WHERE st.material_id = l.material_id AND st.warehouse_id = s.platform_warehouse_id), 0)
+                         / COALESCE(l.pack_qty, 1) END AS system_qty
+        FROM ecom_listing l
+        JOIN ecom_store s ON s.id = l.store_id
+        LEFT JOIN ecom_platform_stock ps ON ps.store_id = l.store_id AND ps.seller_sku = l.seller_sku
+        WHERE l.store_id = #{storeId} AND l.fulfillment = 'PLATFORM' AND l.status &lt;&gt; 'DELETED'
+        ORDER BY l.seller_sku
+    </select>
+
+</mapper>

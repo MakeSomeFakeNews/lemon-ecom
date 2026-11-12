@@ -41,6 +41,9 @@
         <a-button v-if="view === 'sku'" :disabled="!selectedKeys.length" @click="openFnsku">
           <template #icon><BarcodeOutlined /></template>{{ $t('ecomCatalog.fnsku.print') }}
         </a-button>
+        <a-button v-if="view === 'sku'" v-perm="'ecom:priceChange:add'" :disabled="!selectedKeys.length" @click="openBatchPrice">
+          <template #icon><DollarOutlined /></template>{{ $t('ecomPublish.batch.button') }}
+        </a-button>
       </TableToolbar>
 
       <SpuView v-if="view === 'spu'" ref="spuRef" :size="size" @edit="(r) => formRef.openEdit(r)"
@@ -76,6 +79,10 @@
           </template>
           <template v-else-if="column.key === 'status'">
             <DictTag type="ecom_listing_status" :value="record.status" />
+            <a-tooltip v-if="record.stockLocked === 1" :title="$t('ecomPublish.batch.lockedTip')">
+              <a-tag color="orange" :bordered="false" class="lock-tag">{{ $t('ecomPublish.batch.locked') }}</a-tag>
+              <a v-if="userStore.hasPerm('ecom:priceChange:add')" @click="unlockStock(record)">{{ $t('ecomPublish.batch.unlock') }}</a>
+            </a-tooltip>
           </template>
           <template v-else-if="column.key === 'material'">
             <template v-if="record.composeType === ListingComposeType.BUNDLE && record.bundleItems?.length">
@@ -103,6 +110,7 @@
     <ListingMapModal ref="mapRef" @success="reload" />
     <StyleMapModal ref="styleRef" @success="reload" />
     <FnskuLabelModal v-model:open="fnskuOpen" :items="fnskuItems" />
+    <BatchPriceModal ref="batchPriceRef" @success="reload" />
     <ImportModal
       v-model:open="importOpen"
       :title="$t('ecom.listing.listing')"
@@ -117,7 +125,7 @@
 <script setup>
 import { nextTick, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ApartmentOutlined, BarcodeOutlined, ImportOutlined, LinkOutlined, PlusOutlined, WarningOutlined } from '@ant-design/icons-vue'
+import { ApartmentOutlined, BarcodeOutlined, DollarOutlined, ImportOutlined, LinkOutlined, PlusOutlined, WarningOutlined } from '@ant-design/icons-vue'
 import DictTag from '@/components/DictTag.vue'
 import ImportModal from '@/components/ImportModal.vue'
 import SearchForm from '@/components/SearchForm.vue'
@@ -131,9 +139,13 @@ import ListingMapModal from './ListingMapModal.vue'
 import SpuView from './SpuView.vue'
 import StyleMapModal from './StyleMapModal.vue'
 import FnskuLabelModal from '@/components/ecom/FnskuLabelModal.vue'
+import BatchPriceModal from './BatchPriceModal.vue'
+import { lockListingStock } from '@/api/ecom/publish'
 import { bundleText } from './listing'
 import { ListingComposeType } from '@/constants/enums'
 import { deleteListing, importListing, pageListing } from '@/api/ecom/listing'
+import { getMaterial } from '@/api/wms/material'
+import { useRoute, useRouter } from 'vue-router'
 import { useAction } from '@/composables/useAction'
 import { useColumns } from '@/composables/useColumns'
 import { useDict } from '@/composables/useDict'
@@ -204,12 +216,28 @@ const styleRef = ref()
 // FNSKU 标签：勾选的在线商品各打一张（可在弹窗中改份数）
 const fnskuOpen = ref(false)
 const fnskuItems = ref([])
+// 批量改价 / 改库存：勾选的在线商品
+const batchPriceRef = ref()
+const unlockStock = useAction((r) => lockListingStock(r.id, false), { confirm: () => t('ecomPublish.batch.unlockConfirm'), reload: () => reload() })
+const openBatchPrice = () => batchPriceRef.value.open(list.value.filter((r) => selectedKeys.value.includes(r.id)))
+
 function openFnsku() {
   fnskuItems.value = list.value.filter((r) => selectedKeys.value.includes(r.id)).map((r) => ({ fnsku: r.fnsku, sellerSku: r.sellerSku, title: r.title, qty: 1 }))
   fnskuOpen.value = true
 }
 
 const formRef = ref()
+// 从开发项目「新建在线商品」跳转过来（?newMaterialId=物料ID）：打开新增表单并带出物料与标题
+const route = useRoute()
+const router = useRouter()
+onMounted(async () => {
+  const materialId = Number(route.query.newMaterialId)
+  if (!materialId) return
+  router.replace({ query: { ...route.query, newMaterialId: undefined } })
+  const m = await getMaterial(materialId)
+  await nextTick()
+  formRef.value?.openCreate({ materialId, materialLabel: `${m.code} ${m.name}`, title: m.name, imageUrl: m.imageUrl || undefined })
+})
 const mapRef = ref()
 const remove = useAction(deleteListing, { successKey: 'common.msg.deleteSuccess', reload: () => reload() })
 

@@ -23,7 +23,8 @@ import java.util.Map;
  *   尾程跟踪号 logistics_channel_no（有尾程号时作为运单号）</li>
  *   <li>面单 ds.xms.label.get（v1.1.0，PDF，100 × 100）：返回面单地址 label_url_info.logistics_label，再下载 PDF</li>
  *   <li>取消 ds.xms.order.cancel（v1.0.0）</li>
- *   <li>轨迹 tr.order.tracking.get（v1.0.0）</li>
+ *   <li>轨迹 tr.order.tracking.get（v1.0.0）：trackingList 的 occurDatetime / occurLocation / trackingContent；状态按最新一条描述归一
+ *       （{@link TrackStatusNormalizer}），4PX 的轨迹节点代码（businessLinkCode）需用真实账号核对后再映射</li>
  * </ul>
  * 授权：appKey、appSecret（开放平台创建应用获得），可选 accessToken（第三方应用授权）、发件人信息（部分产品要求）。
  * 测试环境 open-test.4px.com。

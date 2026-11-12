@@ -8,6 +8,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.lemon.erp.common.base.BaseEntity;
 import com.lemon.erp.modules.ecom.model.EcomCarrier;
 import com.lemon.erp.modules.ecom.model.EcomPackageStatus;
+import com.lemon.erp.modules.ecom.model.EcomTrackAlert;
+import com.lemon.erp.modules.ecom.model.EcomTrackStatus;
+import com.lemon.erp.modules.ecom.model.TrackSource;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -61,6 +64,33 @@ public class EcomPackage extends BaseEntity {
     private String remark;
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private Long createBy;
+
+    /** 轨迹状态（归一后） */
+    private EcomTrackStatus trackStatus;
+    /** 轨迹预警 */
+    private EcomTrackAlert trackAlert;
+    /** 轨迹来源 */
+    private TrackSource trackSource;
+    /** 首条轨迹（上网）时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime trackFirstTime;
+    /** 最新轨迹时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime trackLastTime;
+    /** 最新轨迹描述 */
+    private String trackLastEvent;
+    /** 签收时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime trackDeliveredTime;
+    /** 最近一次拉取轨迹的时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime trackPullTime;
+    /** 最近一次拉取轨迹失败的原因 */
+    private String trackError;
+    /** 按包裹回传平台（部分发货） 1成功 0失败 为空未回传 */
+    private Integer shipConfirm;
+    /** 按包裹回传平台的结果说明 */
+    private String shipConfirmMsg;
 
     @TableField(exist = false)
     private String storeName;

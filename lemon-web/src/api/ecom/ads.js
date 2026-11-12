@@ -44,6 +44,12 @@ export const saveAdsAuth = (storeId, data) => request.put(`/ecom/ads/auth/${stor
 export const clearAdsAuth = (storeId) => request.delete(`/ecom/ads/auth/${storeId}`)
 export const testAdsAuth = (storeId) => request.post(`/ecom/ads/auth/${storeId}/test`, null, { timeout: 60000 })
 export const adsProfiles = (storeId) => request.get(`/ecom/ads/auth/${storeId}/profiles`, { timeout: 60000 })
+/** Login with Amazon 授权页地址（先保存 clientId / clientSecret / 区域） */
+export const adsAuthorizeUrl = (storeId) => request.post(`/ecom/ads/oauth/${storeId}/authorize-url`)
+/** 店铺的广告授权状态（授权窗口打开后轮询） */
+export const adsOAuthStatus = (storeId) => request.get(`/ecom/ads/oauth/${storeId}/status`)
+/** 选择广告配置文件 */
+export const selectAdsProfile = (storeId, profileId) => request.put(`/ecom/ads/oauth/${storeId}/profile`, { profileId })
 export const syncAds = (storeId, days) => request.post(`/ecom/ads/sync/${storeId}`, null, { params: { days } })
 export const syncAdsStructure = (storeId) => request.post(`/ecom/ads/sync/${storeId}/structure`, null, { timeout: 120000 })
 

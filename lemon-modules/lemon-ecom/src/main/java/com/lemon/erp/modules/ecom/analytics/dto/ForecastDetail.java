@@ -21,11 +21,13 @@ import java.util.List;
  * @param upper         所选方法每天的区间上限
  * @param backtest      所选方法对最近 28 天的回测预测（与 history 末尾 28 天对齐），历史不足时为空
  * @param events        影响预测期或历史的促销 / 节假日
+ * @param stockoutDates  history 中的断货日（快照可售数不大于阈值），没有快照的日期不算
+ * @param adjusted       断货日补偿后的历史（预测实际使用的数据，没有断货或未开启排除时与 history 相同）
  */
 public record ForecastDetail(AnalyticsRows.ListingInfo info, ForecastMethod method, ForecastMethod fixedMethod, EcomForecastSetting setting,
                              LocalDate historyStart, List<BigDecimal> history, LocalDate forecastStart, List<MethodLine> methods,
                              List<BigDecimal> lower, List<BigDecimal> upper, BigDecimal sigma, List<BigDecimal> backtest,
-                             List<EcomForecastEvent> events) {
+                             List<EcomForecastEvent> events, List<LocalDate> stockoutDates, List<BigDecimal> adjusted) {
 
     /**
      * 一种方法的结果

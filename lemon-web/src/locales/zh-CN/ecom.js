@@ -12,6 +12,8 @@ export default {
     unmapped: '未映射'
   },
   store: {
+    demo: '演示',
+    demoTip: '演示店铺：由演示数据生成，不调用平台接口，定时任务跳过',
     add: '新增店铺',
     edit: '编辑店铺',
     keywordPh: '编码 / 名称',

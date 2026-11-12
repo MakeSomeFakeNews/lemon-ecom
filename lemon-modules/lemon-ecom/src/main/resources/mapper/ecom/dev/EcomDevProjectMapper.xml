@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.dev.mapper.EcomDevProjectMapper">
+
+    <sql id="columns">
+        p.id, p.doc_no, p.name, p.category, p.brand, p.source, p.platform, p.marketplace, p.currency, p.competitor_url, p.competitor_price,
+        p.competitor_reviews, p.competitor_rating, p.est_monthly_sales, p.target_price, p.est_purchase_price, p.weight_kg, p.length_cm,
+        p.width_cm, p.height_cm, p.est_profit, p.est_margin, p.owner_id, p.images, p.status, p.prev_status, p.flow_instance_id, p.material_id,
+        p.approve_by, p.approve_time, p.reject_reason, p.remark, p.dept_id, p.create_by, p.create_time, p.update_time,
+        c.name AS category_name, ou.nickname AS owner_name, cu.nickname AS create_by_name, au.nickname AS approve_by_name,
+        m.code AS material_code, m.name AS material_name,
+        COALESCE(s.sample_count, 0) AS sample_count, COALESCE(s.passed_count, 0) AS passed_sample_count, COALESCE(s.sample_fee, 0) AS sample_fee
+    </sql>
+
+    <!-- 只读关联物料分类、用户、物料 -->
+    <sql id="joins">
+        FROM ecom_dev_project p
+        LEFT JOIN wms_material_category c ON c.code = p.category
+        LEFT JOIN sys_user ou ON ou.id = p.owner_id
+        LEFT JOIN sys_user cu ON cu.id = p.create_by
+        LEFT JOIN sys_user au ON au.id = p.approve_by
+        LEFT JOIN wms_material m ON m.id = p.material_id
+        LEFT JOIN (SELECT project_id, COUNT(*) AS sample_count, SUM(CASE WHEN result = 'PASSED' THEN 1 ELSE 0 END) AS passed_count,
+                          SUM(COALESCE(sample_fee, 0)) AS sample_fee
+                   FROM ecom_dev_sample GROUP BY project_id) s ON s.project_id = p.id
+    </sql>
+
+    <sql id="where">
+        <where>
+            <if test="q.status != null">p.status = #{q.status}</if>
+            <if test="q.ownerId != null">AND p.owner_id = #{q.ownerId}</if>
+            <if test="q.platform != null">AND p.platform = #{q.platform}</if>
+            <if test="q.source != null and q.source != ''">AND p.source = #{q.source}</if>
+            <if test="q.category != null and q.category != ''">AND p.category = #{q.category}</if>
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (p.doc_no LIKE CONCAT('%', #{q.keyword}, '%') OR p.name LIKE CONCAT('%', #{q.keyword}, '%')
+                     OR p.selling_points LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+        </where>
+    </sql>
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.dev.entity.EcomDevProject">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        <include refid="where"/>
+        ORDER BY p.id DESC
+    </select>
+
+    <select id="selectBoard" resultType="com.lemon.erp.modules.ecom.dev.entity.EcomDevProject">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        <include refid="where"/>
+        ORDER BY p.update_time DESC, p.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectStatusCounts" resultType="java.util.Map">
+        SELECT p.status AS status, COUNT(*) AS cnt
+        FROM ecom_dev_project p
+        <where>
+            <if test="q.ownerId != null">p.owner_id = #{q.ownerId}</if>
+            <if test="q.platform != null">AND p.platform = #{q.platform}</if>
+            <if test="q.source != null and q.source != ''">AND p.source = #{q.source}</if>
+            <if test="q.category != null and q.category != ''">AND p.category = #{q.category}</if>
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (p.doc_no LIKE CONCAT('%', #{q.keyword}, '%') OR p.name LIKE CONCAT('%', #{q.keyword}, '%')
+                     OR p.selling_points LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+        </where>
+        GROUP BY p.status
+    </select>
+
+    <select id="selectDetail" resultType="com.lemon.erp.modules.ecom.dev.entity.EcomDevProject">
+        SELECT <include refid="columns"/>, p.selling_points, p.description
+        <include refid="joins"/>
+        WHERE p.id = #{id}
+    </select>
+
+</mapper>

@@ -29,6 +29,7 @@ import com.lemon.erp.modules.ecom.mapper.EcomChannelMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomOrderMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomSyncLogMapper;
 import com.lemon.erp.modules.ecom.model.StoreAuthStatus;
+import com.lemon.erp.modules.ecom.model.EcomOrderType;
 import com.lemon.erp.modules.ecom.model.SyncType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -331,11 +332,25 @@ public class EcomSyncService {
      */
     public void confirmShipment(Long orderId, String trigger, boolean strict) {
         EcomOrder order = orderService.detail(orderId);
+        // 手工订单、补发单没有对应的平台订单，不回传
+        if (order.getOrderType() == EcomOrderType.MANUAL || order.getOrderType() == EcomOrderType.RESEND) {
+            if (strict) {
+                throw new BizException("ecom.error.ord.manualNoShipConfirm", order.getPlatformOrderNo());
+            }
+            return;
+        }
         EcomStore store = storeService.get(order.getStoreId());
         ChannelConnector connector = registry.find(store.getPlatform()).orElse(null);
         if (connector == null || !connector.supports(ConnectorCapability.SHIP_CONFIRM)) {
             if (strict) {
                 throw new BizException("ecom.error.connectorNoCapability", store.getPlatform().name(), ConnectorCapability.SHIP_CONFIRM.name());
+            }
+            return;
+        }
+        // 演示店铺不回传平台（手工重新回传时提示）
+        if (store.demoStore()) {
+            if (strict) {
+                EcomStoreService.requireReal(store);
             }
             return;
         }

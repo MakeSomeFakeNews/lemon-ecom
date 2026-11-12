@@ -67,6 +67,23 @@
         </a-col>
       </a-row>
 
+      <a-row :gutter="16">
+        <a-col :xs="24" :sm="12">
+          <a-form-item :label="$t('ecomOrd.rule.profitRateMax')" name="profitRateMax" :extra="$t('ecomOrd.rule.profitRateHint')">
+            <a-input-number v-model:value="form.profitRateMax" :precision="2" :min="-1000" :max="1000" addon-after="%" class="full" />
+          </a-form-item>
+        </a-col>
+        <a-col :xs="24" :sm="12">
+          <a-form-item :label="$t('ecomOrd.rule.checks')" name="checks">
+            <div class="flags">
+              <a-checkbox v-model:checked="form.blacklistHit">{{ $t('ecomOrd.rule.blacklistHit') }}</a-checkbox>
+              <a-checkbox v-model:checked="form.addressIssue">{{ $t('ecomOrd.rule.addressIssue') }}</a-checkbox>
+              <a-checkbox v-model:checked="form.remoteArea">{{ $t('ecomOrd.rule.remoteArea') }}</a-checkbox>
+            </div>
+          </a-form-item>
+        </a-col>
+      </a-row>
+
       <div class="section-title">{{ $t('ecomOrder.rule.actions') }}</div>
       <a-row :gutter="16">
         <a-col :xs="24" :sm="12">
@@ -93,6 +110,11 @@
             </div>
           </a-form-item>
         </a-col>
+        <a-col :span="24">
+          <a-form-item :label="$t('ecomOrd.rule.tags')" name="tagIds" :extra="$t('ecomOrd.rule.tagsHint')">
+            <a-select v-model:value="form.tagIds" mode="multiple" allow-clear :options="tagOptions" option-filter-prop="label" />
+          </a-form-item>
+        </a-col>
         <a-col v-if="form.holdOrder" :span="24">
           <a-form-item :label="$t('ecomOrder.rule.holdReason')" name="holdReason">
             <a-input v-model:value="form.holdReason" :maxlength="255" :placeholder="$t('ecomOrder.ops.holdReasonPh')" />
@@ -109,7 +131,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import FormDrawer from '@/components/FormDrawer.vue'
 import ChannelSelect from '@/components/ecom/ChannelSelect.vue'
@@ -117,6 +139,7 @@ import { useStores } from '@/components/ecom/StoreSelect.vue'
 import MaterialSelect from '@/components/wms/MaterialSelect.vue'
 import WarehouseSelect from '@/components/wms/WarehouseSelect.vue'
 import { addOrderRule, getOrderRule, updateOrderRule } from '@/api/ecom/orderRule'
+import { orderTagOptions } from '@/api/ecom/orderEnhance'
 import { materialsByIds } from '@/api/wms/material'
 import { useDict } from '@/composables/useDict'
 import { useFormDrawer } from '@/composables/useFormDrawer'
@@ -132,6 +155,7 @@ const { t } = useI18n()
 const dict = useDict('ecom_platform', 'ecom_fulfillment')
 const stores = useStores()
 const storeOptions = computed(() => stores.value.map((s) => ({ value: s.id, label: s.name })))
+const tagOptions = ref([])
 
 const rules = {
   name: [{ required: true, whitespace: true, message: t('common.rule.required', { name: t('ecomOrder.rule.name') }) }],
@@ -173,8 +197,16 @@ const drawer = useFormDrawer({
     holdReason: '',
     autoAudit: false,
     stopOnMatch: false,
+    profitRateMax: undefined,
+    blacklistHit: false,
+    addressIssue: false,
+    remoteArea: false,
+    tagIds: [],
     remark: ''
   }),
+  beforeOpen: async () => {
+    tagOptions.value = ((await orderTagOptions()) || []).map((x) => ({ value: x.id, label: x.name }))
+  },
   fetch: async (record) => {
     const d = await getOrderRule(record.id)
     const materialIds = split(d.materialIds).map(Number)
@@ -199,6 +231,11 @@ const drawer = useFormDrawer({
       stopOnMatch: d.stopOnMatch === 1,
       cutoffTime: d.cutoffTime || undefined,
       holdReason: d.holdReason || '',
+      profitRateMax: num(d.profitRateMax),
+      blacklistHit: d.blacklistHit === 1,
+      addressIssue: d.addressIssue === 1,
+      remoteArea: d.remoteArea === 1,
+      tagIds: split(d.tagIds).map(Number),
       remark: d.remark || ''
     }
   },
@@ -226,6 +263,11 @@ const drawer = useFormDrawer({
       holdReason: f.holdOrder ? f.holdReason || null : null,
       autoAudit: f.autoAudit ? 1 : 0,
       stopOnMatch: f.stopOnMatch ? 1 : 0,
+      profitRateMax: f.profitRateMax ?? null,
+      blacklistHit: f.blacklistHit ? 1 : 0,
+      addressIssue: f.addressIssue ? 1 : 0,
+      remoteArea: f.remoteArea ? 1 : 0,
+      tagIds: join(f.tagIds),
       remark: f.remark || null
     }
   },

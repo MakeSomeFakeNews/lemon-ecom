@@ -22,6 +22,16 @@ public interface DictLookup {
     Map<String, java.math.BigDecimal> extValues(String dictType);
 
     /**
+     * 业务字典（当前租户）中没有该取值时新增一个启用的取值，已有（含停用）时不变；只用于初始化数据（如电商演示数据），
+     * 页面维护字典走字典管理
+     *
+     * @param label 名称（存库内容，中文）
+     */
+    default void ensureBusinessValue(String dictType, String value, String label) {
+        throw new UnsupportedOperationException("ensureBusinessValue"); // i18n-ignore 内部错误
+    }
+
+    /**
      * 取值必须是字典中启用的值，否则提示「{名称}不正确」；value 为空时不校验（是否必填由调用方决定）
      *
      * @param fieldKey 字段名称的消息键，如 hr.label.empType

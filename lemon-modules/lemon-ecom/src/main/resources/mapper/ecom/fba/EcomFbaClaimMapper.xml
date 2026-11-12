@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.fba.mapper.EcomFbaClaimMapper">
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.fba.entity.EcomFbaClaim">
+        SELECT c.*, s.name AS store_name
+        FROM ecom_fba_claim c
+        LEFT JOIN ecom_store s ON s.id = c.store_id
+        <where>
+            <if test="storeId != null">c.store_id = #{storeId}</if>
+            <if test="claimType != null">AND c.claim_type = #{claimType}</if>
+            <if test="status != null">AND c.status = #{status}</if>
+            <if test="deadlineBefore != null">AND c.deadline &lt;= #{deadlineBefore} AND c.status IN ('PENDING', 'SUBMITTED')</if>
+            <if test="keyword != null and keyword != ''">
+                AND (c.claim_no LIKE CONCAT('%', #{keyword}, '%') OR c.seller_sku LIKE CONCAT('%', #{keyword}, '%')
+                     OR c.fnsku LIKE CONCAT('%', #{keyword}, '%') OR c.source_ref LIKE CONCAT('%', #{keyword}, '%')
+                     OR c.case_no LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY CASE WHEN c.status IN ('PENDING', 'SUBMITTED') THEN 0 ELSE 1 END, c.deadline, c.id DESC
+    </select>
+
+    <select id="selectSummary" resultType="java.util.LinkedHashMap">
+        SELECT status, currency, COUNT(*) AS cnt, COALESCE(SUM(est_amount), 0) AS amount, COALESCE(SUM(paid_amount), 0) AS paid,
+               COALESCE(SUM(paid_base), 0) AS paid_base
+        FROM ecom_fba_claim
+        <where>
+            <if test="storeId != null">store_id = #{storeId}</if>
+        </where>
+        GROUP BY status, currency
+    </select>
+
+    <select id="selectTypeSummary" resultType="java.util.LinkedHashMap">
+        SELECT claim_type, currency, COUNT(*) AS cnt, COALESCE(SUM(est_amount), 0) AS amount
+        FROM ecom_fba_claim
+        WHERE status IN ('PENDING', 'SUBMITTED')
+        <if test="storeId != null">AND store_id = #{storeId}</if>
+        GROUP BY claim_type, currency
+    </select>
+
+    <select id="selectExistingKeys" resultType="java.lang.String">
+        SELECT source_key FROM ecom_fba_claim
+        WHERE store_id = #{storeId} AND source_key IN <foreach collection="keys" item="k" open="(" separator="," close=")">#{k}</foreach>
+    </select>
+
+    <!-- 平台配送订单的退货退款：已退款、退款时间在 (refundAfter, refundBefore]，库存流水中没有该订单号的退货入库，赔偿中也没有该订单 -->
+    <select id="selectUnreturnedRefunds" resultType="com.lemon.erp.modules.ecom.fba.dto.FbaViews$UnreturnedRefund">
+        SELECT r.id AS return_id, r.doc_no, r.store_id, r.platform_order_no, ri.seller_sku, r.currency,
+               SUM(ri.qty) AS qty, SUM(ri.refund_amount) AS refund_amount, CAST(r.refund_time AS DATE) AS refund_date
+        FROM ecom_return r
+        JOIN ecom_order o ON o.id = r.order_id
+        JOIN ecom_return_item ri ON ri.return_id = r.id
+        WHERE r.store_id = #{storeId} AND o.fulfillment = 'PLATFORM' AND r.return_type = 'RETURN_REFUND' AND r.status = 'REFUNDED'
+          AND r.refund_time IS NOT NULL AND r.refund_time &lt;= #{refundBefore} AND r.refund_time &gt; #{refundAfter}
+          AND ri.seller_sku IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM ecom_fba_ledger g WHERE g.store_id = r.store_id AND g.event_type = 'CustomerReturns'
+                          AND g.reference_id = r.platform_order_no)
+          AND NOT EXISTS (SELECT 1 FROM ecom_fba_reimbursement b WHERE b.store_id = r.store_id AND b.amazon_order_id = r.platform_order_no)
+        GROUP BY r.id, r.doc_no, r.store_id, r.platform_order_no, ri.seller_sku, r.currency, r.refund_time
+    </select>
+
+    <select id="selectListingValues" resultType="com.lemon.erp.modules.ecom.fba.dto.FbaViews$ListingValue">
+        SELECT l.store_id, l.seller_sku, l.fnsku, l.price, s.commission_rate, COALESCE(l.currency, s.currency) AS currency,
+               l.material_id, l.pack_qty
+        FROM ecom_listing l
+        JOIN ecom_store s ON s.id = l.store_id
+        WHERE l.store_id = #{storeId}
+    </select>
+
+    <sql id="receiptColumns">
+        it.id AS inbound_item_id, ib.id AS inbound_id, ib.doc_no, ib.shipment_id, ib.store_id, s.name AS store_name, s.currency,
+        ib.status, ib.ship_date, ib.receive_date, it.seller_sku, m.code AS material_code, m.name AS material_name,
+        COALESCE(l.pack_qty, 1) AS pack_qty, it.qty / COALESCE(l.pack_qty, 1) AS shipped_qty,
+        rc.received_qty, rc.source,
+        CASE WHEN rc.id IS NULL THEN NULL
+             WHEN it.qty / COALESCE(l.pack_qty, 1) - rc.received_qty &gt; 0 THEN it.qty / COALESCE(l.pack_qty, 1) - rc.received_qty ELSE 0 END AS short_qty,
+        l.price, s.commission_rate,
+        (SELECT c.claim_no FROM ecom_fba_claim c WHERE c.store_id = ib.store_id AND c.source_key = CONCAT('INBOUND:', it.id)) AS claim_no
+    </sql>
+
+    <select id="selectReceiptPage" resultType="com.lemon.erp.modules.ecom.fba.dto.FbaViews$ReceiptRow">
+        SELECT <include refid="receiptColumns"/>
+        FROM ecom_inbound ib
+        JOIN ecom_store s ON s.id = ib.store_id
+        JOIN ecom_inbound_item it ON it.inbound_id = ib.id
+        LEFT JOIN ecom_listing l ON l.store_id = ib.store_id AND l.seller_sku = it.seller_sku
+        LEFT JOIN wms_material m ON m.id = it.material_id
+        LEFT JOIN ecom_fba_inbound_receipt rc ON rc.inbound_item_id = it.id
+        WHERE ib.status IN ('SHIPPED', 'RECEIVED') AND s.platform = 'AMAZON' AND it.part_main = 1
+        <if test="storeId != null">AND ib.store_id = #{storeId}</if>
+        <if test="shortOnly != null and shortOnly">AND rc.id IS NOT NULL AND it.qty / COALESCE(l.pack_qty, 1) - rc.received_qty &gt; 0</if>
+        <if test="keyword != null and keyword != ''">
+            AND (ib.doc_no LIKE CONCAT('%', #{keyword}, '%') OR ib.shipment_id LIKE CONCAT('%', #{keyword}, '%')
+                 OR it.seller_sku LIKE CONCAT('%', #{keyword}, '%') OR m.code LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY ib.id DESC, it.id
+    </select>
+
+    <select id="selectShortages" resultType="com.lemon.erp.modules.ecom.fba.dto.FbaViews$ReceiptRow">
+        SELECT <include refid="receiptColumns"/>
+        FROM ecom_inbound ib
+        JOIN ecom_store s ON s.id = ib.store_id
+        JOIN ecom_inbound_item it ON it.inbound_id = ib.id
+        LEFT JOIN ecom_listing l ON l.store_id = ib.store_id AND l.seller_sku = it.seller_sku
+        LEFT JOIN wms_material m ON m.id = it.material_id
+        JOIN ecom_fba_inbound_receipt rc ON rc.inbound_item_id = it.id
+        WHERE ib.store_id = #{storeId} AND ib.status = 'RECEIVED' AND it.part_main = 1
+          AND it.qty / COALESCE(l.pack_qty, 1) - rc.received_qty &gt; 0
+    </select>
+
+</mapper>

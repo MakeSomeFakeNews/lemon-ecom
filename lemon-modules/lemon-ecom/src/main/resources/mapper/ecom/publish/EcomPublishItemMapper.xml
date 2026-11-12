@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.publish.mapper.EcomPublishItemMapper">
+
+    <sql id="columns">
+        i.*, s.name AS store_name, s.code AS store_code, s.platform, d.material_id, m.code AS material_code, m.name AS material_name,
+        pt.name AS publish_template_name, pr.name AS price_template_name,
+        (SELECT COUNT(*) FROM ecom_publish_variant v WHERE v.item_id = i.id) AS variant_count
+    </sql>
+
+    <sql id="from">
+        FROM ecom_publish_item i
+        JOIN ecom_publish_draft d ON d.id = i.draft_id
+        LEFT JOIN ecom_store s ON s.id = i.store_id
+        LEFT JOIN wms_material m ON m.id = d.material_id
+        LEFT JOIN ecom_publish_template pt ON pt.id = i.publish_template_id
+        LEFT JOIN ecom_price_template pr ON pr.id = i.price_template_id
+    </sql>
+
+    <sql id="filters">
+        <if test="storeId != null">AND i.store_id = #{storeId}</if>
+        <if test="platform != null">AND s.platform = #{platform}</if>
+        <if test="keyword != null and keyword != ''">
+            AND (i.title LIKE CONCAT('%', #{keyword}, '%') OR m.code LIKE CONCAT('%', #{keyword}, '%') OR m.name LIKE CONCAT('%', #{keyword}, '%')
+                 OR i.platform_item_id = #{keyword}
+                 OR EXISTS (SELECT 1 FROM ecom_publish_variant v WHERE v.item_id = i.id AND v.seller_sku LIKE CONCAT('%', #{keyword}, '%')))
+        </if>
+    </sql>
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.publish.entity.EcomPublishItem">
+        SELECT <include refid="columns"/>
+        <include refid="from"/>
+        <where>
+            <include refid="filters"/>
+            <if test="status != null">AND i.status = #{status}</if>
+            <if test="draftId != null">AND i.draft_id = #{draftId}</if>
+        </where>
+        ORDER BY i.id DESC
+    </select>
+
+    <select id="countByStatus" resultType="com.lemon.erp.modules.ecom.publish.dto.PublishViews$StatusCount">
+        SELECT i.status, COUNT(*) AS cnt
+        <include refid="from"/>
+        <where>
+            <include refid="filters"/>
+        </where>
+        GROUP BY i.status
+    </select>
+
+    <select id="selectDetails" resultType="com.lemon.erp.modules.ecom.publish.entity.EcomPublishItem">
+        SELECT <include refid="columns"/>
+        <include refid="from"/>
+        WHERE i.id IN <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        ORDER BY i.id
+    </select>
+
+</mapper>

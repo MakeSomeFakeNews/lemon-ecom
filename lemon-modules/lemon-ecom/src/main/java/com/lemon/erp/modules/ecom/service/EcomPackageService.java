@@ -111,6 +111,7 @@ public class EcomPackageService {
     private final FileStorageService fileStorageService;
     private final TransactionTemplate transactionTemplate;
     private final ApplicationEventPublisher eventPublisher;
+    private final com.lemon.erp.modules.ecom.owh.service.OwhPackageGuard owhGuard;
 
     // ---------------------------------------------------------------- 查询
 
@@ -532,6 +533,8 @@ public class EcomPackageService {
         if (p.getStatus() != EcomPackageStatus.WAIT_LABEL) {
             throw new BizException("ecom.error.ops.packageStatusNotAllow", p.getPackageNo());
         }
+        // 海外仓的包裹推送海外仓出库单，不在本地申请运单号
+        owhGuard.checkLocalLabel(p);
         List<EcomPackageItem> items = packageItemMapper.selectByPackageIds(List.of(id));
         List<EcomOrder> orders = ordersOf(items);
         checkOrders(p, orders);
@@ -939,7 +942,10 @@ public class EcomPackageService {
             EcomLocalStatus st = recomputeOrder(o.getId());
             EcomOrder fresh = orderMapper.selectById(o.getId());
             orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getProfit, EcomOrderService.profitOf(fresh)).eq(EcomOrder::getId, o.getId()));
-            if (st == EcomLocalStatus.SHIPPED) {
+            if (activeOf(o.getId()).size() > 1) {
+                // 多包裹订单：按包裹回传（平台支持部分发货时每个包裹回传一次，否则全部发完后整单回传）
+                eventPublisher.publishEvent(new EcomPartialShipService.PackageShippedEvent(o.getId(), id, st == EcomLocalStatus.SHIPPED));
+            } else if (st == EcomLocalStatus.SHIPPED) {
                 eventPublisher.publishEvent(new EcomOrderService.OrderShippedEvent(o.getId()));
             }
         }
@@ -979,6 +985,8 @@ public class EcomPackageService {
         if (p.getStatus() != EcomPackageStatus.WAIT_LABEL && p.getStatus() != EcomPackageStatus.LABELED) {
             throw new BizException("ecom.error.ops.packageStatusNotAllow", p.getPackageNo());
         }
+        // 已推送海外仓的包裹先取消海外仓出库单
+        owhGuard.checkCancel(p);
         if (p.getStatus() == EcomPackageStatus.LABELED && p.getCarrier() != null && p.getCarrierOrderNo() != null) {
             EcomLogisticsChannel channel = logisticsService.get(p.getChannelId());
             carrierRegistry.require(p.getCarrier()).cancel(logisticsService.carrierContext(channel),

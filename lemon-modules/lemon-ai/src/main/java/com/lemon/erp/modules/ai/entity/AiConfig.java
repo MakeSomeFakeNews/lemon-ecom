@@ -64,6 +64,9 @@ public class AiConfig extends BaseEntity {
 
     private Boolean reportEnabled;
 
+    /** AI 写作（客服回复草拟、翻译、刊登文案等业务文本生成） */
+    private Boolean writeEnabled;
+
     @DecimalMin(value = "0", message = "{ai.valid.temperatureInvalid}")
     @DecimalMax(value = "2", message = "{ai.valid.temperatureInvalid}")
     private BigDecimal temperature;
@@ -91,6 +94,7 @@ public class AiConfig extends BaseEntity {
             case EXTRACT -> Boolean.TRUE.equals(extractEnabled);
             case CLEANSE -> Boolean.TRUE.equals(cleanseEnabled);
             case REPORT -> Boolean.TRUE.equals(reportEnabled);
+            case WRITE -> Boolean.TRUE.equals(writeEnabled);
             case TEST -> true;
         };
     }

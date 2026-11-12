@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.publish.mapper.EcomPublishLogMapper">
+
+    <select id="selectByItem" resultType="com.lemon.erp.modules.ecom.publish.entity.EcomPublishLog">
+        SELECT l.*, u.nickname AS operator_name
+        FROM ecom_publish_log l
+        LEFT JOIN sys_user u ON u.id = l.create_by
+        WHERE l.item_id = #{itemId}
+        ORDER BY l.id DESC
+    </select>
+
+</mapper>

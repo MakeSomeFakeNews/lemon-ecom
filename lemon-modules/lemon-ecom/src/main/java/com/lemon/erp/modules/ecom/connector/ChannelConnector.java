@@ -74,6 +74,15 @@ public interface ChannelConnector {
         throw new BizException("ecom.error.connectorNoCapability", platform().name(), ConnectorCapability.SHIP_CONFIRM.name());
     }
 
+    /**
+     * 是否支持部分发货：一张订单分多个包裹发出时，每个包裹发货后按包裹内的行和件数回传（{@link #confirmShipment} 的 items 只含该包裹的行，
+     * 数量为该包裹发出的件数，order 的运单号 / 承运商 / 发货时间为该包裹的，{@code order.getShipPackageRef()} 为包裹号）。
+     * 不支持的平台在全部包裹发完后整单回传一次
+     */
+    default boolean partialShipment() {
+        return false;
+    }
+
     /** 回传可售库存，能力 INVENTORY_PUSH */
     default void pushInventory(ConnectorContext ctx, List<InventoryUpdate> updates) {
         throw new BizException("ecom.error.connectorNoCapability", platform().name(), ConnectorCapability.INVENTORY_PUSH.name());

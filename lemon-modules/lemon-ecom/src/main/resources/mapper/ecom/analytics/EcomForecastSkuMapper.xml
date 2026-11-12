@@ -4,11 +4,12 @@
 
     <insert id="insertBatch">
         INSERT INTO ecom_forecast_sku (listing_id, store_id, method, fixed_method, mape_ma, mape_wma, mape_holt, mape_seasonal, history_daily,
-                                       forecast30, forecast60, forecast90, sigma, generated_time, create_time, update_time)
+                                       forecast30, forecast60, forecast90, sigma, stockout_days, adjusted_daily, generated_time, create_time, update_time)
         VALUES
         <foreach collection="items" item="i" separator=",">
             (#{i.listingId}, #{i.storeId}, #{i.method}, #{i.fixedMethod}, #{i.mapeMa}, #{i.mapeWma}, #{i.mapeHolt}, #{i.mapeSeasonal},
-             #{i.historyDaily}, #{i.forecast30}, #{i.forecast60}, #{i.forecast90}, #{i.sigma}, #{i.generatedTime}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+             #{i.historyDaily}, #{i.forecast30}, #{i.forecast60}, #{i.forecast90}, #{i.sigma}, COALESCE(#{i.stockoutDays}, 0),
+             COALESCE(#{i.adjustedDaily}, #{i.historyDaily}, 0), #{i.generatedTime}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         </foreach>
     </insert>
 
@@ -23,7 +24,7 @@
 
     <select id="selectRows" resultType="com.lemon.erp.modules.ecom.analytics.entity.EcomForecastSku">
         SELECT f.id, f.listing_id, f.store_id, f.method, f.fixed_method, f.mape_ma, f.mape_wma, f.mape_holt, f.mape_seasonal, f.history_daily,
-               f.forecast30, f.forecast60, f.forecast90, f.sigma, f.generated_time,
+               f.forecast30, f.forecast60, f.forecast90, f.sigma, f.stockout_days, f.adjusted_daily, f.generated_time,
                s.name AS store_name, s.platform, l.seller_sku, l.title, m.code AS material_code, m.name AS material_name
         FROM ecom_forecast_sku f
         JOIN ecom_listing l ON l.id = f.listing_id

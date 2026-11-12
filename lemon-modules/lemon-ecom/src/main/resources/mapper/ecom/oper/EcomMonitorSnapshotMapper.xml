@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.oper.mapper.EcomMonitorSnapshotMapper">
+
+    <select id="selectTrend" resultType="com.lemon.erp.modules.ecom.oper.entity.EcomMonitorSnapshot">
+        SELECT id, monitor_id, snapshot_date, category, rank_main, sub_category, rank_sub, rating, review_count, seller_count, price,
+               title, main_image, listing_status, source, create_time, update_time
+        FROM ecom_monitor_snapshot
+        WHERE monitor_id = #{monitorId}
+        <if test="begin != null">AND snapshot_date &gt;= #{begin}</if>
+        <if test="end != null">AND snapshot_date &lt;= #{end}</if>
+        ORDER BY snapshot_date
+    </select>
+
+    <insert id="insertBatch">
+        INSERT INTO ecom_monitor_snapshot (monitor_id, snapshot_date, category, rank_main, sub_category, rank_sub, rating, review_count,
+                                           seller_count, price, title, main_image, bullets, listing_status, source, create_time, update_time)
+        VALUES
+        <foreach collection="items" item="i" separator=",">
+            (#{i.monitorId}, #{i.snapshotDate}, #{i.category}, #{i.rankMain}, #{i.subCategory}, #{i.rankSub}, #{i.rating}, #{i.reviewCount},
+             #{i.sellerCount}, #{i.price}, #{i.title}, #{i.mainImage}, #{i.bullets}, #{i.listingStatus}, #{i.source}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        </foreach>
+    </insert>
+
+</mapper>

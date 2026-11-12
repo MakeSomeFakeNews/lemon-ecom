@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.owh.mapper.EcomOwhReturnItemMapper">
+
+    <select id="selectByReturn" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhReturnItem">
+        SELECT it.*, mt.code AS material_code, mt.name AS material_name
+        FROM ecom_owh_return_item it
+        LEFT JOIN wms_material mt ON mt.id = it.material_id
+        WHERE it.owh_return_id = #{returnId}
+        ORDER BY it.id
+    </select>
+
+    <insert id="insertBatch">
+        INSERT INTO ecom_owh_return_item (owh_return_id, material_id, sku, qty, good_qty, bad_qty, create_time, update_time)
+        VALUES
+        <foreach collection="list" item="r" separator=",">
+            (#{r.owhReturnId}, #{r.materialId}, #{r.sku}, #{r.qty}, #{r.goodQty}, #{r.badQty}, NOW(), NOW())
+        </foreach>
+    </insert>
+</mapper>

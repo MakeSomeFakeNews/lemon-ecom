@@ -3,19 +3,20 @@
 <mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomReturnItemMapper">
 
     <select id="selectByReturnId" resultType="com.lemon.erp.modules.ecom.entity.EcomReturnItem">
-        SELECT ri.*, m.code AS material_code, m.name AS material_name, oi.title
+        SELECT ri.*, m.code AS material_code, m.name AS material_name, oi.title, pk.package_no
         FROM ecom_return_item ri
         LEFT JOIN wms_material m ON m.id = ri.material_id
         LEFT JOIN ecom_order_item oi ON oi.id = ri.order_item_id
+        LEFT JOIN ecom_package pk ON pk.id = ri.package_id
         WHERE ri.return_id = #{returnId}
         ORDER BY ri.id
     </select>
 
     <insert id="insertBatch">
-        INSERT INTO ecom_return_item (return_id, order_item_id, material_id, seller_sku, qty, refund_amount, create_time, update_time)
+        INSERT INTO ecom_return_item (return_id, order_item_id, material_id, seller_sku, qty, refund_amount, package_id, create_time, update_time)
         VALUES
         <foreach collection="items" item="i" separator=",">
-            (#{i.returnId}, #{i.orderItemId}, #{i.materialId}, #{i.sellerSku}, #{i.qty}, #{i.refundAmount}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            (#{i.returnId}, #{i.orderItemId}, #{i.materialId}, #{i.sellerSku}, #{i.qty}, #{i.refundAmount}, #{i.packageId}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         </foreach>
     </insert>
 
@@ -25,6 +26,15 @@
         JOIN ecom_return r ON r.id = ri.return_id
         WHERE r.order_id = #{orderId} AND r.status &lt;&gt; 'CLOSED'
         GROUP BY ri.order_item_id
+    </select>
+
+    <!-- 订单已入库退货的数量：按订单行、包裹（为空表示未指定包裹）汇总，多包裹退货按发货单分配时扣除 -->
+    <select id="selectReceivedQty" resultType="map">
+        SELECT ri.order_item_id AS "orderItemId", ri.package_id AS "packageId", SUM(ri.qty) AS qty
+        FROM ecom_return_item ri
+        JOIN ecom_return r ON r.id = ri.return_id
+        WHERE r.order_id = #{orderId} AND r.id &lt;&gt; #{excludeId} AND r.trade_doc_id IS NOT NULL
+        GROUP BY ri.order_item_id, ri.package_id
     </select>
 
 </mapper>

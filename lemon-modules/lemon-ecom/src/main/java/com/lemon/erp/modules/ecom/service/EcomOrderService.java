@@ -1,5 +1,6 @@
 package com.lemon.erp.modules.ecom.service;
 
+import com.lemon.erp.modules.ecom.oper.scope.EcomStoreScope;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.lemon.erp.common.exception.BizException;
@@ -13,8 +14,6 @@ import com.lemon.erp.framework.excel.ImportRow;
 import com.lemon.erp.framework.finance.ExchangeRateProvider;
 import com.lemon.erp.framework.security.LoginUser;
 import com.lemon.erp.framework.security.SecurityUtils;
-import com.lemon.erp.framework.security.datascope.DataPermission;
-import com.lemon.erp.framework.security.datascope.DataScopes;
 import com.lemon.erp.modules.ecom.dto.OrderDraft;
 import com.lemon.erp.modules.ecom.dto.OrderEditRequest;
 import com.lemon.erp.modules.ecom.dto.OrderImportRow;
@@ -23,10 +22,12 @@ import com.lemon.erp.modules.ecom.dto.OutboundRequest;
 import com.lemon.erp.modules.ecom.dto.ShipRequest;
 import com.lemon.erp.modules.ecom.entity.EcomOrder;
 import com.lemon.erp.modules.ecom.entity.EcomOrderItem;
+import com.lemon.erp.modules.ecom.entity.EcomOrderTag;
 import com.lemon.erp.modules.ecom.entity.EcomStore;
 import com.lemon.erp.modules.ecom.mapper.EcomInboundItemMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomOrderItemMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomOrderMapper;
+import com.lemon.erp.modules.ecom.mapper.EcomOrderTagMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomPackageItemMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomPackageMapper;
 import com.lemon.erp.modules.ecom.model.EcomConstants;
@@ -81,6 +82,7 @@ public class EcomOrderService {
     private final EcomInboundItemMapper inboundItemMapper;
     private final EcomPackageMapper packageMapper;
     private final EcomPackageItemMapper packageItemMapper;
+    private final EcomOrderTagMapper tagMapper;
     private final EcomStoreService storeService;
     private final EcomOutboundSupport outboundSupport;
     private final EcomPackageService packageService;
@@ -92,11 +94,22 @@ public class EcomOrderService {
 
     // ---------------------------------------------------------------- 查询
 
-    @DataPermission(table = "ecom_order", deptColumn = "dept_id", userColumn = "create_by")
+    // 数据范围按店铺授权（EcomStoreScope，接口执行期间自动过滤），不再按部门 / 制单人
     public PageResult<EcomOrder> page(long current, long size, OrderQuery query) {
         Page<EcomOrder> page = Page.of(current, size);
         orderMapper.selectPageList(page, query);
+        attachTags(page.getRecords());
         return PageResult.of(page);
+    }
+
+    /** 带出订单的标签 */
+    private void attachTags(List<EcomOrder> orders) {
+        if (orders.isEmpty()) {
+            return;
+        }
+        Map<Long, List<EcomOrderTag>> byOrder = tagMapper.selectByOrderIds(orders.stream().map(EcomOrder::getId).toList())
+                .stream().collect(Collectors.groupingBy(EcomOrderTag::getOrderId));
+        orders.forEach(o -> o.setTags(byOrder.getOrDefault(o.getId(), List.of())));
     }
 
     /**
@@ -104,7 +117,7 @@ public class EcomOrderService {
      *
      * @return 处理状态 → 订单数
      */
-    @DataPermission(table = "ecom_order", deptColumn = "dept_id", userColumn = "create_by")
+    // 数据范围按店铺授权（EcomStoreScope，接口执行期间自动过滤），不再按部门 / 制单人
     public Map<String, Long> statusCounts(OrderQuery query) {
         Map<String, Long> out = new LinkedHashMap<>();
         for (Map<String, Object> row : orderMapper.countByLocalStatus(query)) {
@@ -114,7 +127,7 @@ public class EcomOrderService {
     }
 
     public EcomOrder detail(Long id) {
-        EcomOrder o = DataScopes.require(EcomConstants.ORDER_RULE, () -> orderMapper.selectDetail(id), "ecom.error.orderNotFound");
+        EcomOrder o = EcomStoreScope.require(() -> orderMapper.selectDetail(id), "ecom.error.orderNotFound");
         List<EcomOrderItem> items = outboundSupport.attachParts(itemMapper.selectByOrderId(id));
         Map<Long, Map<String, Object>> alloc = new HashMap<>();
         packageItemMapper.selectAllocated(id).forEach(r -> alloc.put(((Number) r.get("orderItemId")).longValue(), r));
@@ -125,11 +138,12 @@ public class EcomOrderService {
         }
         o.setItems(items);
         o.setPackages(packageMapper.selectByOrderId(id));
+        attachTags(List.of(o));
         return o;
     }
 
     EcomOrder require(Long id) {
-        return DataScopes.require(EcomConstants.ORDER_RULE, () -> orderMapper.selectById(id), "ecom.error.orderNotFound");
+        return EcomStoreScope.require(() -> orderMapper.selectById(id), "ecom.error.orderNotFound");
     }
 
     public List<EcomOrderItem> items(Long orderId) {
@@ -273,6 +287,11 @@ public class EcomOrderService {
         o.setShipBy(d.getShipBy());
         o.setDeliverBy(d.getDeliverBy());
         o.setNote(d.getNote());
+        o.setWeight(d.getWeight());
+        o.setOrderType(d.getOrderType());
+        o.setSourceOrderId(d.getSourceOrderId());
+        o.setSourceTicketId(d.getSourceTicketId());
+        o.setSourceReturnId(d.getSourceReturnId());
         o.setExchangeRate(rateOf(o.getCurrency(), o.getOrderTime().toLocalDate()));
 
         List<EcomOrderItem> items = new ArrayList<>();
@@ -372,6 +391,11 @@ public class EcomOrderService {
     private static BigDecimal estimateCommission(EcomStore store, BigDecimal total) {
         BigDecimal rate = Decimals.nz(store.getCommissionRate());
         return Decimals.money(total.multiply(rate).divide(Decimals.HUNDRED, 6, RoundingMode.HALF_UP));
+    }
+
+    /** 按 {@link #profitOf} 计算利润（演示数据按日汇总出库后回写订单时使用） */
+    public static BigDecimal computeProfit(EcomOrder o) {
+        return profitOf(o);
     }
 
     /**
@@ -570,6 +594,8 @@ public class EcomOrderService {
             orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getTaxType, null).set(EcomOrder::getVatRate, null).eq(EcomOrder::getId, id));
         }
         orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getWeight, req.weight()).eq(EcomOrder::getId, id));
+        // 地址可能变化：重新校验地址、黑名单与利润预估
+        eventPublisher.publishEvent(new EcomOrderCheckService.AddressChangedEvent(id));
     }
 
     // ---------------------------------------------------------------- 费用与退款回写

@@ -73,6 +73,7 @@ import { actionColumn } from '@/components/common/tableActions'
 import { useStores } from '@/components/ecom/StoreSelect.vue'
 import RuleForm from './RuleForm.vue'
 import { changeOrderRuleStatus, deleteOrderRule, pageOrderRule } from '@/api/ecom/orderRule'
+import { orderTagOptions } from '@/api/ecom/orderEnhance'
 import { useAction } from '@/composables/useAction'
 import { useColumns } from '@/composables/useColumns'
 import { useDict } from '@/composables/useDict'
@@ -87,6 +88,8 @@ const { t } = useI18n()
 const userStore = useUserStore()
 const dict = useDict('sys_common_status', 'ecom_platform', 'ecom_fulfillment')
 const stores = useStores()
+const tags = ref([])
+orderTagOptions().then((list) => (tags.value = list || []))
 
 const split = (s) => (s ? String(s).split(',').filter(Boolean) : [])
 const range = (min, max) => (min == null && max == null ? null : `${min ?? ''} ~ ${max ?? ''}`)
@@ -104,6 +107,10 @@ function conditionText(r) {
   if (amount) parts.push(`${t('ecomOrder.rule.amount')}: ${amount}`)
   const weight = range(r.weightMin, r.weightMax)
   if (weight) parts.push(`${t('ecomOrder.rule.weightRange')}: ${weight}`)
+  if (r.profitRateMax != null) parts.push(t('ecomOrd.rule.profitRateText', { rate: Number(r.profitRateMax) }))
+  if (r.blacklistHit === 1) parts.push(t('ecomOrd.rule.blacklistHit'))
+  if (r.addressIssue === 1) parts.push(t('ecomOrd.rule.addressIssue'))
+  if (r.remoteArea === 1) parts.push(t('ecomOrd.rule.remoteArea'))
   return parts.length ? parts.join('; ') : t('ecomOrder.rule.any')
 }
 
@@ -115,6 +122,7 @@ function actionText(r) {
   if (r.cutoffTime) parts.push(`${t('ecomOrder.rule.cutoffTime')}: ${r.cutoffTime}`)
   if (r.holdOrder === 1) parts.push(r.holdReason ? `${t('ecomOrder.rule.holdOrder')} (${r.holdReason})` : t('ecomOrder.rule.holdOrder'))
   if (r.autoAudit === 1) parts.push(t('ecomOrder.rule.autoAudit'))
+  if (r.tagIds) parts.push(`${t('ecomOrd.rule.tags')}: ${split(r.tagIds).map((id) => tags.value.find((x) => String(x.id) === id)?.name || id).join(', ')}`)
   if (r.stopOnMatch === 1) parts.push(t('ecomOrder.rule.stopOnMatch'))
   return parts.join('; ') || '-'
 }

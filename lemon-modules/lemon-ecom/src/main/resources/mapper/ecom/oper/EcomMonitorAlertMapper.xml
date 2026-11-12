@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.oper.mapper.EcomMonitorAlertMapper">
+
+    <sql id="filters">
+        <if test="q.storeId != null">AND a.store_id = #{q.storeId}</if>
+        <if test="q.monitorId != null">AND a.monitor_id = #{q.monitorId}</if>
+        <if test="q.alertType != null">AND a.alert_type = #{q.alertType}</if>
+        <if test="q.beginDate != null">AND a.alert_date &gt;= #{q.beginDate}</if>
+        <if test="q.endDate != null">AND a.alert_date &lt;= #{q.endDate}</if>
+        <if test="q.keyword != null and q.keyword != ''">
+            AND (m.item_id LIKE CONCAT('%', #{q.keyword}, '%') OR m.title LIKE CONCAT('%', #{q.keyword}, '%') OR m.seller_sku LIKE CONCAT('%', #{q.keyword}, '%'))
+        </if>
+    </sql>
+
+    <!-- 处理人昵称来自 sys_user（只读 JOIN） -->
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.oper.entity.EcomMonitorAlert">
+        SELECT a.id, a.monitor_id, a.store_id, a.alert_date, a.alert_type, a.old_value, a.new_value, a.status, a.handler_id, a.handle_time,
+               a.handle_note, a.create_time, a.update_time,
+               m.platform, m.marketplace, m.item_id, m.title, m.monitor_type, s.name AS store_name, u.nickname AS handler_name
+        FROM ecom_monitor_alert a
+        JOIN ecom_monitor m ON m.id = a.monitor_id
+        LEFT JOIN ecom_store s ON s.id = a.store_id
+        LEFT JOIN sys_user u ON u.id = a.handler_id
+        <where>
+            <if test="q.status != null">a.status = #{q.status}</if>
+            <include refid="filters"/>
+        </where>
+        ORDER BY a.alert_date DESC, a.id DESC
+    </select>
+
+    <select id="countNewByMonitor" resultType="java.util.Map">
+        SELECT a.monitor_id AS "monitorId", COUNT(*) AS "cnt"
+        FROM ecom_monitor_alert a
+        WHERE a.status = 'NEW' AND a.monitor_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        GROUP BY a.monitor_id
+    </select>
+
+    <select id="countNewByType" resultType="java.util.Map">
+        SELECT a.alert_type AS "alertType", COUNT(*) AS "cnt"
+        FROM ecom_monitor_alert a
+        JOIN ecom_monitor m ON m.id = a.monitor_id
+        WHERE a.status = 'NEW'
+        <include refid="filters"/>
+        GROUP BY a.alert_type
+    </select>
+
+</mapper>

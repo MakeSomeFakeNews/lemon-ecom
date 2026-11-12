@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.owh.mapper.EcomOwhWarehouseMapper">
+
+    <sql id="columns">
+        m.id, m.account_id, m.warehouse_id, m.owh_code, m.owh_name, m.country, m.default_product_code, m.auto_push, m.status, m.remark,
+        m.create_time, m.update_time, m.defect_warehouse_id, m.contact, m.phone, m.state, m.city, m.postcode, m.address,
+        a.name AS account_name, a.provider, a.auto_sync, w.code AS warehouse_code, w.name AS warehouse_name,
+        (SELECT dw.name FROM wms_warehouse dw WHERE dw.id = m.defect_warehouse_id) AS defect_warehouse_name
+    </sql>
+
+    <select id="selectMappings" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhWarehouse">
+        SELECT <include refid="columns"/>
+        FROM ecom_owh_warehouse m
+        JOIN ecom_owh_account a ON a.id = m.account_id
+        LEFT JOIN wms_warehouse w ON w.id = m.warehouse_id
+        <where>
+            <if test="accountId != null">m.account_id = #{accountId}</if>
+        </where>
+        ORDER BY m.account_id, m.id
+    </select>
+
+    <select id="selectDetail" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhWarehouse">
+        SELECT <include refid="columns"/>
+        FROM ecom_owh_warehouse m
+        JOIN ecom_owh_account a ON a.id = m.account_id
+        LEFT JOIN wms_warehouse w ON w.id = m.warehouse_id
+        WHERE m.id = #{id}
+    </select>
+
+    <select id="selectByWarehouseId" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhWarehouse">
+        SELECT <include refid="columns"/>
+        FROM ecom_owh_warehouse m
+        JOIN ecom_owh_account a ON a.id = m.account_id
+        LEFT JOIN wms_warehouse w ON w.id = m.warehouse_id
+        WHERE m.warehouse_id = #{warehouseId}
+    </select>
+</mapper>

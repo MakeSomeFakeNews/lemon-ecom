@@ -140,7 +140,8 @@ const FEATURES = [
   { field: 'chatEnabled', feature: AiFeature.CHAT },
   { field: 'extractEnabled', feature: AiFeature.EXTRACT },
   { field: 'cleanseEnabled', feature: AiFeature.CLEANSE },
-  { field: 'reportEnabled', feature: AiFeature.REPORT }
+  { field: 'reportEnabled', feature: AiFeature.REPORT },
+  { field: 'writeEnabled', feature: AiFeature.WRITE }
 ]
 
 const loading = ref(true)
@@ -167,6 +168,7 @@ function resetForm(c) {
     extractEnabled: !!c.extractEnabled,
     cleanseEnabled: !!c.cleanseEnabled,
     reportEnabled: !!c.reportEnabled,
+    writeEnabled: !!c.writeEnabled,
     temperature: c.temperature ?? 0.3,
     maxTokens: c.maxTokens,
     monthlyTokenLimit: c.monthlyTokenLimit

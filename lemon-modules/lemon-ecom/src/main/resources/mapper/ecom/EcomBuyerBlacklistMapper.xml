@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomBuyerBlacklistMapper">
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.entity.EcomBuyerBlacklist">
+        SELECT b.*, s.name AS store_name
+        FROM ecom_buyer_blacklist b
+        LEFT JOIN ecom_store s ON s.id = b.store_id
+        <where>
+            <if test="matchType != null">AND b.match_type = #{matchType}</if>
+            <if test="status != null">AND b.status = #{status}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (b.match_value LIKE CONCAT('%', #{keyword}, '%') OR b.reason LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY b.id DESC
+    </select>
+
+    <select id="selectEnabledForStore" resultType="com.lemon.erp.modules.ecom.entity.EcomBuyerBlacklist">
+        SELECT b.* FROM ecom_buyer_blacklist b
+        WHERE b.status = 1 AND (b.store_id IS NULL OR b.store_id = #{storeId})
+        ORDER BY b.id
+    </select>
+
+    <update id="hit">
+        UPDATE ecom_buyer_blacklist SET hit_count = hit_count + 1, last_hit_time = CURRENT_TIMESTAMP WHERE id = #{id}
+    </update>
+
+</mapper>

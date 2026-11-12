@@ -75,6 +75,16 @@ public class EcomOrderRule extends BaseEntity {
     @Digits(integer = 12, fraction = 3, message = "{ecom.valid.weightDecimals}")
     private BigDecimal weightMax;
 
+    /** 预估利润率低于（%，不含），订单没有预估利润率时不命中 */
+    @Digits(integer = 8, fraction = 2, message = "{ecom.valid.amountDecimals}")
+    private BigDecimal profitRateMax;
+    /** 命中买家黑名单 1是 0不限 */
+    private Integer blacklistHit;
+    /** 地址校验不通过 1是 0不限 */
+    private Integer addressIssue;
+    /** 偏远地区 1是 0不限 */
+    private Integer remoteArea;
+
     // ---------------------------------------------------------------- 动作
 
     /** 指定发货仓 */
@@ -93,6 +103,9 @@ public class EcomOrderRule extends BaseEntity {
     private LocalTime cutoffTime;
     /** 命中后不再匹配后续规则 1是 0否 */
     private Integer stopOnMatch;
+    /** 自动打标签（标签 ID，逗号分隔） */
+    @Size(max = 255, message = "{ecom.valid.ops.ruleConditionTooLong}")
+    private String tagIds;
 
     @Size(max = 255, message = "{ecom.valid.remarkCannotExceedCharacters}")
     private String remark;

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.publish.mapper.EcomPublishTemplateMapper">
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.publish.entity.EcomPublishTemplate">
+        SELECT t.*, p.name AS price_template_name
+        FROM ecom_publish_template t
+        LEFT JOIN ecom_price_template p ON p.id = t.price_template_id
+        <where>
+            <if test="platform != null">t.platform = #{platform}</if>
+            <if test="status != null">AND t.status = #{status.enabled}</if>
+            <if test="keyword != null and keyword != ''">AND (t.name LIKE CONCAT('%', #{keyword}, '%') OR t.category_name LIKE CONCAT('%', #{keyword}, '%'))</if>
+        </where>
+        ORDER BY t.platform, t.id DESC
+    </select>
+
+</mapper>

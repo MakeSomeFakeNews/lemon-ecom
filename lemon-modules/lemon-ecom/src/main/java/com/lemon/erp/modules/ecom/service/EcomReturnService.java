@@ -1,5 +1,6 @@
 package com.lemon.erp.modules.ecom.service;
 
+import com.lemon.erp.modules.ecom.oper.scope.EcomStoreScope;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.lemon.erp.common.exception.BizException;
@@ -10,8 +11,6 @@ import com.lemon.erp.framework.data.StatusTransitions;
 import com.lemon.erp.framework.dict.DictLookup;
 import com.lemon.erp.framework.security.LoginUser;
 import com.lemon.erp.framework.security.SecurityUtils;
-import com.lemon.erp.framework.security.datascope.DataPermission;
-import com.lemon.erp.framework.security.datascope.DataScopes;
 import com.lemon.erp.modules.ecom.dto.ReturnRequest;
 import com.lemon.erp.modules.ecom.entity.EcomOrder;
 import com.lemon.erp.modules.ecom.entity.EcomOrderItem;
@@ -63,8 +62,9 @@ public class EcomReturnService {
     private final StockCostService stockCostService;
     private final DocNoService docNoService;
     private final DictLookup dictLookup;
+    private final EcomReturnAllocator returnAllocator;
 
-    @DataPermission(table = "ecom_return", deptColumn = "dept_id", userColumn = "create_by")
+    // 数据范围按店铺授权（EcomStoreScope，接口执行期间自动过滤），不再按部门 / 制单人
     public PageResult<EcomReturn> page(long current, long size, Long storeId, EcomReturnStatus status, String keyword) {
         Page<EcomReturn> page = Page.of(current, size);
         returnMapper.selectPageList(page, storeId, status, keyword);
@@ -72,13 +72,13 @@ public class EcomReturnService {
     }
 
     public EcomReturn detail(Long id) {
-        EcomReturn r = DataScopes.require(EcomConstants.RETURN_RULE, () -> returnMapper.selectDetail(id), "ecom.error.returnNotFound");
+        EcomReturn r = EcomStoreScope.require(() -> returnMapper.selectDetail(id), "ecom.error.returnNotFound");
         r.setItems(itemMapper.selectByReturnId(id));
         return r;
     }
 
     private EcomReturn require(Long id) {
-        return DataScopes.require(EcomConstants.RETURN_RULE, () -> returnMapper.selectById(id), "ecom.error.returnNotFound");
+        return EcomStoreScope.require(() -> returnMapper.selectById(id), "ecom.error.returnNotFound");
     }
 
     @Transactional
@@ -88,12 +88,14 @@ public class EcomReturnService {
             throw new BizException("ecom.error.orderClosed", order.getPlatformOrderNo());
         }
         if (req.returnType() == ReturnType.RETURN_REFUND && order.getLocalStatus() != EcomLocalStatus.OUTBOUND
-                && order.getLocalStatus() != EcomLocalStatus.SHIPPED) {
+                && order.getLocalStatus() != EcomLocalStatus.SHIPPED && order.getLocalStatus() != EcomLocalStatus.PARTIAL) {
             throw new BizException("ecom.error.orderNotOutbound", order.getPlatformOrderNo());
         }
         EcomStore store = storeService.get(order.getStoreId());
         dictLookup.check(EcomConstants.RETURN_REASON_DICT, req.reason(), "ecom.label.returnReason");
         Map<Long, EcomOrderItem> orderItems = order.getItems().stream().collect(Collectors.toMap(EcomOrderItem::getId, Function.identity()));
+        // 多包裹订单：指定的退回包裹需包含该行
+        returnAllocator.validate(order, req.items());
         Map<Long, BigDecimal> returned = new HashMap<>();
         for (Map<String, Object> row : itemMapper.selectReturnedQty(order.getId())) {
             returned.put(((Number) row.get("orderItemId")).longValue(), new BigDecimal(row.get("qty").toString()));
@@ -115,6 +117,7 @@ public class EcomReturnService {
             it.setSellerSku(oi.getSellerSku());
             it.setQty(Decimals.qty(ri.qty()));
             it.setRefundAmount(Decimals.money(Decimals.nz(ri.refundAmount())));
+            it.setPackageId(ri.packageId());
             items.add(it);
             refund = refund.add(it.getRefundAmount());
         }
@@ -142,7 +145,8 @@ public class EcomReturnService {
     }
 
     /**
-     * 退货入库：生成销售退货单（引用订单出库时的隐式订单明细，数量按多件装折为物料数量），库存增加、红字应收，冲减订单成本
+     * 退货入库：生成销售退货单（引用订单出库时的隐式订单明细，数量按多件装折为物料数量），库存增加、红字应收，冲减订单成本。
+     * 多包裹订单按包裹的发货单分别生成销售退货（{@link EcomReturnAllocator}），单号都记在 tradeDocNos
      */
     @Transactional
     public void receive(Long id, LocalDate date) {
@@ -151,35 +155,70 @@ public class EcomReturnService {
             throw new BizException("ecom.error.returnStatusNotAllow", r.getDocNo());
         }
         EcomOrder order = orderService.getForReturn(r.getOrderId());
-        if (order.getTradeDocId() == null) {
-            throw new BizException("ecom.error.orderNotOutbound", order.getPlatformOrderNo());
+        Map<Long, EcomOrderItem> orderItems = order.getItems().stream().collect(Collectors.toMap(EcomOrderItem::getId, Function.identity()));
+        List<EcomReturnItem> returnItems = itemMapper.selectByReturnId(id);
+        // 多包裹订单按包裹的发货单分别退回；不经包裹直接出库的订单用订单上的出库单
+        Map<Long, List<EcomReturnAllocator.Portion>> groups = returnAllocator.allocate(order, id, returnItems, orderItems);
+        if (groups == null) {
+            if (order.getTradeDocId() == null) {
+                throw new BizException("ecom.error.orderNotOutbound", order.getPlatformOrderNo());
+            }
+            groups = new java.util.LinkedHashMap<>();
+            groups.put(order.getTradeDocId(), returnItems.stream().map(it -> new EcomReturnAllocator.Portion(it, it.getQty())).toList());
         }
-        ScmTradeDoc out = tradeDocService.detail(TradeKind.SALES_OUT, order.getTradeDocId());
+        LocalDate bizDate = date == null ? LocalDate.now() : date;
+        List<Long> docIds = new ArrayList<>();
+        List<String> docNos = new ArrayList<>();
+        BigDecimal cost = BigDecimal.ZERO;
+        for (Map.Entry<Long, List<EcomReturnAllocator.Portion>> g : groups.entrySet()) {
+            ScmTradeDoc out = tradeDocService.detail(TradeKind.SALES_OUT, g.getKey());
+            TradeDocRequest req = new TradeDocRequest(out.getOrderId(), r.getWarehouseId(), bizDate,
+                    Messages.get("ecom.text.returnRemark", r.getDocNo(), order.getPlatformOrderNo()), Boolean.FALSE, returnLines(out, orderItems, g.getValue()));
+            Long docId = tradeDocService.create(TradeKind.SALES_RETURN, req);
+            ScmTradeDoc doc = tradeDocService.detail(TradeKind.SALES_RETURN, docId);
+            docIds.add(docId);
+            docNos.add(doc.getDocNo());
+            if (doc.getWmsDocId() != null) {
+                cost = cost.add(Decimals.sum(stockCostService.docCosts(StockBizType.IN, List.of(doc.getWmsDocId())).values(), c -> Decimals.nz(c.amount()).abs()));
+            }
+        }
+        if (cost.signum() > 0) {
+            orderService.subtractCost(order.getId(), cost);
+        }
+        String nos = String.join(",", docNos);
+        StatusTransitions.change(returnMapper, EcomReturn::getId, id, EcomReturn::getStatus, EcomReturnStatus.PENDING, EcomReturnStatus.RECEIVED,
+                w -> w.set(EcomReturn::getTradeDocId, docIds.get(0)).set(EcomReturn::getTradeDocNo, docNos.get(0))
+                        .set(EcomReturn::getTradeDocNos, nos.length() <= 500 ? nos : nos.substring(0, 500)), "ecom.error.returnStatusChanged");
+    }
+
+    /**
+     * 一张出库单上退回的销售退货明细：物料数量（单品 = 件数 × 多件装；组合商品按组成比例 = 件数 × 用量），
+     * 同一物料在出库单上有多行（单品与组合的组件）时依次分到各行，最后一行取余数
+     */
+    private static List<TradeDocItemRequest> returnLines(ScmTradeDoc out, Map<Long, EcomOrderItem> orderItems, List<EcomReturnAllocator.Portion> portions) {
         Map<Long, List<ScmTradeDocItem>> outLines = new HashMap<>();
         for (ScmTradeDocItem line : out.getItems()) {
             outLines.computeIfAbsent(line.getMaterialId(), k -> new ArrayList<>()).add(line);
         }
-        Map<Long, EcomOrderItem> orderItems = order.getItems().stream().collect(Collectors.toMap(EcomOrderItem::getId, Function.identity()));
-        // 退回的物料数量：单品 = 件数 × 多件装；组合商品按组成比例退回各组件 = 件数 × 用量
         Map<Long, BigDecimal> need = new java.util.LinkedHashMap<>();
         Map<Long, String> skuOf = new HashMap<>();
-        for (EcomReturnItem it : itemMapper.selectByReturnId(id)) {
+        for (EcomReturnAllocator.Portion p : portions) {
+            EcomReturnItem it = p.item();
             EcomOrderItem oi = orderItems.get(it.getOrderItemId());
             if (oi == null || !EcomOutboundSupport.mapped(oi)) {
                 throw new BizException("ecom.error.returnLineNotInOutbound", it.getSellerSku());
             }
             if (EcomOutboundSupport.isBundle(oi)) {
                 for (var part : oi.getParts()) {
-                    need.merge(part.getMaterialId(), Decimals.qty(it.getQty().multiply(part.getUnitQty())), BigDecimal::add);
+                    need.merge(part.getMaterialId(), Decimals.qty(p.qty().multiply(part.getUnitQty())), BigDecimal::add);
                     skuOf.putIfAbsent(part.getMaterialId(), it.getSellerSku());
                 }
             } else {
                 BigDecimal pack = oi.getQty().signum() > 0 ? oi.getMaterialQty().divide(oi.getQty(), 4, java.math.RoundingMode.HALF_UP) : BigDecimal.ONE;
-                need.merge(oi.getMaterialId(), Decimals.qty(it.getQty().multiply(pack)), BigDecimal::add);
+                need.merge(oi.getMaterialId(), Decimals.qty(p.qty().multiply(pack)), BigDecimal::add);
                 skuOf.putIfAbsent(oi.getMaterialId(), it.getSellerSku());
             }
         }
-        // 同一物料在出库单上有多行（单品与组合的组件）时依次分到各行，最后一行取余数
         List<TradeDocItemRequest> lines = new ArrayList<>();
         for (Map.Entry<Long, BigDecimal> e : need.entrySet()) {
             List<ScmTradeDocItem> cands = outLines.get(e.getKey());
@@ -196,17 +235,7 @@ public class EcomReturnService {
                 }
             }
         }
-        LocalDate bizDate = date == null ? LocalDate.now() : date;
-        TradeDocRequest req = new TradeDocRequest(out.getOrderId(), r.getWarehouseId(), bizDate,
-                Messages.get("ecom.text.returnRemark", r.getDocNo(), order.getPlatformOrderNo()), Boolean.FALSE, lines);
-        Long docId = tradeDocService.create(TradeKind.SALES_RETURN, req);
-        ScmTradeDoc doc = tradeDocService.detail(TradeKind.SALES_RETURN, docId);
-        if (doc.getWmsDocId() != null) {
-            BigDecimal cost = Decimals.sum(stockCostService.docCosts(StockBizType.IN, List.of(doc.getWmsDocId())).values(), c -> Decimals.nz(c.amount()).abs());
-            orderService.subtractCost(order.getId(), cost);
-        }
-        StatusTransitions.change(returnMapper, EcomReturn::getId, id, EcomReturn::getStatus, EcomReturnStatus.PENDING, EcomReturnStatus.RECEIVED,
-                w -> w.set(EcomReturn::getTradeDocId, docId).set(EcomReturn::getTradeDocNo, doc.getDocNo()), "ecom.error.returnStatusChanged");
+        return lines;
     }
 
     /** 登记退款：仅退款的待处理单、退货退款已入库的单 */

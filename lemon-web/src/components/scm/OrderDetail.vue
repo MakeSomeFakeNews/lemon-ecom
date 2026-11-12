@@ -108,6 +108,9 @@
               </template>
             </a-table>
           </a-tab-pane>
+          <a-tab-pane v-if="kind === 'purchase' && userStore.hasPerm('ecom:ali1688Order:list')" key="ali1688" :tab="$t('ecomDev.po.tab')">
+            <Ali1688PoPanel v-if="tab === 'ali1688'" :order-id="detail.id" :order-status="detail.status" />
+          </a-tab-pane>
           <a-tab-pane key="attachment" :tab="$t('scm.order.tabAttachment')">
             <AttachmentPanel :biz-type="`scm_${kind}`" :biz-id="orderId" :editable="can(`${kind}:edit`)" />
           </a-tab-pane>
@@ -153,6 +156,7 @@ import { useDict } from '@/composables/useDict'
 import { findDict } from '@/utils/dict'
 import AttachmentPanel from '@/components/AttachmentPanel.vue'
 import ChangeLogPanel from '@/components/ChangeLogPanel.vue'
+import Ali1688PoPanel from '@/components/ecom/dev/Ali1688PoPanel.vue'
 import OrderChangeDrawer from './OrderChangeDrawer.vue'
 import OrderChangeList from './OrderChangeList.vue'
 import { currencySymbol, isForeign } from '@/components/fin/currency'

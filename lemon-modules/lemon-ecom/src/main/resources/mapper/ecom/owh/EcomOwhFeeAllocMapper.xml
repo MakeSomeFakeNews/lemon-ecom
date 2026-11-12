@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.owh.mapper.EcomOwhFeeAllocMapper">
+
+    <select id="selectShippedQty" resultType="map">
+        SELECT eo.store_id AS "storeId", oi.seller_sku AS "sellerSku", SUM(pi.material_qty) AS "qty"
+        FROM ecom_package p
+        JOIN ecom_package_item pi ON pi.package_id = p.id
+        JOIN ecom_order eo ON eo.id = pi.order_id
+        JOIN ecom_order_item oi ON oi.id = pi.order_item_id
+        WHERE p.status = 'SHIPPED' AND p.warehouse_id = #{warehouseId} AND pi.material_id = #{materialId}
+          AND p.ship_time &gt;= #{begin} AND p.ship_time &lt; #{end}
+        GROUP BY eo.store_id, oi.seller_sku
+        ORDER BY eo.store_id, oi.seller_sku
+    </select>
+
+    <select id="selectListings" resultType="map">
+        SELECT l.store_id AS "storeId", l.seller_sku AS "sellerSku"
+        FROM ecom_listing l
+        WHERE l.material_id = #{materialId}
+        ORDER BY l.store_id, l.seller_sku
+    </select>
+
+    <select id="selectByFee" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhFeeAlloc">
+        SELECT a.*, s.name AS store_name, o.platform_order_no AS order_no
+        FROM ecom_owh_fee_alloc a
+        LEFT JOIN ecom_store s ON s.id = a.store_id
+        LEFT JOIN ecom_order o ON o.id = a.order_id
+        WHERE a.fee_id = #{feeId}
+        ORDER BY a.id
+    </select>
+
+    <insert id="insertBatch">
+        INSERT INTO ecom_owh_fee_alloc (fee_id, store_id, seller_sku, order_id, item_type, alloc_date, basis_value, amount_base, create_time, update_time)
+        VALUES
+        <foreach collection="list" item="r" separator=",">
+            (#{r.feeId}, #{r.storeId}, #{r.sellerSku}, #{r.orderId}, #{r.itemType}, #{r.allocDate}, #{r.basisValue}, #{r.amountBase}, NOW(), NOW())
+        </foreach>
+    </insert>
+</mapper>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.fba.mapper.EcomFbaReimbursementMapper">
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.fba.entity.EcomFbaReimbursement">
+        SELECT r.*, s.name AS store_name, c.claim_no
+        FROM ecom_fba_reimbursement r
+        LEFT JOIN ecom_store s ON s.id = r.store_id
+        LEFT JOIN ecom_fba_claim c ON c.id = r.claim_id
+        <where>
+            <if test="storeId != null">r.store_id = #{storeId}</if>
+            <if test="matched != null and matched">AND r.claim_id IS NOT NULL</if>
+            <if test="matched != null and !matched">AND r.claim_id IS NULL</if>
+            <if test="keyword != null and keyword != ''">
+                AND (r.reimbursement_id LIKE CONCAT('%', #{keyword}, '%') OR r.case_id LIKE CONCAT('%', #{keyword}, '%')
+                     OR r.amazon_order_id LIKE CONCAT('%', #{keyword}, '%') OR r.seller_sku LIKE CONCAT('%', #{keyword}, '%')
+                     OR r.fnsku LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY r.approval_date DESC, r.id DESC
+    </select>
+
+</mapper>

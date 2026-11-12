@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.oper.mapper.EcomMonitorMapper">
+
+    <sql id="columns">
+        m.id, m.monitor_type, m.platform, m.marketplace, m.item_id, m.store_id, m.listing_id, m.seller_sku, m.benchmark_id, m.brand, m.title,
+        m.main_image, m.category, m.rank_main, m.sub_category, m.rank_sub, m.rating, m.review_count, m.seller_count, m.price, m.currency,
+        m.listing_status, m.last_snapshot_date, m.auto_fetch, m.last_fetch_time, m.last_fetch_message, m.rank_drop_percent, m.rating_drop,
+        m.notify_user_id, m.status, m.remark, m.create_by, m.create_time, m.update_time,
+        s.name AS store_name, b.item_id AS benchmark_item_id, b.title AS benchmark_title, u.nickname AS notify_user_name
+    </sql>
+
+    <!-- 通知人昵称来自 sys_user（只读 JOIN） -->
+    <sql id="joins">
+        FROM ecom_monitor m
+        LEFT JOIN ecom_store s ON s.id = m.store_id
+        LEFT JOIN ecom_monitor b ON b.id = m.benchmark_id
+        LEFT JOIN sys_user u ON u.id = m.notify_user_id
+    </sql>
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.oper.entity.EcomMonitor">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        <where>
+            <if test="q.storeId != null">m.store_id = #{q.storeId}</if>
+            <if test="q.platform != null">AND m.platform = #{q.platform}</if>
+            <if test="q.marketplace != null and q.marketplace != ''">AND m.marketplace = #{q.marketplace}</if>
+            <if test="q.monitorType != null">AND m.monitor_type = #{q.monitorType}</if>
+            <if test="q.status != null">AND m.status = #{q.status}</if>
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (m.item_id LIKE CONCAT('%', #{q.keyword}, '%') OR m.title LIKE CONCAT('%', #{q.keyword}, '%')
+                     OR m.brand LIKE CONCAT('%', #{q.keyword}, '%') OR m.seller_sku LIKE CONCAT('%', #{q.keyword}, '%'))
+            </if>
+            <if test="q.alertOnly != null and q.alertOnly">
+                AND EXISTS (SELECT 1 FROM ecom_monitor_alert a WHERE a.monitor_id = m.id AND a.status = 'NEW')
+            </if>
+        </where>
+        <!-- 自己的商品在前，其竞品紧随其后 -->
+        ORDER BY COALESCE(m.benchmark_id, m.id) DESC, CASE WHEN m.benchmark_id IS NULL THEN 0 ELSE 1 END, m.id
+    </select>
+
+    <select id="selectDetail" resultType="com.lemon.erp.modules.ecom.oper.entity.EcomMonitor">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        WHERE m.id = #{id}
+    </select>
+
+    <select id="selectPreviousSnapshots" resultType="com.lemon.erp.modules.ecom.oper.entity.EcomMonitorSnapshot">
+        SELECT p.id, p.monitor_id, p.snapshot_date, p.rank_main, p.rank_sub, p.rating, p.review_count, p.seller_count, p.price, p.listing_status
+        FROM ecom_monitor_snapshot p
+        JOIN ecom_monitor m ON m.id = p.monitor_id
+        WHERE p.monitor_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+          AND p.snapshot_date = (SELECT MAX(p2.snapshot_date) FROM ecom_monitor_snapshot p2
+                                 WHERE p2.monitor_id = p.monitor_id AND p2.snapshot_date &lt; m.last_snapshot_date)
+    </select>
+
+</mapper>

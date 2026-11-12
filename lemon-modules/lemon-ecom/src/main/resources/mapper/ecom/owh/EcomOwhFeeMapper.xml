@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.owh.mapper.EcomOwhFeeMapper">
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhFee">
+        SELECT f.*, a.name AS account_name, w.name AS warehouse_name, mt.name AS material_name, o.outbound_no, i.inbound_no, p.package_no
+        FROM ecom_owh_fee f
+        JOIN ecom_owh_account a ON a.id = f.account_id
+        LEFT JOIN wms_warehouse w ON w.id = f.warehouse_id
+        LEFT JOIN wms_material mt ON mt.id = f.material_id
+        LEFT JOIN ecom_owh_outbound o ON o.id = f.outbound_id
+        LEFT JOIN ecom_package p ON p.id = o.package_id
+        LEFT JOIN ecom_owh_inbound i ON i.id = f.inbound_id
+        <where>
+            <if test="accountId != null">AND f.account_id = #{accountId}</if>
+            <if test="feeType != null">AND f.fee_type = #{feeType}</if>
+            <if test="status != null">AND f.status = #{status}</if>
+            <if test="begin != null">AND f.fee_date &gt;= #{begin}</if>
+            <if test="end != null">AND f.fee_date &lt;= #{end}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (f.ref_no LIKE CONCAT('%', #{keyword}, '%') OR f.sku LIKE CONCAT('%', #{keyword}, '%')
+                     OR f.post_target LIKE CONCAT('%', #{keyword}, '%') OR o.outbound_no LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY f.fee_date DESC, f.id DESC
+    </select>
+
+    <select id="selectSummary" resultType="map">
+        SELECT YEAR(f.fee_date) * 100 + MONTH(f.fee_date) AS "period", f.fee_type AS "feeType",
+               SUM(COALESCE(f.amount_base, 0)) AS "amount", COUNT(*) AS "cnt"
+        FROM ecom_owh_fee f
+        <where>
+            <if test="accountId != null">AND f.account_id = #{accountId}</if>
+            <if test="begin != null">AND f.fee_date &gt;= #{begin}</if>
+            <if test="end != null">AND f.fee_date &lt;= #{end}</if>
+        </where>
+        GROUP BY YEAR(f.fee_date) * 100 + MONTH(f.fee_date), f.fee_type
+        ORDER BY 1
+    </select>
+
+    <select id="sumByOutbound" resultType="map">
+        SELECT f.outbound_id AS "outboundId", SUM(COALESCE(f.amount_base, 0)) AS "amount"
+        FROM ecom_owh_fee f
+        WHERE f.outbound_id IN <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        GROUP BY f.outbound_id
+    </select>
+</mapper>

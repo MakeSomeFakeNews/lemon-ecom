@@ -10,6 +10,8 @@ public enum AiFeature {
     CLEANSE("ai.enum.feature.CLEANSE"),
     /** 智能报告（周报 / 月报） */
     REPORT("ai.enum.feature.REPORT"),
+    /** AI 写作（业务模块经 AiTextGenerator 生成文本：客服回复草拟、翻译、评价回复、刊登文案） */
+    WRITE("ai.enum.feature.WRITE"),
     /** 「AI 设置」中的测试连接，不受功能开关限制 */
     TEST("ai.enum.feature.TEST");
 

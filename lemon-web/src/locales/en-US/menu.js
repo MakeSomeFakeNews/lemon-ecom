@@ -513,5 +513,143 @@ export default {
   368: 'Quick Lookup', // 商品速查
   3650: 'Maintain Item Prices', // 商品价格维护
   3651: 'Price Columns', // 价格列设置
-  3652: 'View Cost Amounts' // 查看成本金额
+  3652: 'View Cost Amounts', // 查看成本金额
+  5700: 'Generate Demo Data', // 生成演示数据（电商看板按钮）
+  // ===== 第四轮：刊登与定价（pub） =====
+  500: 'Listing Center', // 刊登中心
+  501: 'Listing Templates', // 刊登模板
+  502: 'Price Templates', // 价格模板
+  503: 'Price Changes', // 改价记录
+  504: 'Repricer', // 自动调价
+  505: 'Competitor Prices', // 竞品价格
+  5000: 'Add Listing', // 刊登新增
+  5001: 'Edit Listing', // 刊登修改
+  5002: 'Delete Listing', // 刊登删除
+  5003: 'Publish / Retry / Take Offline', // 发布 / 重试 / 下架
+  5010: 'Add Template', // 模板新增
+  5011: 'Edit Template', // 模板修改
+  5012: 'Delete Template', // 模板删除
+  5020: 'Add Template', // 模板新增
+  5021: 'Edit Template', // 模板修改
+  5022: 'Delete Template', // 模板删除
+  5030: 'Bulk Price / Stock Change', // 批量改价 / 改库存
+  5040: 'Add Rule', // 规则新增
+  5041: 'Edit Rule', // 规则修改
+  5042: 'Delete Rule', // 规则删除
+  5043: 'Run / Apply Suggestions', // 执行 / 应用建议
+  5050: 'Enter / Import / Fetch', // 录入 / 导入 / 拉取
+  5051: 'Delete', // 删除
+  510: 'FBA Inventory Health', // FBA 库存健康
+  511: 'Removal Orders', // 移除订单
+  512: 'FBA Claims', // FBA 索赔
+  513: 'FBA Fee Audit', // FBA 费用核查
+  514: 'Amazon Reports', // 亚马逊报告
+  5100: 'Sync / Rebuild Inventory Health', // 同步 / 推算库存健康
+  5101: 'Maintain Storage Fee Rates', // 维护仓储费费率
+  5110: 'Add Removal Order', // 移除订单新增
+  5111: 'Edit Removal Order', // 移除订单修改
+  5112: 'Delete Removal Order', // 移除订单删除
+  5113: 'Receive / Dispose Removal', // 移除收货 / 弃置出库
+  5114: 'Sync Removal Orders', // 同步移除订单
+  5120: 'Detect / Add Claims', // 识别 / 新增索赔
+  5121: 'Process Claims', // 索赔处理
+  5122: 'Delete Claims', // 索赔删除
+  5123: 'Sync Reimbursements / Ledger', // 同步赔偿 / 流水
+  5130: 'Maintain Dimensions & Fulfillment Fee Rates', // 维护尺寸与配送费费率
+  5140: 'Create / Upload Reports', // 创建 / 上传报告
+  5141: 'Delete Reports', // 报告删除
+  // ===== 第四轮：订单增强（ord） =====
+  530: 'Order Tags', // 订单标签
+  531: 'Buyer Blacklist', // 买家黑名单
+  532: 'Logistics Tracking', // 物流跟踪
+  533: 'Remote Areas', // 偏远地区
+  5300: 'Add Tag', // 标签新增
+  5301: 'Edit Tag', // 标签修改
+  5302: 'Delete Tag', // 标签删除
+  5310: 'Add Blacklist Entry', // 黑名单新增
+  5311: 'Edit Blacklist Entry', // 黑名单修改
+  5312: 'Delete Blacklist Entry', // 黑名单删除
+  5320: 'Refresh Tracking', // 拉取轨迹
+  5321: 'Tracking Settings', // 跟踪设置
+  5330: 'Add Remote Area', // 偏远地区新增
+  5331: 'Edit Remote Area', // 偏远地区修改
+  5332: 'Delete Remote Area', // 偏远地区删除
+  5340: 'Create Manual Order', // 手工建单
+  5341: 'Create Resend', // 创建补发单
+  5342: 'Tag / Note Orders', // 订单打标签 / 备注
+  // 运营监控与团队（电商 17 下的「运营」分组 989）
+  989: 'Operations', // 运营
+  540: 'ASIN Monitor', // ASIN 监控
+  541: 'Promotions', // 促销管理
+  542: 'Operation Targets', // 运营目标
+  543: 'Operator Performance', // 运营绩效
+  544: 'Store Access', // 店铺授权
+  5400: 'Add Monitor', // 新增监控
+  5401: 'Edit Monitor', // 修改监控
+  5402: 'Delete Monitor', // 删除监控
+  5403: 'Fetch via API', // 接口取数
+  5404: 'Enter / Import Snapshots', // 录入 / 导入快照
+  5405: 'Handle Alerts', // 处理预警
+  5410: 'Add Promotion', // 新增促销
+  5411: 'Edit Promotion', // 修改促销
+  5412: 'Delete Promotion', // 删除促销
+  5413: 'Activate / Cancel', // 生效 / 取消
+  5414: 'Push to Platform', // 推送平台
+  5420: 'Set Targets', // 设置目标
+  5440: 'Edit Store Access', // 修改授权
+  980: 'Product Development', // 产品开发
+  550: 'Development Projects', // 开发项目
+  551: 'Development Board', // 开发看板
+  552: 'Profit Calculator', // 利润试算
+  553: '1688 Accounts', // 1688 账号
+  554: '1688 Sources', // 1688 货源
+  555: '1688 Purchase Orders', // 1688 采购单
+  5500: 'Add Development Project', // 开发项目新增
+  5501: 'Edit Development Project (Samples, Status, Submit)', // 开发项目修改（含样品、状态流转、提交审批）
+  5502: 'Delete Development Project', // 开发项目删除
+  5503: 'Approve Development Project', // 开发项目审批
+  5504: 'Create Material', // 生成物料
+  5520: 'Save Calculation Schemes', // 保存试算方案
+  5521: 'Maintain Commission Rates', // 佣金费率维护
+  5530: 'Maintain and Authorize Accounts', // 账号维护与授权
+  5540: 'Maintain Source Links', // 货源关联维护
+  5541: 'Sync Prices and Stock', // 同步价格库存
+  5550: 'Order on 1688', // 下单到 1688
+  5551: 'Sync Orders and Tracking', // 同步订单与物流
+  5552: 'Cancel 1688 Orders', // 取消 1688 订单
+  5600: 'AI Draft / Translate', // AI 草拟 / 翻译（买家消息）
+  5601: 'AI Review Reply / Translate', // AI 草拟回复 / 翻译（评价管理）
+  988: 'Overseas Warehouse', // 海外仓
+  520: 'Overseas Accounts', // 海外仓账号
+  521: 'Overseas Stock', // 海外仓库存
+  522: 'Overseas Inbound', // 海外仓入库
+  523: 'Overseas Outbound', // 海外仓出库
+  524: 'Overseas Fees', // 海外仓费用
+  5200: 'Add Account', // 账号新增
+  5201: 'Edit Account', // 账号修改
+  5202: 'Delete Account', // 账号删除
+  5203: 'Warehouse Mapping & Logistics Products', // 仓库映射与物流产品
+  5210: 'Sync Stock', // 同步库存
+  5211: 'Adjust Stock to Overseas', // 按海外仓调整库存
+  5220: 'Create Inbound', // 新建入库单
+  5221: 'Push Inbound', // 推送入库单
+  5222: 'Sync Receipt', // 同步收货
+  5223: 'Cancel Inbound', // 取消入库单
+  5230: 'Push to Overseas', // 推送海外仓
+  5231: 'Sync Outbound Status', // 同步出库状态
+  5232: 'Cancel / Intercept', // 取消 / 截单
+  5240: 'Sync Fees', // 同步费用
+  525: 'Overseas Returns', // 海外仓退件
+  526: 'Overseas Transfers', // 海外仓调拨
+  5250: 'Create Return', // 新建退件单
+  5251: 'Push Return', // 推送退件单
+  5252: 'Sync Returns', // 同步退件
+  5253: 'Cancel Return', // 取消退件单
+  5260: 'Create Transfer', // 新建调拨单
+  5261: 'Submit Transfer', // 提交调拨
+  5262: 'Sync Transfers', // 同步调拨
+  5263: 'Receive Transfer', // 确认收货
+  5264: 'Cancel Transfer', // 取消调拨单
+  527: 'Receiving Differences', // 收货差异
+  5270: 'Handle Differences', // 处理差异
 }

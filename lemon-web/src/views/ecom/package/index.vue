@@ -44,6 +44,9 @@
         <a-button v-perm="'ecom:package:ship'" @click="router.push('/ecom/scan-ship')">
           <template #icon><ScanOutlined /></template>{{ $t('ecomOrder.scan.title') }}
         </a-button>
+        <a-button v-if="tab === EcomPackageStatus.WAIT_LABEL || tab === 'all'" v-perm="'ecom:owhOutbound:push'" :disabled="!selectedKeys.length" @click="pushOwh">
+          <template #icon><CloudUploadOutlined /></template>{{ $t('ecomOwh.pkg.push') }}
+        </a-button>
         <span v-if="selectedKeys.length" class="selected-tip">
           {{ $t('common.table.selected', { n: selectedKeys.length }) }} <a @click="selectedKeys = []">{{ $t('common.action.clear') }}</a>
         </span>
@@ -74,6 +77,9 @@
               <ExclamationCircleOutlined class="exception-icon" />
             </a-tooltip>
           </template>
+          <template v-else-if="column.key === 'owh'">
+            <OwhPackageCell :info="owhMap[record.id]" />
+          </template>
           <template v-else-if="column.key === 'tracking'">
             <div>{{ record.trackingNo || '-' }}</div>
             <div v-if="record.carrierName" class="sub-text">{{ record.carrierName }}</div>
@@ -100,6 +106,7 @@
     />
     <LabelModal ref="labelModal" @done="afterChange" />
     <TrackingModal ref="trackingModal" @done="afterChange" />
+    <OwhPushModal ref="owhPushModal" @done="afterChange" />
   </div>
 </template>
 
@@ -110,6 +117,7 @@ import { useI18n } from 'vue-i18n'
 import { Modal } from 'ant-design-vue'
 import {
   CarOutlined,
+  CloudUploadOutlined,
   EditOutlined,
   ExclamationCircleOutlined,
   FilePdfOutlined,
@@ -131,6 +139,10 @@ import { actionColumn } from '@/components/common/tableActions'
 import PackageDetail from './PackageDetail.vue'
 import LabelModal from './LabelModal.vue'
 import TrackingModal from './TrackingModal.vue'
+import OwhPushModal from '../owh-outbound/PushModal.vue'
+import OwhPackageCell from '@/components/ecom/owh/OwhPackageCell.vue'
+import { useOwhPackages } from '@/components/ecom/owh/owhPackages'
+import { owhAllMappings } from '@/api/ecom/owh'
 import {
   cancelEcomPackage,
   ecomPackageLabel,
@@ -185,6 +197,7 @@ const columns = [
   { title: t('ecomOrder.pkg.weight'), key: 'weight', dataIndex: 'weight', width: 90, align: 'right' },
   { title: t('ecomOrder.pkg.shippingCost'), key: 'shippingCost', dataIndex: 'shippingCost', width: 100, align: 'right' },
   { title: t('ecomOrder.pkg.status'), key: 'status', dataIndex: 'status', width: 100, dict: 'ecom_package_status' },
+  { title: t('ecomOwh.pkg.owhStatus'), key: 'owh', width: 130, exportValue: (r) => owhMap.value[r.id]?.status || '' },
   { title: t('ecomOrder.pkg.printCount'), dataIndex: 'printCount', width: 80, align: 'right' },
   { title: t('ecomOrder.pkg.labelTime'), dataIndex: 'labelTime', width: 160 },
   { title: t('ecomOrder.pkg.shipTime'), dataIndex: 'shipTime', width: 160 },
@@ -225,6 +238,14 @@ function resetQuery() {
 const detail = ref()
 const labelModal = ref()
 const trackingModal = ref()
+const owhPushModal = ref()
+// 海外仓：包裹的海外仓出库状态；发货仓是海外仓的包裹推送海外仓出库单（不在本地打单）
+const owhMap = useOwhPackages(list)
+async function pushOwh() {
+  const mappings = (await owhAllMappings()) || []
+  const rows = list.value.filter((r) => selectedKeys.value.includes(r.id))
+  owhPushModal.value.open(rows.map((r) => r.id), rows.map((r) => mappings.find((m) => m.warehouseId === r.warehouseId)?.accountId))
+}
 
 function afterChange() {
   reload()

@@ -206,6 +206,12 @@ public class TemuConnector implements ChannelConnector {
 
     // ---------------------------------------------------------------- 发货
 
+    /** 按订单行回传，支持一张订单分多个包裹部分发货 */
+    @Override
+    public boolean partialShipment() {
+        return true;
+    }
+
     @Override
     public ShipmentResult confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
         if (order.getTrackingNo() == null || order.getTrackingNo().isBlank()) {

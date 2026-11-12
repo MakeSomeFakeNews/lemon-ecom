@@ -45,7 +45,10 @@ import java.util.Map;
  * 默认用回测 MAPE 最小的方法，可按 SKU 手工指定。结果存 ecom_forecast（每天）与 ecom_forecast_sku（汇总），
  * 定时任务每天生成；分批（每批 {@link #BATCH} 个 SKU）计算，每批一个事务，一批失败时逐个重试，单个失败不影响其他。
  * <p>
- * 补货建议等按 {@link #dailyForecast} 取未来每天的预测量
+ * 补货建议等按 {@link #dailyForecast} 取未来每天的预测量。
+ * <p>
+ * 断货日（{@link EcomStockoutService}，库存快照可售数不大于阈值）的销量偏低，参数开启「排除断货日」（默认）时按前后正常日的日均补偿后再预测
+ * （{@link StockoutCalc#adjust}），详情中标出断货日；补货建议的加权日均通过 {@link #stockoutWindows} 排除断货日
  */
 @Slf4j
 @Service
@@ -70,6 +73,7 @@ public class EcomForecastService {
     private final EcomForecastSettingMapper settingMapper;
     private final EcomStoreService storeService;
     private final TransactionTemplate transactionTemplate;
+    private final EcomStockoutService stockoutService;
 
     // ---------------------------------------------------------------- 参数
 
@@ -84,7 +88,34 @@ public class EcomForecastService {
         d.setBeta(DEFAULT_BETA);
         d.setWindowDays(DEFAULT_WINDOW);
         d.setSeasonWeeks(DEFAULT_SEASON_WEEKS);
+        d.setExcludeStockout(true);
+        d.setStockoutThreshold(BigDecimal.ZERO);
         return d;
+    }
+
+    /** 断货日处理规则：是否排除（补偿）断货日、断货阈值 */
+    public record StockoutRule(boolean enabled, BigDecimal threshold) {
+    }
+
+    static StockoutRule stockoutRule(EcomForecastSetting s) {
+        return new StockoutRule(!Boolean.FALSE.equals(s.getExcludeStockout()),
+                s.getStockoutThreshold() == null ? BigDecimal.ZERO : s.getStockoutThreshold());
+    }
+
+    /** 每个 SKU 在 [start, start + days) 内的断货标记（未开启排除时为空） */
+    private Map<Long, boolean[]> stockoutFlags(Collection<Long> ids, LocalDate start, int days, StockoutRule rule) {
+        return rule.enabled() ? stockoutService.flags(ids, start, days, rule.threshold()) : Map.of();
+    }
+
+    /**
+     * 补货建议用：最近 maxDays 天（到昨天）的断货日与断货日销量（按预测参数的断货阈值；未开启排除断货日时为空）
+     */
+    public Map<Long, EcomStockoutService.Window> stockoutWindows(Collection<Long> listingIds, LocalDate today, int maxDays) {
+        StockoutRule rule = stockoutRule(setting());
+        if (!rule.enabled() || listingIds == null || listingIds.isEmpty()) {
+            return Map.of();
+        }
+        return stockoutService.windows(listingIds, today, maxDays, rule.threshold());
     }
 
     /** 保存预测参数（下次生成时生效） */
@@ -201,7 +232,9 @@ public class EcomForecastService {
 
     private GenerateResult generateListings(Long storeId, List<Long> listingIds, LocalDateTime runStart) {
         LocalDate today = runStart.toLocalDate();
-        ForecastEngine.Params p = params(setting());
+        EcomForecastSetting setting = setting();
+        ForecastEngine.Params p = params(setting);
+        StockoutRule rule = stockoutRule(setting);
         List<EcomForecastEvent> events = events(today.minusDays(HISTORY_DAYS), today.plusDays(HORIZON), null);
         int total = 0;
         int failed = 0;
@@ -214,13 +247,13 @@ public class EcomForecastService {
             }
             after = refs.get(refs.size() - 1).getListingId();
             try {
-                persist(compute(refs, today, p, events), today, runStart);
+                persist(compute(refs, today, p, rule, events), today, runStart);
                 total += refs.size();
             } catch (RuntimeException e) {
                 log.warn("Forecast batch failed, retrying one by one", e);
                 for (AnalyticsRows.ListingRef ref : refs) {
                     try {
-                        persist(compute(List.of(ref), today, p, events), today, runStart);
+                        persist(compute(List.of(ref), today, p, rule, events), today, runStart);
                         total++;
                     } catch (RuntimeException ex) {
                         log.warn("Forecast failed for listing {}", ref.getListingId(), ex);
@@ -238,13 +271,15 @@ public class EcomForecastService {
 
     /** 一个 SKU 的计算结果 */
     record Computed(Long listingId, Long storeId, ForecastMethod fixed, LocalDate historyStart, double[] fullHistory,
-                    ForecastEngine.Result result) {
+                    ForecastEngine.Result result, boolean[] stockout, double[] adjusted) {
     }
 
     /** 计算一批 SKU（读取历史、手工指定的方法） */
-    private List<Computed> compute(List<AnalyticsRows.ListingRef> refs, LocalDate today, ForecastEngine.Params p, List<EcomForecastEvent> events) {
+    private List<Computed> compute(List<AnalyticsRows.ListingRef> refs, LocalDate today, ForecastEngine.Params p, StockoutRule rule,
+                                   List<EcomForecastEvent> events) {
         List<Long> ids = refs.stream().map(AnalyticsRows.ListingRef::getListingId).toList();
         Map<Long, double[]> history = history(ids, today);
+        Map<Long, boolean[]> stockout = stockoutFlags(ids, today.minusDays(HISTORY_DAYS), HISTORY_DAYS, rule);
         Map<Long, ForecastMethod> fixed = new HashMap<>();
         for (EcomForecastSku s : skuMapper.selectList(Wrappers.<EcomForecastSku>lambdaQuery()
                 .select(EcomForecastSku::getListingId, EcomForecastSku::getFixedMethod).in(EcomForecastSku::getListingId, ids))) {
@@ -256,23 +291,35 @@ public class EcomForecastService {
         List<Computed> out = new ArrayList<>();
         for (AnalyticsRows.ListingRef ref : refs) {
             double[] full = history.getOrDefault(ref.getListingId(), new double[HISTORY_DAYS]);
-            out.add(computeOne(ref.getListingId(), ref.getStoreId(), fixed.get(ref.getListingId()), start, full, today, p, events));
+            out.add(computeOne(ref.getListingId(), ref.getStoreId(), fixed.get(ref.getListingId()), start, full, stockout.get(ref.getListingId()),
+                    today, p, events));
         }
         return out;
     }
 
-    /** 按首次有销量的那天截掉前面的空白后计算 */
-    static Computed computeOne(Long listingId, Long storeId, ForecastMethod fixed, LocalDate start, double[] full, LocalDate today,
-                               ForecastEngine.Params p, List<EcomForecastEvent> events) {
+    /**
+     * 按首次有销量的那天截掉前面的空白（按实际销量判断，上架前的断货不补偿），再补偿断货日后计算
+     *
+     * @param stockout 与 full 对齐的断货标记，为空表示没有断货日或未开启排除
+     */
+    static Computed computeOne(Long listingId, Long storeId, ForecastMethod fixed, LocalDate start, double[] full, boolean[] stockout,
+                               LocalDate today, ForecastEngine.Params p, List<EcomForecastEvent> events) {
         int first = 0;
         while (first < full.length && full[first] <= 0) {
             first++;
         }
         double[] trimmed = new double[full.length - first];
         System.arraycopy(full, first, trimmed, 0, trimmed.length);
+        double[] adjusted = full.clone();
+        if (stockout != null && trimmed.length > 0) {
+            boolean[] part = new boolean[trimmed.length];
+            System.arraycopy(stockout, first, part, 0, part.length);
+            trimmed = StockoutCalc.adjust(trimmed, part);
+            System.arraycopy(trimmed, 0, adjusted, first, trimmed.length);
+        }
         LocalDate trimmedStart = start.plusDays(first);
         ForecastEngine.Result result = ForecastEngine.run(trimmed, trimmedStart, HORIZON, p, factorsOf(events, storeId), fixed);
-        return new Computed(listingId, storeId, fixed, start, full, result);
+        return new Computed(listingId, storeId, fixed, start, full, result, stockout, adjusted);
     }
 
     /** 每个 SKU 最近 HISTORY_DAYS 天（到昨天）每天的销量 */
@@ -332,6 +379,9 @@ public class EcomForecastService {
         s.setMapeHolt(percent(r.mape().get(ForecastMethod.HOLT)));
         s.setMapeSeasonal(percent(r.mape().get(ForecastMethod.SEASONAL)));
         s.setHistoryDaily(qty(ForecastEngine.movingAverage(c.fullHistory(), ForecastEngine.BACKTEST_DAYS)));
+        s.setStockoutDays(StockoutCalc.count(c.stockout()));
+        // 补偿后的最近 28 天日均（与预测使用的数据一致；断货当天仍有销量的保留实际值）
+        s.setAdjustedDaily(qty(ForecastEngine.movingAverage(c.adjusted(), ForecastEngine.BACKTEST_DAYS)));
         s.setForecast30(qty(sum(r.selected(), 30)));
         s.setForecast60(qty(sum(r.selected(), 60)));
         s.setForecast90(qty(sum(r.selected(), 90)));
@@ -411,7 +461,10 @@ public class EcomForecastService {
         ForecastMethod fixed = row == null ? null : row.getFixedMethod();
         double[] full = history(List.of(listingId), today).getOrDefault(listingId, new double[HISTORY_DAYS]);
         LocalDate start = today.minusDays(HISTORY_DAYS);
-        Computed c = computeOne(listingId, info.getStoreId(), fixed, start, full, today, p, events);
+        // 断货日总是标出；只有开启排除时才补偿
+        StockoutRule rule = stockoutRule(setting);
+        boolean[] stockout = stockoutService.flags(List.of(listingId), start, HISTORY_DAYS, rule.threshold()).get(listingId);
+        Computed c = computeOne(listingId, info.getStoreId(), fixed, start, full, rule.enabled() ? stockout : null, today, p, events);
         ForecastEngine.Result r = c.result();
         List<ForecastDetail.MethodLine> lines = new ArrayList<>();
         for (ForecastMethod m : ForecastMethod.values()) {
@@ -427,8 +480,16 @@ public class EcomForecastService {
             lower.add(qty(ForecastEngine.lower(v, r.sigma())));
             upper.add(qty(ForecastEngine.upper(v, r.sigma())));
         }
+        List<LocalDate> stockoutDates = new ArrayList<>();
+        if (stockout != null) {
+            for (int i = 0; i < stockout.length; i++) {
+                if (stockout[i]) {
+                    stockoutDates.add(start.plusDays(i));
+                }
+            }
+        }
         return new ForecastDetail(info, r.method(), fixed, setting, start, toList(full), today, lines, lower, upper, qty(r.sigma()),
-                r.backtest() == null ? null : toList(r.backtest()), events);
+                r.backtest() == null ? null : toList(r.backtest()), events, stockoutDates, toList(c.adjusted()));
     }
 
     /**
@@ -465,7 +526,9 @@ public class EcomForecastService {
             }
         }
         if (!missing.isEmpty()) {
-            ForecastEngine.Params p = params(setting());
+            EcomForecastSetting setting = setting();
+            ForecastEngine.Params p = params(setting);
+            StockoutRule rule = stockoutRule(setting);
             List<EcomForecastEvent> events = events(today.minusDays(HISTORY_DAYS), today.plusDays(HORIZON), null);
             Map<Long, ForecastMethod> fixed = new HashMap<>();
             for (EcomForecastSku s : skuMapper.selectList(Wrappers.<EcomForecastSku>lambdaQuery().in(EcomForecastSku::getListingId, missing))) {
@@ -476,9 +539,10 @@ public class EcomForecastService {
             for (int i = 0; i < missing.size(); i += BATCH) {
                 List<Long> part = missing.subList(i, Math.min(missing.size(), i + BATCH));
                 Map<Long, double[]> history = history(part, today);
+                Map<Long, boolean[]> stockout = stockoutFlags(part, today.minusDays(HISTORY_DAYS), HISTORY_DAYS, rule);
                 for (AnalyticsRows.ListingInfo info : analyticsMapper.selectListingInfo(part)) {
                     Computed c = computeOne(info.getListingId(), info.getStoreId(), fixed.get(info.getListingId()), today.minusDays(HISTORY_DAYS),
-                            history.getOrDefault(info.getListingId(), new double[HISTORY_DAYS]), today, p, events);
+                            history.getOrDefault(info.getListingId(), new double[HISTORY_DAYS]), stockout.get(info.getListingId()), today, p, events);
                     List<BigDecimal> daily = toList(c.result().selected()).subList(0, days);
                     out.put(info.getListingId(), new DailyForecast(info.getListingId(), c.result().method(), today, List.copyOf(daily), false));
                 }

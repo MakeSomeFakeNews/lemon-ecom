@@ -198,6 +198,12 @@ public class AmazonSpConnector implements ChannelConnector {
         return l;
     }
 
+    /** 按订单行回传，支持一张订单分多个包裹部分发货 */
+    @Override
+    public boolean partialShipment() {
+        return true;
+    }
+
     @Override
     public ShipmentResult confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
         if (order.getFulfillment() == FulfillmentType.PLATFORM) {
@@ -214,7 +220,8 @@ public class AmazonSpConnector implements ChannelConnector {
             lines.add(Map.of("orderItemId", it.getPlatformLineId(), "quantity", it.getQty() == null ? 1 : Math.max(1, it.getQty().intValue())));
         }
         Map<String, Object> pkg = new LinkedHashMap<>();
-        pkg.put("packageReferenceId", "1");
+        // 部分发货时每个包裹用自己的参考号（包裹号），整单回传为 1
+        pkg.put("packageReferenceId", order.getShipPackageRef() == null ? "1" : order.getShipPackageRef());
         pkg.put("carrierCode", order.getCarrier());
         pkg.put("trackingNumber", order.getTrackingNo());
         pkg.put("shipDate", ConnectorJson.toUtcIso(order.getShipTime() == null ? LocalDateTime.now() : order.getShipTime()));

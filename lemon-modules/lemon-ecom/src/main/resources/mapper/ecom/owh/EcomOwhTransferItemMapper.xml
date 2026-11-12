@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.owh.mapper.EcomOwhTransferItemMapper">
+
+    <select id="selectByTransfer" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhTransferItem">
+        SELECT it.*, mt.code AS material_code, mt.name AS material_name, mt.spec AS material_spec
+        FROM ecom_owh_transfer_item it
+        LEFT JOIN wms_material mt ON mt.id = it.material_id
+        WHERE it.transfer_id = #{transferId}
+        ORDER BY it.id
+    </select>
+
+    <insert id="insertBatch">
+        INSERT INTO ecom_owh_transfer_item (transfer_id, material_id, qty, create_time, update_time)
+        VALUES
+        <foreach collection="list" item="r" separator=",">
+            (#{r.transferId}, #{r.materialId}, #{r.qty}, NOW(), NOW())
+        </foreach>
+    </insert>
+</mapper>

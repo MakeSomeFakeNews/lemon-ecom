@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.owh.mapper.EcomOwhStockMapper">
+
+    <!-- ERP 账面库存：系统仓库中该物料的现存量；ERP 在途：调入该仓库、还没有收货的在途调拨 -->
+    <sql id="erp">
+        LEFT JOIN (SELECT st.warehouse_id, st.material_id, SUM(st.qty) AS qty
+                   FROM wms_stock st
+                   WHERE st.warehouse_id IN (SELECT warehouse_id FROM ecom_owh_warehouse)
+                   GROUP BY st.warehouse_id, st.material_id) e ON e.warehouse_id = s.warehouse_id AND e.material_id = s.material_id
+        LEFT JOIN (SELECT d.to_warehouse_id AS warehouse_id, di.material_id, SUM(di.qty) AS qty
+                   FROM wms_stock_doc d
+                   JOIN wms_stock_doc_item di ON di.doc_id = d.id
+                   WHERE d.kind = 'TRANSFER' AND d.status = 'TRANSIT'
+                     AND d.to_warehouse_id IN (SELECT warehouse_id FROM ecom_owh_warehouse)
+                   GROUP BY d.to_warehouse_id, di.material_id) t ON t.warehouse_id = s.warehouse_id AND t.material_id = s.material_id
+    </sql>
+
+    <sql id="columns">
+        s.id, s.mapping_id, s.warehouse_id, s.sku, s.material_id, s.available_qty, s.transit_qty, s.locked_qty, s.sync_time,
+        s.create_time, s.update_time, a.name AS account_name, m.owh_code, w.name AS warehouse_name,
+        mt.code AS material_code, mt.name AS material_name, mt.spec AS material_spec,
+        COALESCE(e.qty, 0) AS erp_qty, COALESCE(t.qty, 0) AS erp_transit_qty,
+        s.available_qty + s.locked_qty - COALESCE(e.qty, 0) AS diff_qty
+    </sql>
+
+    <sql id="joins">
+        FROM ecom_owh_stock s
+        JOIN ecom_owh_warehouse m ON m.id = s.mapping_id
+        JOIN ecom_owh_account a ON a.id = m.account_id
+        LEFT JOIN wms_warehouse w ON w.id = s.warehouse_id
+        LEFT JOIN wms_material mt ON mt.id = s.material_id
+        <include refid="erp"/>
+    </sql>
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhStock">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        <where>
+            <if test="accountId != null">AND m.account_id = #{accountId}</if>
+            <if test="warehouseId != null">AND s.warehouse_id = #{warehouseId}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (s.sku LIKE CONCAT('%', #{keyword}, '%') OR mt.name LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+            <if test="diffOnly">AND (s.material_id IS NULL OR s.available_qty + s.locked_qty &lt;&gt; COALESCE(e.qty, 0))</if>
+        </where>
+        ORDER BY ABS(s.available_qty + s.locked_qty - COALESCE(e.qty, 0)) DESC, s.sku
+    </select>
+
+    <select id="selectSummary" resultType="map">
+        SELECT COUNT(*) AS "skuCount",
+               SUM(CASE WHEN s.material_id IS NULL OR s.available_qty + s.locked_qty &lt;&gt; COALESCE(e.qty, 0) THEN 1 ELSE 0 END) AS "diffCount",
+               SUM(s.available_qty) AS "available", SUM(s.transit_qty) AS "transit", SUM(s.locked_qty) AS "locked",
+               SUM(COALESCE(e.qty, 0)) AS "erpQty", MAX(s.sync_time) AS "syncTime"
+        <include refid="joins"/>
+        <where>
+            <if test="accountId != null">AND m.account_id = #{accountId}</if>
+            <if test="warehouseId != null">AND s.warehouse_id = #{warehouseId}</if>
+        </where>
+    </select>
+
+    <select id="selectWithErp" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhStock">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        WHERE s.id IN <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        ORDER BY s.warehouse_id, s.id
+    </select>
+
+    <select id="selectMaterialIds" resultType="map">
+        SELECT mt.code AS "code", mt.id AS "id" FROM wms_material mt
+        WHERE mt.code IN <foreach collection="codes" item="c" open="(" separator="," close=")">#{c}</foreach>
+    </select>
+
+    <select id="selectErpStock" resultType="map">
+        SELECT st.material_id AS "materialId", mt.code AS "code", SUM(st.qty) AS "qty"
+        FROM wms_stock st
+        JOIN wms_material mt ON mt.id = st.material_id
+        WHERE st.warehouse_id = #{warehouseId}
+        GROUP BY st.material_id, mt.code
+        HAVING SUM(st.qty) &gt; 0
+        ORDER BY mt.code
+    </select>
+
+    <select id="selectMaterials" resultType="map">
+        SELECT mt.id AS "id", mt.code AS "code", mt.name AS "name" FROM wms_material mt
+        WHERE mt.id IN <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </select>
+
+    <insert id="insertBatch">
+        INSERT INTO ecom_owh_stock (mapping_id, warehouse_id, sku, material_id, available_qty, transit_qty, locked_qty, sync_time, create_time, update_time)
+        VALUES
+        <foreach collection="list" item="r" separator=",">
+            (#{r.mappingId}, #{r.warehouseId}, #{r.sku}, #{r.materialId}, #{r.availableQty}, #{r.transitQty}, #{r.lockedQty}, #{r.syncTime}, NOW(), NOW())
+        </foreach>
+    </insert>
+</mapper>

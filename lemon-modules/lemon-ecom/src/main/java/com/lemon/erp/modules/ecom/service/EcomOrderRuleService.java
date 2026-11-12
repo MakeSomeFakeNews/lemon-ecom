@@ -41,6 +41,7 @@ public class EcomOrderRuleService {
     private final EcomStoreService storeService;
     private final EcomLogisticsService logisticsService;
     private final WmsWarehouseService warehouseService;
+    private final EcomOrderTagService tagService;
 
     public PageResult<EcomOrderRule> page(long current, long size, String keyword, EnableStatus status) {
         Page<EcomOrderRule> page = Page.of(current, size);
@@ -85,6 +86,7 @@ public class EcomOrderRuleService {
                 .set(EcomOrderRule::getWarehouseId, r.getWarehouseId()).set(EcomOrderRule::getChannelId, r.getChannelId())
                 .set(EcomOrderRule::getHoldReason, r.getHoldReason()).set(EcomOrderRule::getCutoffTime, r.getCutoffTime())
                 .set(EcomOrderRule::getRemark, r.getRemark())
+                .set(EcomOrderRule::getProfitRateMax, r.getProfitRateMax()).set(EcomOrderRule::getTagIds, r.getTagIds())
                 .eq(EcomOrderRule::getId, id));
     }
 
@@ -130,6 +132,15 @@ public class EcomOrderRuleService {
         if (r.getChannelId() != null) {
             logisticsService.get(r.getChannelId());
         }
+        r.setBlacklistHit(flag(r.getBlacklistHit()));
+        r.setAddressIssue(flag(r.getAddressIssue()));
+        r.setRemoteArea(flag(r.getRemoteArea()));
+        r.setTagIds(idList(r.getTagIds(), "ecom.label.ord.ruleTags"));
+        if (r.getTagIds() != null) {
+            for (String id : r.getTagIds().split(",")) {
+                tagService.get(Long.valueOf(id));
+            }
+        }
         r.setHoldOrder(flag(r.getHoldOrder()));
         r.setAutoAudit(flag(r.getAutoAudit()));
         r.setStopOnMatch(flag(r.getStopOnMatch()));
@@ -137,7 +148,8 @@ public class EcomOrderRuleService {
             throw new BizException("ecom.error.ops.ruleHoldAndAudit");
         }
         r.setHoldReason(StringUtils.hasText(r.getHoldReason()) ? r.getHoldReason().trim() : null);
-        if (r.getWarehouseId() == null && r.getChannelId() == null && r.getHoldOrder() == 0 && r.getAutoAudit() == 0 && r.getCutoffTime() == null) {
+        if (r.getWarehouseId() == null && r.getChannelId() == null && r.getHoldOrder() == 0 && r.getAutoAudit() == 0 && r.getCutoffTime() == null
+                && r.getTagIds() == null) {
             throw new BizException("ecom.error.ops.ruleNoAction");
         }
     }
@@ -194,8 +206,14 @@ public class EcomOrderRuleService {
      * @param holdRule    第一条要求人工审核的命中规则（有它时不自动审核）
      * @param autoAudit   有命中规则要求自动审核
      * @param matched     命中的规则名称
+     * @param tagIds      命中规则要打的标签（全部命中规则的并集）
      */
-    public record Outcome(Long warehouseId, Long channelId, LocalTime cutoffTime, EcomOrderRule holdRule, boolean autoAudit, List<String> matched) {
+    public record Outcome(Long warehouseId, Long channelId, LocalTime cutoffTime, EcomOrderRule holdRule, boolean autoAudit, List<String> matched,
+                          Set<Long> tagIds) {
+
+        public Outcome(Long warehouseId, Long channelId, LocalTime cutoffTime, EcomOrderRule holdRule, boolean autoAudit, List<String> matched) {
+            this(warehouseId, channelId, cutoffTime, holdRule, autoAudit, matched, Set.of());
+        }
 
         /** 计划发货时间：付款（没有时按下单）在截单时间之前当天，之后次日，时间为截单时间 */
         public LocalDateTime planShipTime(EcomOrder o) {
@@ -218,16 +236,27 @@ public class EcomOrderRuleService {
      * 没有挂起且有规则要求自动审核时自动审核；规则勾选了「命中后停止」时不再匹配后面的规则
      */
     public Outcome evaluate(EcomOrder o, EcomPlatform platform, List<EcomOrderItem> items) {
+        return evaluate(o, platform, items, EcomOrderCheckService.Facts.none());
+    }
+
+    /**
+     * 按优先级匹配（含审单前检查的结果：预估利润率、黑名单、地址校验、偏远地区），命中规则的「打标签」动作取全部命中规则的并集
+     */
+    public Outcome evaluate(EcomOrder o, EcomPlatform platform, List<EcomOrderItem> items, EcomOrderCheckService.Facts facts) {
+        Set<Long> tags = new LinkedHashSet<>();
         Long warehouse = null, channel = null;
         LocalTime cutoff = null;
         EcomOrderRule hold = null;
         boolean audit = false;
         List<String> matched = new ArrayList<>();
         for (EcomOrderRule r : ruleMapper.selectEnabled()) {
-            if (!matches(r, o, platform, items)) {
+            if (!matches(r, o, platform, items) || !matchesFacts(r, facts)) {
                 continue;
             }
             matched.add(r.getName());
+            if (r.getTagIds() != null) {
+                Arrays.stream(r.getTagIds().split(",")).map(String::trim).filter(v -> !v.isEmpty()).map(Long::valueOf).forEach(tags::add);
+            }
             if (warehouse == null) warehouse = r.getWarehouseId();
             if (channel == null) channel = r.getChannelId();
             if (cutoff == null) cutoff = r.getCutoffTime();
@@ -237,7 +266,7 @@ public class EcomOrderRuleService {
                 break;
             }
         }
-        return new Outcome(warehouse, channel, cutoff, hold, audit && hold == null, matched);
+        return new Outcome(warehouse, channel, cutoff, hold, audit && hold == null, matched, tags);
     }
 
     static boolean matches(EcomOrderRule r, EcomOrder o, EcomPlatform platform, List<EcomOrderItem> items) {
@@ -276,6 +305,22 @@ public class EcomOrderRuleService {
             return o.getWeight() != null && inRange(o.getWeight(), r.getWeightMin(), r.getWeightMax());
         }
         return true;
+    }
+
+    /**
+     * 审单前检查的条件：预估利润率低于（不含，订单没有预估利润率时不命中）、命中黑名单、地址校验不通过、偏远地区（勾选的都要满足）
+     */
+    static boolean matchesFacts(EcomOrderRule r, EcomOrderCheckService.Facts f) {
+        if (r.getProfitRateMax() != null && (f.estProfitRate() == null || f.estProfitRate().compareTo(r.getProfitRateMax()) >= 0)) {
+            return false;
+        }
+        if (Integer.valueOf(1).equals(r.getBlacklistHit()) && f.blacklist() == null) {
+            return false;
+        }
+        if (Integer.valueOf(1).equals(r.getAddressIssue()) && !f.addressInvalid()) {
+            return false;
+        }
+        return !Integer.valueOf(1).equals(r.getRemoteArea()) || f.remote();
     }
 
     private static boolean inRange(BigDecimal v, BigDecimal min, BigDecimal max) {

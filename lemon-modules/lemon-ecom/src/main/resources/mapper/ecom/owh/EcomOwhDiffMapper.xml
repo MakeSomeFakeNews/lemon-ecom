@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.owh.mapper.EcomOwhDiffMapper">
+
+    <sql id="columns">
+        d.*, w.name AS warehouse_name, mt.code AS material_code, mt.name AS material_name
+    </sql>
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhDiff">
+        SELECT <include refid="columns"/>
+        FROM ecom_owh_diff d
+        LEFT JOIN wms_warehouse w ON w.id = d.warehouse_id
+        LEFT JOIN wms_material mt ON mt.id = d.material_id
+        <where>
+            <if test="sourceType != null">AND d.source_type = #{sourceType}</if>
+            <if test="status != null">AND d.status = #{status}</if>
+            <if test="warehouseId != null">AND d.warehouse_id = #{warehouseId}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (d.source_no LIKE CONCAT('%', #{keyword}, '%') OR d.ref_no LIKE CONCAT('%', #{keyword}, '%')
+                     OR d.sku LIKE CONCAT('%', #{keyword}, '%') OR mt.name LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY d.id DESC
+    </select>
+
+    <select id="selectBySource" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhDiff">
+        SELECT <include refid="columns"/>
+        FROM ecom_owh_diff d
+        LEFT JOIN wms_warehouse w ON w.id = d.warehouse_id
+        LEFT JOIN wms_material mt ON mt.id = d.material_id
+        WHERE d.source_type = #{sourceType} AND d.source_id = #{sourceId}
+        ORDER BY d.id
+    </select>
+</mapper>

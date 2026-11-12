@@ -1,6 +1,7 @@
 package com.lemon.erp.modules.ecom.dto;
 
 import com.lemon.erp.modules.ecom.model.EcomOrderStatus;
+import com.lemon.erp.modules.ecom.model.EcomOrderType;
 import com.lemon.erp.modules.ecom.model.FulfillmentType;
 import lombok.Data;
 
@@ -38,6 +39,14 @@ public class OrderDraft {
     private BigDecimal shippingAmount;
     /** 订单级税额，规则同 shippingAmount */
     private BigDecimal taxAmount;
+    /** 预估重量（kg），手工建单时填写，审单规则按它匹配 */
+    private BigDecimal weight;
+    /** 订单类型，为空为平台订单 */
+    private EcomOrderType orderType;
+    /** 补发单的原订单、售后工单、退货退款单 */
+    private Long sourceOrderId;
+    private Long sourceTicketId;
+    private Long sourceReturnId;
     private List<Line> lines = new ArrayList<>();
 
     @Data

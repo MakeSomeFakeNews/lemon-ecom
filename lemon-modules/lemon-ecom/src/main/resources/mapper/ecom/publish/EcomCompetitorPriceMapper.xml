@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.publish.mapper.EcomCompetitorPriceMapper">
+
+    <insert id="insertBatch">
+        INSERT INTO ecom_competitor_price (listing_id, store_id, seller_sku, platform_item_id, source, lowest_price, lowest_shipping, buybox_price,
+                                           buybox_winner, offer_count, competitor, currency, snapshot_time, remark, create_by, create_time, update_time)
+        VALUES
+        <foreach collection="items" item="c" separator=",">
+            (#{c.listingId}, #{c.storeId}, #{c.sellerSku}, #{c.platformItemId}, #{c.source}, #{c.lowestPrice}, #{c.lowestShipping}, #{c.buyboxPrice},
+             COALESCE(#{c.buyboxWinner}, 0), #{c.offerCount}, #{c.competitor}, #{c.currency}, #{c.snapshotTime}, #{c.remark}, #{c.createBy}, NOW(), NOW())
+        </foreach>
+    </insert>
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.publish.entity.EcomCompetitorPrice">
+        SELECT c.*, s.name AS store_name, s.platform, l.title, l.price AS my_price
+        FROM ecom_competitor_price c
+        LEFT JOIN ecom_store s ON s.id = c.store_id
+        LEFT JOIN ecom_listing l ON l.id = c.listing_id
+        <where>
+            <if test="storeId != null">c.store_id = #{storeId}</if>
+            <if test="listingId != null">AND c.listing_id = #{listingId}</if>
+            <if test="source != null">AND c.source = #{source}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (c.seller_sku LIKE CONCAT('%', #{keyword}, '%') OR c.platform_item_id = #{keyword} OR l.title LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+            <if test="latestOnly">
+                AND c.id = (SELECT MAX(x.id) FROM ecom_competitor_price x WHERE x.listing_id = c.listing_id
+                            AND x.snapshot_time = (SELECT MAX(y.snapshot_time) FROM ecom_competitor_price y WHERE y.listing_id = c.listing_id))
+            </if>
+        </where>
+        ORDER BY c.snapshot_time DESC, c.id DESC
+    </select>
+
+    <select id="selectLatest" resultType="com.lemon.erp.modules.ecom.publish.entity.EcomCompetitorPrice">
+        SELECT c.*
+        FROM ecom_competitor_price c
+        WHERE c.listing_id IN <foreach collection="listingIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+          AND c.snapshot_time &gt;= #{since}
+          AND c.id = (SELECT MAX(x.id) FROM ecom_competitor_price x WHERE x.listing_id = c.listing_id
+                      AND x.snapshot_time = (SELECT MAX(y.snapshot_time) FROM ecom_competitor_price y WHERE y.listing_id = c.listing_id))
+    </select>
+
+</mapper>

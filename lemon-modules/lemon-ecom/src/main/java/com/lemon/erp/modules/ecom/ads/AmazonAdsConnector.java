@@ -34,9 +34,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 亚马逊广告 API（Amazon Ads API）：只实现商品推广（Sponsored Products）。
+ * 亚马逊广告 API（Amazon Ads API）：商品推广（Sponsored Products，SP）在本类实现，品牌推广（SB）与展示型推广（SD）见 {@link AmazonAdsSbSd}。
  * <ul>
- *   <li>授权：LWA（Login with Amazon）刷新令牌换取访问令牌（按区域：NA api.amazon.com、EU api.amazon.co.uk、FE api.amazon.co.jp），
+ *   <li>授权：Login with Amazon（LWA）OAuth——卖家先在「广告授权」中填写自己广告应用（LWA 安全配置文件）的 clientId / clientSecret 与区域，
+ *       点击授权后跳转 LWA 授权页（NA www.amazon.com/ap/oa、EU eu.account.amazon.com/ap/oa、FE apac.account.amazon.com/ap/oa，
+ *       scope advertising::campaign_management），同意后回调 /api/ecom/oauth/callback/amazon-ads，用授权码换取刷新令牌（grant_type=authorization_code），
+ *       回调地址要登记在安全配置文件的 Allowed Return URLs 中；也可以手工填写刷新令牌。
+ *       刷新令牌换取访问令牌（按区域：NA api.amazon.com、EU api.amazon.co.uk、FE api.amazon.co.jp），
  *       约 1 小时有效，缓存在 accessToken / accessTokenExpiresAt，提前 60 秒刷新；accessTokenOwner 记录令牌对应的 clientId + refreshToken 摘要</li>
  *   <li>请求头：Authorization: Bearer、Amazon-Advertising-API-ClientId、Amazon-Advertising-API-Scope（配置文件 profileId，
  *       在「广告授权」中从 GET /v2/profiles 的结果里选择）</li>
@@ -60,7 +64,7 @@ import java.util.regex.Pattern;
  *   <li>重复报告请求 425 的响应体格式（这里按 detail 中的 UUID 取已有报告 ID）</li>
  *   <li>PUT /sp/campaigns 一次最多修改的数量（这里每批 {@value #CAMPAIGN_BATCH} 个，其他每批 {@value #BATCH} 个）</li>
  *   <li>沙箱（advertising-api-test）需要先用 POST /v2/profiles/register 创建测试配置文件，沙箱报告的内容是否为空</li>
- *   <li>品牌推广（SB）、展示型推广（SD）未实现，它们的接口、报告类型与 SP 不同</li>
+ *   <li>LWA 授权页地址按区域（NA / EU / FE）的取法，授权码换令牌的响应（refresh_token、access_token、expires_in）</li>
  * </ul>
  */
 @Slf4j
@@ -77,11 +81,16 @@ public class AmazonAdsConnector implements AdsConnector {
             "NA", "https://api.amazon.com/auth/o2/token",
             "EU", "https://api.amazon.co.uk/auth/o2/token",
             "FE", "https://api.amazon.co.jp/auth/o2/token");
-    private static final AdsConnectorInfo INFO = new AdsConnectorInfo(EcomPlatform.AMAZON, AuthType.KEYS, List.of(
+    private static final Map<String, String> LWA_AUTHORIZE = Map.of(
+            "NA", "https://www.amazon.com/ap/oa",
+            "EU", "https://eu.account.amazon.com/ap/oa",
+            "FE", "https://apac.account.amazon.com/ap/oa");
+    static final String SCOPE = "advertising::campaign_management";
+    private static final AdsConnectorInfo INFO = new AdsConnectorInfo(EcomPlatform.AMAZON, AuthType.OAUTH, List.of(
             CredentialField.text("region", "ecom.label.ads.cred.region", true),
             CredentialField.text("clientId", "ecom.label.ads.cred.clientId", true),
             CredentialField.secret("clientSecret", "ecom.label.ads.cred.clientSecret"),
-            CredentialField.secret("refreshToken", "ecom.label.ads.cred.refreshToken"),
+            CredentialField.token("refreshToken", "ecom.label.ads.cred.refreshToken"),
             CredentialField.cached("accessToken", true),
             CredentialField.cached("accessTokenExpiresAt", false),
             CredentialField.cached("accessTokenOwner", false)),
@@ -107,6 +116,7 @@ public class AmazonAdsConnector implements AdsConnector {
     long pollMaxIntervalMillis = 60_000;
     long pollTimeoutMillis = 30 * 60_000L;
     AdsSleeper sleeper = AdsSleeper.DEFAULT;
+    private final AmazonAdsSbSd sbSd = new AmazonAdsSbSd(this);
 
     @Override
     public AdsConnectorInfo info() {
@@ -137,6 +147,49 @@ public class AmazonAdsConnector implements AdsConnector {
         changes.put("accessTokenExpiresAt", String.valueOf(System.currentTimeMillis() + expiresIn * 1000));
         changes.put("accessTokenOwner", owner);
         ctx.updateCredentials(changes);
+    }
+
+    @Override
+    public String authorizeUrl(AdsContext ctx, String redirectUri, String state) {
+        String clientId = ctx.credentials().require("clientId");
+        String base;
+        if (ctx.baseUrlOverride() != null) {
+            base = ctx.baseUrlOverride() + "/ap/oa";
+        } else {
+            base = LWA_AUTHORIZE.get(region(ctx));
+            if (base == null) {
+                throw new BizException("ecom.error.connectorRegionInvalid", region(ctx));
+            }
+        }
+        return base + "?client_id=" + enc(clientId) + "&scope=" + enc(SCOPE) + "&response_type=code&redirect_uri=" + enc(redirectUri)
+                + "&state=" + enc(state);
+    }
+
+    /** 授权码换刷新令牌（同时得到访问令牌，按 ensureToken 的格式缓存） */
+    @Override
+    public Map<String, String> exchangeCode(AdsContext ctx, String code, String redirectUri) {
+        StoreCredentials c = ctx.credentials();
+        String form = "grant_type=authorization_code&code=" + enc(code) + "&redirect_uri=" + enc(redirectUri) + "&client_id="
+                + enc(c.require("clientId")) + "&client_secret=" + enc(c.require("clientSecret"));
+        JsonNode resp = HttpJson.postForm(tokenUrl(ctx), Map.of(), form, PLATFORM);
+        String refresh = HttpJson.text(resp, "refresh_token");
+        if (refresh == null) {
+            throw new BizException("ecom.error.connectorAuthFailed", PLATFORM, HttpJson.abbreviate(resp.toString()));
+        }
+        Map<String, String> out = new HashMap<>();
+        out.put("refreshToken", refresh);
+        String access = HttpJson.text(resp, "access_token");
+        if (access != null) {
+            out.put("accessToken", access);
+            out.put("accessTokenExpiresAt", String.valueOf(System.currentTimeMillis() + resp.path("expires_in").asLong(3600) * 1000));
+            out.put("accessTokenOwner", ConnectorSigns.sha256Hex(c.require("clientId") + "|" + refresh).substring(0, 16));
+        }
+        return out;
+    }
+
+    @Override
+    public boolean supports(EcomAdType adType, com.lemon.erp.modules.ecom.model.EcomAdLevel level, AdsCapability capability) {
+        return supports(capability) && AmazonAdsSbSd.supports(adType == null ? EcomAdType.SP : adType, level, capability);
     }
 
     /** LWA 令牌地址：有自定义地址时为 {自定义地址}/auth/o2/token，否则按区域 */
@@ -179,7 +232,7 @@ public class AmazonAdsConnector implements AdsConnector {
         return h;
     }
 
-    private Map<String, String> scoped(AdsContext ctx, String contentType) {
+    Map<String, String> scoped(AdsContext ctx, String contentType) {
         if (ctx.profileId() == null) {
             throw new BizException("ecom.error.ads.profileMissing", ctx.store() == null ? "" : ctx.store().getName());
         }
@@ -249,7 +302,31 @@ public class AmazonAdsConnector implements AdsConnector {
                     EcomAdTargetType.NEGATIVE, ConnectorJson.str(n, "keywordText"), matchType(ConnectorJson.str(n, "matchType")),
                     state(ConnectorJson.str(n, "state")), null));
         }
-        return new AdsStructure(campaigns, groups, targets);
+        // 品牌推广、展示型推广：账号没有开通或没有活动时跳过（不归档本地已有的该类型活动）
+        Set<EcomAdType> fetched = EnumSet.of(EcomAdType.SP);
+        for (EcomAdType type : List.of(EcomAdType.SB, EcomAdType.SD)) {
+            List<AdsStructure.Campaign> c = new ArrayList<>();
+            List<AdsStructure.AdGroup> g = new ArrayList<>();
+            List<AdsStructure.Target> t = new ArrayList<>();
+            try {
+                if (type == EcomAdType.SB) {
+                    sbSd.sbStructure(ctx, c, g, t);
+                } else {
+                    sbSd.sdStructure(ctx, c, g, t);
+                }
+            } catch (ConnectorHttpException e) {
+                if (AmazonAdsSbSd.notEnabled(e)) {
+                    log.info("Amazon Ads {} structure skipped: {}", type, e.statusCode());
+                    continue;
+                }
+                throw e;
+            }
+            campaigns.addAll(c);
+            groups.addAll(g);
+            targets.addAll(t);
+            fetched.add(type);
+        }
+        return new AdsStructure(campaigns, groups, targets, fetched);
     }
 
     /** SP v3 列表接口：POST + nextToken 分页，只取启用、暂停的 */
@@ -291,32 +368,48 @@ public class AmazonAdsConnector implements AdsConnector {
 
     // ---------------------------------------------------------------- 报告
 
+    /** 一个报告任务：广告类型 × 报告类型 */
+    private record ReportJob(EcomAdType adType, EcomAdReportType type, String reportId) {
+    }
+
+    /**
+     * 拉取报告：商品推广的各类型，以及账号已开通且有活动的品牌推广 / 展示型推广（{@link AmazonAdsSbSd#available} 探测）中有的报告类型，
+     * 全部创建后一起轮询、下载；每行带上广告类型
+     */
     @Override
     public Map<EcomAdReportType, List<AdsReportRow>> fetchReports(AdsContext ctx, Set<EcomAdReportType> types, LocalDate from, LocalDate to) {
         Map<String, String> headers = scoped(ctx, V_REPORT);
-        Map<EcomAdReportType, String> ids = new EnumMap<>(EcomAdReportType.class);
-        for (EcomAdReportType type : types) {
-            ids.put(type, createReport(ctx, headers, type, from, to));
+        List<ReportJob> jobs = new ArrayList<>();
+        for (EcomAdType adType : List.of(EcomAdType.SP, EcomAdType.SB, EcomAdType.SD)) {
+            if (adType != EcomAdType.SP && (types.stream().noneMatch(t -> AmazonAdsSbSd.hasReport(adType, t)) || !sbSd.available(ctx, adType))) {
+                continue;
+            }
+            for (EcomAdReportType type : types) {
+                if (AmazonAdsSbSd.hasReport(adType, type)) {
+                    jobs.add(new ReportJob(adType, type, createReport(ctx, headers, adType, type, from, to)));
+                }
+            }
         }
         Map<String, String> statusHeaders = scoped(ctx, null);
-        Map<EcomAdReportType, String> urls = new EnumMap<>(EcomAdReportType.class);
+        Map<Integer, String> urls = new HashMap<>();
         long waited = 0;
         long interval = pollInitialMillis;
-        while (urls.size() < ids.size()) {
-            for (Map.Entry<EcomAdReportType, String> e : ids.entrySet()) {
-                if (urls.containsKey(e.getKey())) {
+        while (urls.size() < jobs.size()) {
+            for (int i = 0; i < jobs.size(); i++) {
+                if (urls.containsKey(i)) {
                     continue;
                 }
-                JsonNode s = HttpJson.get(endpoint(ctx) + "/reporting/reports/" + e.getValue(), statusHeaders, PLATFORM);
+                ReportJob job = jobs.get(i);
+                JsonNode s = HttpJson.get(endpoint(ctx) + "/reporting/reports/" + job.reportId(), statusHeaders, PLATFORM);
                 String status = ConnectorJson.str(s, "status");
                 if ("COMPLETED".equalsIgnoreCase(status) && ConnectorJson.str(s, "url") != null) {
-                    urls.put(e.getKey(), ConnectorJson.str(s, "url"));
+                    urls.put(i, ConnectorJson.str(s, "url"));
                 } else if ("FAILED".equalsIgnoreCase(status) || "CANCELLED".equalsIgnoreCase(status)) {
-                    throw new BizException("ecom.error.ads.reportFailed", PLATFORM, e.getKey().name(),
+                    throw new BizException("ecom.error.ads.reportFailed", PLATFORM, job.adType() + " " + job.type().name(),
                             HttpJson.abbreviate(ConnectorJson.firstNonBlank(ConnectorJson.str(s, "failureReason"), status)));
                 }
             }
-            if (urls.size() == ids.size()) {
+            if (urls.size() == jobs.size()) {
                 break;
             }
             if (waited + interval > pollTimeoutMillis) {
@@ -327,13 +420,15 @@ public class AmazonAdsConnector implements AdsConnector {
             interval = Math.min(interval * 2, pollMaxIntervalMillis);
         }
         Map<EcomAdReportType, List<AdsReportRow>> result = new EnumMap<>(EcomAdReportType.class);
-        for (Map.Entry<EcomAdReportType, String> e : urls.entrySet()) {
-            JsonNode data = AdsHttp.downloadJson(e.getValue(), Map.of(), PLATFORM);
-            List<AdsReportRow> rows = new ArrayList<>();
+        for (int i = 0; i < jobs.size(); i++) {
+            ReportJob job = jobs.get(i);
+            JsonNode data = AdsHttp.downloadJson(urls.get(i), Map.of(), PLATFORM);
+            List<AdsReportRow> rows = result.computeIfAbsent(job.type(), k -> new ArrayList<>());
             for (JsonNode r : data) {
-                rows.add(toRow(e.getKey(), r));
+                AdsReportRow row = job.adType() == EcomAdType.SP ? toRow(job.type(), r) : AmazonAdsSbSd.toRow(job.adType(), job.type(), r);
+                row.setAdType(job.adType());
+                rows.add(row);
             }
-            result.put(e.getKey(), rows);
         }
         return result;
     }
@@ -348,8 +443,8 @@ public class AmazonAdsConnector implements AdsConnector {
     }
 
     /** 创建报告，重复请求（425）时沿用平台返回的已有报告 ID */
-    private String createReport(AdsContext ctx, Map<String, String> headers, EcomAdReportType type, LocalDate from, LocalDate to) {
-        Map<String, Object> body = reportRequest(type, from, to);
+    private String createReport(AdsContext ctx, Map<String, String> headers, EcomAdType adType, EcomAdReportType type, LocalDate from, LocalDate to) {
+        Map<String, Object> body = adType == EcomAdType.SP ? reportRequest(type, from, to) : AmazonAdsSbSd.reportRequest(adType, type, from, to);
         try {
             JsonNode resp = HttpJson.requestRaw("POST", endpoint(ctx) + "/reporting/reports", headers, HttpJson.MAPPER.writeValueAsString(body), V_REPORT, PLATFORM);
             String id = ConnectorJson.str(resp, "reportId");
@@ -466,6 +561,25 @@ public class AmazonAdsConnector implements AdsConnector {
     @Override
     public List<AdsChangeResult> applyChanges(AdsContext ctx, List<AdsChange> changes) {
         List<AdsChangeResult> results = new ArrayList<>();
+        // 品牌推广、展示型推广走各自的接口
+        Map<EcomAdType, List<AdsChange>> others = new EnumMap<>(EcomAdType.class);
+        List<AdsChange> sp = new ArrayList<>();
+        for (AdsChange c : changes) {
+            if (c.platformId() == null) {
+                results.add(AdsChangeResult.failed(c.localId(), "no platform id"));
+            } else if (c.adTypeOrSp() == EcomAdType.SB || c.adTypeOrSp() == EcomAdType.SD) {
+                others.computeIfAbsent(c.adTypeOrSp(), k -> new ArrayList<>()).add(c);
+            } else {
+                sp.add(c);
+            }
+        }
+        others.forEach((type, list) -> results.addAll(sbSd.applyChanges(ctx, type, list)));
+        results.addAll(applySp(ctx, sp));
+        return results;
+    }
+
+    private List<AdsChangeResult> applySp(AdsContext ctx, List<AdsChange> changes) {
+        List<AdsChangeResult> results = new ArrayList<>();
         List<AdsChange> keywords = new ArrayList<>();
         List<AdsChange> targets = new ArrayList<>();
         List<AdsChange> groups = new ArrayList<>();
@@ -577,8 +691,18 @@ public class AmazonAdsConnector implements AdsConnector {
     }
 
     @Override
-    public List<AdsChangeResult> createNegativeKeywords(AdsContext ctx, List<AdsNegativeKeyword> keywords) {
+    public List<AdsChangeResult> createNegativeKeywords(AdsContext ctx, List<AdsNegativeKeyword> all) {
         List<AdsChangeResult> results = new ArrayList<>();
+        Map<EcomAdType, List<AdsNegativeKeyword>> others = new EnumMap<>(EcomAdType.class);
+        List<AdsNegativeKeyword> keywords = new ArrayList<>();
+        for (AdsNegativeKeyword k : all) {
+            if (k.adTypeOrSp() == EcomAdType.SB || k.adTypeOrSp() == EcomAdType.SD) {
+                others.computeIfAbsent(k.adTypeOrSp(), x -> new ArrayList<>()).add(k);
+            } else {
+                keywords.add(k);
+            }
+        }
+        others.forEach((type, list) -> results.addAll(sbSd.createNegativeKeywords(ctx, type, list)));
         if (keywords.isEmpty()) {
             return results;
         }
@@ -634,7 +758,7 @@ public class AmazonAdsConnector implements AdsConnector {
         };
     }
 
-    private static LocalDate date(String s) {
+    static LocalDate date(String s) {
         if (s == null || s.isBlank()) {
             return null;
         }

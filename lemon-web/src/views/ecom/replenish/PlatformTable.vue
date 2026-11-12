@@ -38,6 +38,9 @@
           {{ $t('ecomPurchase.replenish.weightedDaily', { v: qty(record.weightedDaily, 2) }) }}
           <span v-if="Number(record.factor) !== 1">{{ $t('ecomPurchase.replenish.factorText', { v: qty(record.factor, 2) }) }}</span>
         </div>
+        <a-tooltip v-if="record.stockoutDays > 0" :title="$t('ecomFix.stockout.replenishTip', { raw: qty(record.rawWeightedDaily, 2), n: record.stockoutDays })">
+          <a-tag color="red" :bordered="false" class="mini-tag">{{ $t('ecomFix.stockout.excludedN', { n: record.stockoutDays }) }}</a-tag>
+        </a-tooltip>
       </template>
       <template v-else-if="column.key === 'inTransitQty'">
         <a v-if="Number(record.inTransitQty) > 0" :title="$t('ecomPurchase.replenish.viewTransit')" @click="emit('transit', record)">{{ qty(record.inTransitQty) }}</a>

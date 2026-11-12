@@ -1,5 +1,6 @@
 package com.lemon.erp.modules.ecom.service;
 
+import com.lemon.erp.modules.ecom.oper.scope.EcomStoreScope;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.lemon.erp.common.enums.EnableStatus;
@@ -104,7 +105,7 @@ public class EcomStoreService {
     /** 有渠道授权、启用的店铺（定时同步） */
     public List<EcomStore> syncable() {
         return storeMapper.selectList(Wrappers.<EcomStore>lambdaQuery().eq(EcomStore::getStatus, EnableStatus.ENABLED)
-                .isNotNull(EcomStore::getCredentials).ne(EcomStore::getCredentials, "").orderByAsc(EcomStore::getId));
+                .isNotNull(EcomStore::getCredentials).ne(EcomStore::getCredentials, "").ne(EcomStore::getDemo, 1).orderByAsc(EcomStore::getId));
     }
 
     /** 开启了自动同步订单、有授权的启用店铺（定时任务） */
@@ -116,7 +117,8 @@ public class EcomStoreService {
     public Long create(EcomStore s) {
         s.setId(null);
         normalize(s);
-        if (storeMapper.exists(Wrappers.<EcomStore>lambdaQuery().eq(EcomStore::getCode, s.getCode()))) {
+        // 编码唯一性要看全部店铺（不受店铺数据权限限制）
+        if (EcomStoreScope.unrestricted(() -> storeMapper.exists(Wrappers.<EcomStore>lambdaQuery().eq(EcomStore::getCode, s.getCode())))) {
             throw new BizException("ecom.error.storeCodeExists", s.getCode());
         }
         s.setCustomerId(ensureCustomer(s));
@@ -131,12 +133,13 @@ public class EcomStoreService {
     public void update(Long id, EcomStore s) {
         EcomStore old = get(id);
         normalize(s);
-        if (storeMapper.exists(Wrappers.<EcomStore>lambdaQuery().eq(EcomStore::getCode, s.getCode()).ne(EcomStore::getId, id))) {
+        if (EcomStoreScope.unrestricted(() -> storeMapper.exists(Wrappers.<EcomStore>lambdaQuery().eq(EcomStore::getCode, s.getCode()).ne(EcomStore::getId, id)))) {
             throw new BizException("ecom.error.storeCodeExists", s.getCode());
         }
         s.setId(id);
         s.setCustomerId(old.getCustomerId());
         s.setStatus(null);
+        s.setDemo(null);
         s.setCredentials(StringUtils.hasText(s.getCredentials()) ? cipher.encrypt(mergeCredentials(old, s.getCredentials())) : null);
         storeMapper.updateById(s);
         if (!StringUtils.hasText(s.getApiBaseUrl()) && StringUtils.hasText(old.getApiBaseUrl())) {
@@ -192,6 +195,7 @@ public class EcomStoreService {
 
     /** 调用渠道接口的上下文：解密授权信息，刷新令牌后由框架加密写回 */
     public ConnectorContext context(EcomStore s) {
+        requireReal(s);
         return new ConnectorContext(s, credentials(s), Integer.valueOf(1).equals(s.getSandbox()), s.getApiBaseUrl(),
                 c -> saveCredentials(s.getId(), c.values()));
     }
@@ -200,10 +204,18 @@ public class EcomStoreService {
      * 调用渠道接口的上下文，刷新令牌保存后另外通知 onSaved（令牌维护任务据此判断是否刷新过）
      */
     public ConnectorContext context(EcomStore s, Runnable onSaved) {
+        requireReal(s);
         return new ConnectorContext(s, credentials(s), Integer.valueOf(1).equals(s.getSandbox()), s.getApiBaseUrl(), c -> {
             saveCredentials(s.getId(), c.values());
             onSaved.run();
         });
+    }
+
+    /** 演示店铺不调用平台接口 */
+    public static void requireReal(EcomStore s) {
+        if (s != null && s.demoStore()) {
+            throw new BizException("ecom.error.demoStoreNoApi", s.getName());
+        }
     }
 
     /** 全部店铺（含停用的，渠道接入总览），含加密的授权信息，只在服务端使用 */

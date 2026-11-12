@@ -258,6 +258,25 @@ public class SysDictService implements DictLookup {
         return map;
     }
 
+    @Override
+    public void ensureBusinessValue(String dictType, String value, String label) {
+        SysDictType type = requireType(dictType);
+        if (type.getKind() != DictKind.BUSINESS) {
+            throw new BizException("system.error.systemDictCannotAddValue");
+        }
+        if (dataMapper.exists(Wrappers.<SysDictData>lambdaQuery().eq(SysDictData::getDictType, dictType)
+                .eq(SysDictData::getTenantId, tenantOf(type)).eq(SysDictData::getDictValue, value))) {
+            return;
+        }
+        SysDictData data = new SysDictData();
+        data.setDictType(dictType);
+        data.setDictValue(value);
+        data.setDictLabel(label);
+        data.setStatus(EnableStatus.ENABLED);
+        data.setSort(listDataByType(dictType).size() + 1);
+        createData(data);
+    }
+
     /** 只有业务字典可以新增取值 */
     public void createData(SysDictData data) {
         SysDictType type = requireType(data.getDictType());

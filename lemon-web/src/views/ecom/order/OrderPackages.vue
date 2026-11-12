@@ -13,6 +13,19 @@
       </template>
       <template v-else-if="column.key === 'weight'">{{ record.weight != null ? Number(record.weight) : '-' }}</template>
       <template v-else-if="column.key === 'totalQty'">{{ qty(record.totalQty) }}</template>
+      <template v-else-if="column.key === 'track'">
+        <DictTag v-if="record.trackStatus" type="ecom_track_status" :value="record.trackStatus" />
+        <DictTag v-if="record.trackAlert" type="ecom_track_alert" :value="record.trackAlert" />
+        <span v-if="!record.trackStatus">-</span>
+      </template>
+      <template v-else-if="column.key === 'shipConfirm'">
+        <a-tooltip v-if="record.shipConfirmMsg" :title="record.shipConfirmMsg">
+          <a-tag :color="record.shipConfirm === 1 ? 'green' : record.shipConfirm === 0 ? 'red' : 'default'" :bordered="false">
+            {{ record.shipConfirm === 1 ? $t('ecomOrd.pkg.confirmed') : record.shipConfirm === 0 ? $t('ecomOrd.pkg.confirmFailed') : $t('ecomOrd.pkg.confirmWaiting') }}
+          </a-tag>
+        </a-tooltip>
+        <span v-else>-</span>
+      </template>
     </template>
   </a-table>
 </template>
@@ -37,7 +50,9 @@ const columns = [
   { title: t('ecomOrder.pkg.orders'), dataIndex: 'orderCount', width: 70, align: 'right' },
   { title: t('ecomOrder.pkg.totalQty'), key: 'totalQty', width: 70, align: 'right' },
   { title: t('ecomOrder.pkg.weight'), key: 'weight', width: 90, align: 'right' },
-  { title: t('ecomOrder.pkg.shipTime'), dataIndex: 'shipTime', width: 160 }
+  { title: t('ecomOrder.pkg.shipTime'), dataIndex: 'shipTime', width: 160 },
+  { title: t('ecomOrd.track.status'), key: 'track', width: 150 },
+  { title: t('ecomOrd.pkg.shipConfirm'), key: 'shipConfirm', width: 100 }
 ]
 </script>
 

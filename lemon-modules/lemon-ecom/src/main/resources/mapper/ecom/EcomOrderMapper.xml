@@ -4,6 +4,8 @@
 
     <sql id="columns">
         o.*, s.name AS store_name, s.platform, w.name AS warehouse_name, ch.name AS channel_name,
+        (SELECT so.platform_order_no FROM ecom_order so WHERE so.id = o.source_order_id) AS source_order_no,
+        (SELECT ec.name FROM ecom_logistics_channel ec WHERE ec.id = o.est_channel_id) AS est_channel_name,
         (SELECT COUNT(*) FROM ecom_order_item oi WHERE oi.order_id = o.id) AS item_count,
         (SELECT COUNT(DISTINCT pi.package_id) FROM ecom_package_item pi JOIN ecom_package p ON p.id = pi.package_id
           WHERE pi.order_id = o.id AND p.status &lt;&gt; 'CANCELLED') AS package_count
@@ -17,6 +19,10 @@
         <if test="q.country != null and q.country != ''">AND o.ship_country = #{q.country}</if>
         <if test="q.beginTime != null">AND o.order_time &gt;= #{q.beginTime}</if>
         <if test="q.endExclusive != null">AND o.order_time &lt; #{q.endExclusive}</if>
+        <if test="q.orderType != null">AND o.order_type = #{q.orderType}</if>
+        <if test="q.tagId != null">AND EXISTS (SELECT 1 FROM ecom_order_tag_link tl WHERE tl.order_id = o.id AND tl.tag_id = #{q.tagId})</if>
+        <if test="q.addressInvalid != null and q.addressInvalid">AND o.address_invalid = 1</if>
+        <if test="q.blacklisted != null and q.blacklisted">AND o.blacklist_id IS NOT NULL</if>
         <if test="q.overdue != null and q.overdue">
             AND o.ship_by &lt; CURRENT_TIMESTAMP
             AND o.local_status IN ('PENDING', 'ON_HOLD', 'EXCEPTION', 'OUT_OF_STOCK', 'AUDITED', 'LABELED', 'OUTBOUND', 'PARTIAL')

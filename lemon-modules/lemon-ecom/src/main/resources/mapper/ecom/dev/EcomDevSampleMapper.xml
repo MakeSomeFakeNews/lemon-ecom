@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.dev.mapper.EcomDevSampleMapper">
+
+    <select id="selectByProject" resultType="com.lemon.erp.modules.ecom.dev.entity.EcomDevSample">
+        SELECT s.*, sp.name AS supplier_record_name, u.nickname AS create_by_name
+        FROM ecom_dev_sample s
+        LEFT JOIN scm_supplier sp ON sp.id = s.supplier_id
+        LEFT JOIN sys_user u ON u.id = s.create_by
+        WHERE s.project_id = #{projectId}
+        ORDER BY s.id
+    </select>
+
+</mapper>

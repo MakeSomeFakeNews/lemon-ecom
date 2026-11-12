@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.owh.mapper.EcomOwhInboundMapper">
+
+    <sql id="columns">
+        i.*, a.name AS account_name, a.provider, m.owh_code, w.name AS warehouse_name
+    </sql>
+
+    <sql id="joins">
+        FROM ecom_owh_inbound i
+        JOIN ecom_owh_account a ON a.id = i.account_id
+        LEFT JOIN ecom_owh_warehouse m ON m.id = i.mapping_id
+        LEFT JOIN wms_warehouse w ON w.id = i.warehouse_id
+    </sql>
+
+    <sql id="filters">
+        <if test="accountId != null">AND i.account_id = #{accountId}</if>
+        <if test="warehouseId != null">AND i.warehouse_id = #{warehouseId}</if>
+        <if test="keyword != null and keyword != ''">
+            AND (i.inbound_no LIKE CONCAT('%', #{keyword}, '%') OR i.owh_order_no LIKE CONCAT('%', #{keyword}, '%')
+                 OR i.source_no LIKE CONCAT('%', #{keyword}, '%') OR i.tracking_no LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+    </sql>
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhInbound">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        <where>
+            <include refid="filters"/>
+            <if test="status != null">AND i.status = #{status}</if>
+        </where>
+        ORDER BY i.id DESC
+    </select>
+
+    <select id="countByStatus" resultType="map">
+        SELECT i.status AS "status", COUNT(*) AS "cnt"
+        FROM ecom_owh_inbound i
+        <where>
+            <include refid="filters"/>
+        </where>
+        GROUP BY i.status
+    </select>
+
+    <select id="selectDetail" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhInbound">
+        SELECT <include refid="columns"/>
+        <include refid="joins"/>
+        WHERE i.id = #{id}
+    </select>
+
+    <select id="selectForUpdate" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhInbound">
+        SELECT * FROM ecom_owh_inbound WHERE id = #{id} FOR UPDATE
+    </select>
+
+    <select id="selectSources" resultType="map">
+        SELECT * FROM (
+            SELECT 'INBOUND' AS "sourceType", ib.id AS "sourceId", ib.doc_no AS "sourceNo", ib.to_warehouse_id AS "warehouseId",
+                   w.name AS "warehouseName", ib.total_qty AS "totalQty", COALESCE(ib.ship_date, CAST(ib.create_time AS DATE)) AS "bizDate",
+                   ib.status AS "status", ib.box_count AS "boxCount", ib.tracking_no AS "trackingNo", ib.create_time AS sort_time
+            FROM ecom_inbound ib
+            JOIN ecom_owh_warehouse m ON m.warehouse_id = ib.to_warehouse_id
+            LEFT JOIN wms_warehouse w ON w.id = ib.to_warehouse_id
+            WHERE ib.status IN ('DRAFT', 'APPROVING', 'SHIPPED')
+              AND NOT EXISTS (SELECT 1 FROM ecom_owh_inbound x WHERE x.source_type = 'INBOUND' AND x.source_id = ib.id AND x.status &lt;&gt; 'CANCELLED')
+              <if test="keyword != null and keyword != ''">AND ib.doc_no LIKE CONCAT('%', #{keyword}, '%')</if>
+            UNION ALL
+            SELECT 'TRANSFER', d.id, d.doc_no, d.to_warehouse_id, w.name, d.total_qty, d.biz_date, d.status, NULL, NULL, d.create_time
+            FROM wms_stock_doc d
+            JOIN ecom_owh_warehouse m ON m.warehouse_id = d.to_warehouse_id
+            LEFT JOIN wms_warehouse w ON w.id = d.to_warehouse_id
+            WHERE d.kind = 'TRANSFER' AND d.status = 'TRANSIT'
+              AND NOT EXISTS (SELECT 1 FROM ecom_inbound ib WHERE ib.transfer_doc_id = d.id)
+              AND NOT EXISTS (SELECT 1 FROM ecom_owh_inbound x WHERE x.source_type = 'TRANSFER' AND x.source_id = d.id AND x.status &lt;&gt; 'CANCELLED')
+              <if test="keyword != null and keyword != ''">AND d.doc_no LIKE CONCAT('%', #{keyword}, '%')</if>
+        ) src
+        ORDER BY src.sort_time DESC
+        LIMIT 200
+    </select>
+
+    <select id="selectTransfer" resultType="map">
+        SELECT d.id AS "id", d.doc_no AS "docNo", d.status AS "status", d.kind AS "kind", d.to_warehouse_id AS "toWarehouseId", d.biz_date AS "bizDate"
+        FROM wms_stock_doc d WHERE d.id = #{id}
+    </select>
+
+    <select id="selectTransferItems" resultType="map">
+        SELECT di.material_id AS "materialId", SUM(di.qty) AS "qty"
+        FROM wms_stock_doc_item di WHERE di.doc_id = #{id}
+        GROUP BY di.material_id
+    </select>
+</mapper>

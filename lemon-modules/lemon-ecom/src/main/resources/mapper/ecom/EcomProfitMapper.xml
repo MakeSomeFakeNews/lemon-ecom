@@ -112,6 +112,14 @@
         WHERE a.alloc_date &gt;= #{begin} AND a.alloc_date &lt;= #{end}
         <if test="storeId != null">AND a.store_id = #{storeId}</if>
         GROUP BY a.store_id, COALESCE(a.seller_sku, ''), YEAR(a.alloc_date) * 100 + MONTH(a.alloc_date), a.item_type
+        UNION ALL
+        <!-- 海外仓的仓租、入库费等按 SKU 分摊的费用（计入订单物流成本的不在这里） -->
+        SELECT a.store_id, COALESCE(a.seller_sku, '') AS seller_sku, '' AS country,
+               YEAR(a.alloc_date) * 100 + MONTH(a.alloc_date) AS period, a.item_type, SUM(a.amount_base) AS amount
+        FROM ecom_owh_fee_alloc a
+        WHERE a.order_id IS NULL AND a.alloc_date &gt;= #{begin} AND a.alloc_date &lt;= #{end}
+        <if test="storeId != null">AND a.store_id = #{storeId}</if>
+        GROUP BY a.store_id, COALESCE(a.seller_sku, ''), YEAR(a.alloc_date) * 100 + MONTH(a.alloc_date), a.item_type
     </select>
 
     <select id="selectAdSpend" resultType="com.lemon.erp.modules.ecom.dto.EcomProfitViews$TypedCell">

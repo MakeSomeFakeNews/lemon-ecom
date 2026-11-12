@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.publish.mapper.EcomRepriceLogMapper">
+
+    <insert id="insertBatch">
+        INSERT INTO ecom_reprice_log (rule_id, listing_id, store_id, seller_sku, old_price, new_price, lowest_price, buybox_price, floor_price, currency,
+                                      reason, status, message, run_time, create_by, create_time, update_time)
+        VALUES
+        <foreach collection="items" item="l" separator=",">
+            (#{l.ruleId}, #{l.listingId}, #{l.storeId}, #{l.sellerSku}, #{l.oldPrice}, #{l.newPrice}, #{l.lowestPrice}, #{l.buyboxPrice}, #{l.floorPrice},
+             #{l.currency}, #{l.reason}, #{l.status}, #{l.message}, #{l.runTime}, #{l.createBy}, NOW(), NOW())
+        </foreach>
+    </insert>
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.publish.entity.EcomRepriceLog">
+        SELECT g.*, r.name AS rule_name, s.name AS store_name, s.platform, l.title
+        FROM ecom_reprice_log g
+        LEFT JOIN ecom_reprice_rule r ON r.id = g.rule_id
+        LEFT JOIN ecom_store s ON s.id = g.store_id
+        LEFT JOIN ecom_listing l ON l.id = g.listing_id
+        <where>
+            <if test="ruleId != null">g.rule_id = #{ruleId}</if>
+            <if test="storeId != null">AND g.store_id = #{storeId}</if>
+            <if test="status != null">AND g.status = #{status}</if>
+            <if test="begin != null">AND g.run_time &gt;= #{begin}</if>
+            <if test="end != null">AND g.run_time &lt; #{end}</if>
+            <if test="keyword != null and keyword != ''">AND (g.seller_sku LIKE CONCAT('%', #{keyword}, '%') OR l.title LIKE CONCAT('%', #{keyword}, '%'))</if>
+        </where>
+        ORDER BY g.id DESC
+    </select>
+
+</mapper>

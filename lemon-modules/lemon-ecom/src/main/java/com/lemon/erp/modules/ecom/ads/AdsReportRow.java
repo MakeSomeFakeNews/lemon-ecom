@@ -3,6 +3,7 @@ package com.lemon.erp.modules.ecom.ads;
 import com.lemon.erp.modules.ecom.model.EcomAdMatchType;
 import com.lemon.erp.modules.ecom.model.EcomAdStatus;
 import com.lemon.erp.modules.ecom.model.EcomAdTargetType;
+import com.lemon.erp.modules.ecom.model.EcomAdType;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -41,4 +42,6 @@ public class AdsReportRow {
     private int orders;
     private int units;
     private String currency;
+    /** 广告类型（接口拉取时按报告的广告产品填写），为空时新建活动按导入时选择的类型 */
+    private EcomAdType adType;
 }

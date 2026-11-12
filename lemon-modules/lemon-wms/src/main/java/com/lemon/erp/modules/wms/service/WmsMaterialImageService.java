@@ -159,6 +159,42 @@ public class WmsMaterialImageService {
         deleteAfterCommit(images.stream().map(WmsMaterialImage::getUrl).toList());
     }
 
+    /**
+     * 把其他业务已上传的图片（如电商开发项目的产品图）复制为物料图片，排在已有图片之后，超出上限的忽略；
+     * 复制文件，原业务删除图片不影响物料。在调用方的事务中执行
+     *
+     * @param urls 图片地址（{@code /files/...}），不存在的文件跳过
+     */
+    @Transactional
+    public void copyFromUrls(Long materialId, List<String> urls) {
+        requireMaterial(materialId);
+        List<WmsMaterialImage> images = list(materialId);
+        int sort = images.isEmpty() ? 0 : images.get(images.size() - 1).getSort();
+        String main = images.isEmpty() ? null : images.get(0).getUrl();
+        int count = images.size();
+        for (String source : urls) {
+            if (count >= MAX_IMAGES) {
+                break;
+            }
+            String url = source == null ? null : fileStorageService.copyImage(source, DIR);
+            if (url == null) {
+                continue;
+            }
+            deleteOnRollback(url);
+            WmsMaterialImage image = new WmsMaterialImage();
+            image.setMaterialId(materialId);
+            image.setUrl(url);
+            image.setFileName(fileName(source));
+            image.setSort(++sort);
+            imageMapper.insert(image);
+            count++;
+            if (main == null) {
+                main = url;
+                syncMain(materialId, url);
+            }
+        }
+    }
+
     /** 复制物料时复制图片（复制文件，两个物料的图片互不影响），在新增物料的事务中调用 */
     void copy(Long fromMaterialId, Long toMaterialId) {
         String main = null;

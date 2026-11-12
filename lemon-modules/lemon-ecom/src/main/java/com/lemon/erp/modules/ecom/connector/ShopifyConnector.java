@@ -288,6 +288,12 @@ public class ShopifyConnector implements ChannelConnector {
      * 明细带 platformLineId 时只发这些订单行（数量取明细数量与剩余数量的较小值），否则发全部剩余数量。
      * 配送单都已关闭（在 Shopify 后台已发货）时跳过
      */
+    /** 按订单行回传，支持一张订单分多个包裹部分发货 */
+    @Override
+    public boolean partialShipment() {
+        return true;
+    }
+
     @Override
     public ShipmentResult confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
         Api api = api(ctx);

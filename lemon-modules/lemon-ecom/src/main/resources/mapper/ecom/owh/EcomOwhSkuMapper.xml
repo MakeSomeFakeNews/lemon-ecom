@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.owh.mapper.EcomOwhSkuMapper">
+
+    <select id="selectByAccount" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhSku">
+        SELECT k.*, mt.code AS material_code, mt.name AS material_name, mt.spec AS material_spec
+        FROM ecom_owh_sku k
+        LEFT JOIN wms_material mt ON mt.id = k.material_id
+        WHERE k.account_id = #{accountId}
+        <if test="keyword != null and keyword != ''">
+            AND (k.owh_sku LIKE CONCAT('%', #{keyword}, '%') OR mt.code LIKE CONCAT('%', #{keyword}, '%') OR mt.name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY mt.code
+    </select>
+</mapper>

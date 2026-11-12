@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.dev.mapper.EcomDevLogMapper">
+
+    <select id="selectByProject" resultType="com.lemon.erp.modules.ecom.dev.entity.EcomDevLog">
+        SELECT l.*, u.nickname AS create_by_name
+        FROM ecom_dev_log l
+        LEFT JOIN sys_user u ON u.id = l.create_by
+        WHERE l.project_id = #{projectId}
+        ORDER BY l.create_time, l.id
+    </select>
+
+</mapper>

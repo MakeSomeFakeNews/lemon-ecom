@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.owh.mapper.EcomOwhAccountMapper">
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.owh.entity.EcomOwhAccount">
+        SELECT a.id, a.code, a.name, a.provider, a.sandbox, a.api_base_url, a.currency, a.status, a.auto_sync, a.stock_sync_time, a.fee_sync_time,
+               a.last_error, a.remark, a.create_by, a.create_time, a.update_time,
+               CASE WHEN a.credentials IS NULL OR a.credentials = '' THEN 0 ELSE 1 END AS has_credentials,
+               (SELECT COUNT(*) FROM ecom_owh_warehouse w WHERE w.account_id = a.id) AS warehouse_count
+        FROM ecom_owh_account a
+        <where>
+            <if test="keyword != null and keyword != ''">
+                AND (a.code LIKE CONCAT('%', #{keyword}, '%') OR a.name LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+            <if test="provider != null">AND a.provider = #{provider}</if>
+            <if test="status != null">AND a.status = #{status}</if>
+        </where>
+        ORDER BY a.id
+    </select>
+</mapper>

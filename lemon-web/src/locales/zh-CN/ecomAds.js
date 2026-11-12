@@ -268,7 +268,7 @@ export default {
     keywordPh: '对象 / 活动'
   },
   auth: {
-    tip: '广告接口的授权与店铺的渠道授权分开保存（加密、只写不读）。亚马逊广告：在 Amazon Ads 开发者后台创建 LWA 应用并取得 Refresh Token，保存后点击「配置文件」选择站点的 profile',
+    tip: '广告接口的授权与店铺的渠道授权分开保存（加密、只写不读）。亚马逊广告：在 Amazon Ads 开发者后台创建 LWA 应用，在「授权」中填写 Client ID / Client Secret 后用「使用 Amazon 账号授权」完成 Login with Amazon 授权（也可以直接填写 Refresh Token），授权后选择站点的配置文件（profile）；同步包含商品推广、品牌推广、展示型推广',
     connector: '广告接口',
     unsupported: '暂未接入',
     configured: '已授权',

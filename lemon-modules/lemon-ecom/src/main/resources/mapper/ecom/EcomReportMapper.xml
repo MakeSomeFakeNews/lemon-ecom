@@ -40,11 +40,12 @@
     </select>
 
     <select id="selectTrend" resultType="com.lemon.erp.modules.ecom.dto.EcomReports$TrendRow">
-        SELECT CAST(o.order_time AS DATE) AS day, COUNT(*) AS orders, COALESCE(SUM(o.total_base), 0) AS sales, COALESCE(SUM(o.profit), 0) AS profit
+        <!-- day 是 H2 的关键字，别名加引号 -->
+        SELECT CAST(o.order_time AS DATE) AS "day", COUNT(*) AS orders, COALESCE(SUM(o.total_base), 0) AS sales, COALESCE(SUM(o.profit), 0) AS profit
         FROM ecom_order o
         WHERE <include refid="orderRange"/>
         GROUP BY CAST(o.order_time AS DATE)
-        ORDER BY day
+        ORDER BY CAST(o.order_time AS DATE)
     </select>
 
     <select id="selectByStore" resultType="com.lemon.erp.modules.ecom.dto.EcomReports$StoreRow">
@@ -148,10 +149,15 @@
 
     <select id="selectAllocationByDay" resultType="map">
         SELECT a.alloc_date AS "day", SUM(a.amount_base) AS amount
-        FROM ecom_fee_allocation a
-        WHERE a.alloc_date &gt;= #{begin} AND a.alloc_date &lt;= #{end}
-          AND a.item_type NOT IN ('ORDER', 'REFUND', 'AD', 'RESERVE', 'MARKETPLACE_TAX')
-        <if test="storeId != null">AND a.store_id = #{storeId}</if>
+        FROM (SELECT a.alloc_date, a.amount_base FROM ecom_fee_allocation a
+              WHERE a.alloc_date &gt;= #{begin} AND a.alloc_date &lt;= #{end}
+                AND a.item_type NOT IN ('ORDER', 'REFUND', 'AD', 'RESERVE', 'MARKETPLACE_TAX')
+              <if test="storeId != null">AND a.store_id = #{storeId}</if>
+              UNION ALL
+              <!-- 海外仓按 SKU 分摊的费用（计入订单物流成本的不在这里） -->
+              SELECT o.alloc_date, o.amount_base FROM ecom_owh_fee_alloc o
+              WHERE o.order_id IS NULL AND o.alloc_date &gt;= #{begin} AND o.alloc_date &lt;= #{end}
+              <if test="storeId != null">AND o.store_id = #{storeId}</if>) a
         GROUP BY a.alloc_date
     </select>
 

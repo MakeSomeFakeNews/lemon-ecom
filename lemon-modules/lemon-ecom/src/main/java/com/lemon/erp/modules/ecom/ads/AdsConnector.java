@@ -31,6 +31,37 @@ public interface AdsConnector {
         return info().supports(capability);
     }
 
+    /**
+     * OAuth 授权页地址（卖家在浏览器中登录平台并同意后，平台带 code 跳转到 redirectUri）。
+     * 不支持 OAuth 的连接器（只能手工填写授权字段）抛出不支持
+     *
+     * @param ctx         已保存的授权字段（clientId 等应用信息）
+     * @param redirectUri 回调地址（需要在平台应用中登记为允许的回调地址）
+     * @param state       签名的 state（回调时原样带回，用于确定租户与店铺）
+     */
+    default String authorizeUrl(AdsContext ctx, String redirectUri, String state) {
+        throw unsupported();
+    }
+
+    /**
+     * OAuth 回调：用授权码换取令牌，返回要合并写入广告授权的字段（刷新令牌、访问令牌、过期时间等）
+     */
+    default Map<String, String> exchangeCode(AdsContext ctx, String code, String redirectUri) {
+        throw unsupported();
+    }
+
+    /**
+     * 某种广告类型、某个层级是否支持该能力（如亚马逊品牌推广的广告组没有默认竞价、展示型推广没有否定关键词）；
+     * 默认按 {@link #supports(AdsCapability)}
+     *
+     * @param adType 广告类型，为空按商品推广
+     * @param level  对象层级（活动 / 广告组 / 投放），否定关键词时为空
+     */
+    default boolean supports(com.lemon.erp.modules.ecom.model.EcomAdType adType, com.lemon.erp.modules.ecom.model.EcomAdLevel level,
+                             AdsCapability capability) {
+        return supports(capability);
+    }
+
     /** 确保访问令牌有效（快过期时刷新并写回），默认无需令牌 */
     default void ensureToken(AdsContext ctx) {
     }

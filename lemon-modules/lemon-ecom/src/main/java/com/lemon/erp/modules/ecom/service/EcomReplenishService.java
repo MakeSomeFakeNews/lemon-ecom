@@ -8,6 +8,8 @@ import com.lemon.erp.modules.ecom.dto.ReplenishTransit;
 import com.lemon.erp.modules.ecom.dto.ReplenishWeights;
 import com.lemon.erp.modules.ecom.analytics.dto.DailyForecast;
 import com.lemon.erp.modules.ecom.analytics.service.EcomForecastService;
+import com.lemon.erp.modules.ecom.analytics.service.EcomStockoutService;
+import com.lemon.erp.modules.ecom.analytics.service.StockoutCalc;
 import com.lemon.erp.modules.ecom.entity.EcomReplenishSetting;
 import com.lemon.erp.modules.ecom.mapper.EcomReplenishMapper;
 import com.lemon.erp.modules.ecom.model.ReplenishLevel;
@@ -45,6 +47,7 @@ import java.util.stream.Stream;
  *   采购周期取物料级补货设置 → 默认供应商的提前期 → 店铺补货周期</li>
  * </ol>
  * 补货周期、安全天数、系数、手工日均、不补货按「在线商品级设置 → 物料级设置 → 店铺设置」取第一个有值的。
+ * 加权日均排除断货日（库存快照可售数不大于阈值的天，按销量预测参数开启），行上返回断货天数与排除前的日均。
  * 组合商品（{@link EcomBundleService#componentsOf}）：平台仓 / 本地仓库存、头程在途按组件折算为套数，
  * 本地仓采购把组合 SKU 的平台仓建议、日均按组件用量折算到各组件物料上
  */
@@ -100,6 +103,7 @@ public class EcomReplenishService {
         List<ReplenishRow> rows = raw.stream().filter(r -> components.containsKey(r.getListingId())).toList();
         rows.forEach(r -> r.setComponents(components.get(r.getListingId())));
         fillBundles(rows.stream().filter(EcomReplenishService::isBundle).toList());
+        applyStockout(rows, today, weights.maxDays());
         if (weights.forecast() && !rows.isEmpty()) {
             Map<Long, DailyForecast> forecasts = forecastService.dailyForecast(rows.stream().map(ReplenishRow::getListingId).toList(), FORECAST_DAYS);
             for (ReplenishRow r : rows) {
@@ -117,6 +121,32 @@ public class EcomReplenishService {
             compute(r, today, weights, listingSettings.get(r.getListingId()), r.getMaterialId() == null ? null : materialSettings.get(r.getMaterialId()));
         }
         return rows;
+    }
+
+    /**
+     * 排除断货日（预测参数中开启时）：各统计期间的销量 = 非断货日的销量 ÷ 非断货天数 × 期间天数（{@link StockoutCalc#excludeStockout}），
+     * 断货天数取加权用到的最长期间
+     */
+    private void applyStockout(List<ReplenishRow> rows, LocalDate today, int maxDays) {
+        if (rows.isEmpty()) {
+            return;
+        }
+        Map<Long, EcomStockoutService.Window> windows = forecastService.stockoutWindows(rows.stream().map(ReplenishRow::getListingId).toList(),
+                today, 60);
+        int[] days = {7, 14, 30, 60};
+        for (ReplenishRow r : rows) {
+            EcomStockoutService.Window w = windows.get(r.getListingId());
+            if (w == null) {
+                continue;
+            }
+            BigDecimal[] raw = {r.getSales7(), r.getSales14(), r.getSales30(), r.getSales60()};
+            BigDecimal[] eff = new BigDecimal[4];
+            for (int i = 0; i < 4; i++) {
+                eff[i] = StockoutCalc.excludeStockout(raw[i], w.salesIn(today, days[i]), days[i], w.days(today, days[i]));
+            }
+            r.setEffectiveSales(eff);
+            r.setStockoutDays(w.days(today, maxDays));
+        }
     }
 
     /** 组合商品（组成不是「映射物料 × 多件装」）：组件不止一个，或组件不是映射的物料 */
@@ -193,6 +223,12 @@ public class EcomReplenishService {
         r.setHasSetting(listing != null);
         r.setDisabled(isDisabled(listing) || isDisabled(material));
         BigDecimal weighted = weights.daily(r.getSales7(), r.getSales14(), r.getSales30(), r.getSales60());
+        BigDecimal[] eff = r.getEffectiveSales();
+        if (eff != null && r.getStockoutDays() > 0) {
+            // 排除断货日：断货当天卖不出去，按正常日的日均折算
+            r.setRawWeightedDaily(weighted);
+            weighted = weights.daily(eff[0], eff[1], eff[2], eff[3]);
+        }
         r.setWeightedDaily(weighted);
         BigDecimal override = pick(listing, EcomReplenishSetting::getDailySales);
         r.setDailyOverridden(override != null);

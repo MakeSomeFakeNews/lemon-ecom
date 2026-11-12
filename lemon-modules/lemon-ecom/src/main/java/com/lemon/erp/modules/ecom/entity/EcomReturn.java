@@ -39,6 +39,8 @@ public class EcomReturn extends BaseEntity {
     /** 生成的销售退货单 */
     private Long tradeDocId;
     private String tradeDocNo;
+    /** 全部销售退货单号（多包裹订单按发货单分别生成，逗号分隔） */
+    private String tradeDocNos;
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime refundTime;
     private String remark;

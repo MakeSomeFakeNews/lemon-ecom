@@ -1,5 +1,6 @@
 package com.lemon.erp.modules.ecom.service;
 
+import com.lemon.erp.modules.ecom.oper.scope.EcomStoreScope;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.lemon.erp.common.exception.BizException;
@@ -9,9 +10,7 @@ import com.lemon.erp.framework.data.DetailLines;
 import com.lemon.erp.framework.data.StatusTransitions;
 import com.lemon.erp.framework.security.LoginUser;
 import com.lemon.erp.framework.security.SecurityUtils;
-import com.lemon.erp.framework.security.datascope.DataPermission;
 import com.lemon.erp.framework.security.datascope.DataPermissionRule;
-import com.lemon.erp.framework.security.datascope.DataScopes;
 import com.lemon.erp.modules.ecom.dto.BundleComponent;
 import com.lemon.erp.modules.ecom.dto.FromReplenishRequest;
 import com.lemon.erp.modules.ecom.dto.GenerateInboundRequest;
@@ -62,7 +61,7 @@ public class EcomShipmentPlanService {
     private final WmsWarehouseService warehouseService;
     private final DocNoService docNoService;
 
-    @DataPermission(table = "ecom_shipment_plan", deptColumn = "dept_id", userColumn = "create_by")
+    // 数据范围按店铺授权（EcomStoreScope，接口执行期间自动过滤），不再按部门 / 制单人
     public PageResult<EcomShipmentPlan> page(long current, long size, Long storeId, ShipmentPlanStatus status, String keyword) {
         Page<EcomShipmentPlan> page = Page.of(current, size);
         planMapper.selectPageList(page, storeId, status, keyword);
@@ -70,14 +69,14 @@ public class EcomShipmentPlanService {
     }
 
     public EcomShipmentPlan detail(Long id) {
-        EcomShipmentPlan p = DataScopes.require(PLAN_RULE, () -> planMapper.selectDetail(id), "ecom.error.catalog.planNotFound");
+        EcomShipmentPlan p = EcomStoreScope.require(() -> planMapper.selectDetail(id), "ecom.error.catalog.planNotFound");
         p.setItems(itemMapper.selectByPlanId(id));
         p.setInbounds(inboundService.listByPlan(id));
         return p;
     }
 
     private EcomShipmentPlan require(Long id) {
-        return DataScopes.require(PLAN_RULE, () -> planMapper.selectById(id), "ecom.error.catalog.planNotFound");
+        return EcomStoreScope.require(() -> planMapper.selectById(id), "ecom.error.catalog.planNotFound");
     }
 
     @Transactional
