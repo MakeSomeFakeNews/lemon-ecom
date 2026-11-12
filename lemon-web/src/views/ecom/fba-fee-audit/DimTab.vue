@@ -6,14 +6,17 @@
       <a-checkbox v-model:checked="query.missingOnly" @change="search">{{ $t('ecomFba.dim.missingOnly') }}</a-checkbox>
     </div>
     <TableToolbar :exporter="exportAll" v-model:size="size" v-model:checked="checked" :columns="columns" @refresh="load">
-      <a-tooltip :title="query.storeId ? '' : $t('ecomFba.common.pickStoreFirst')">
-        <a-button v-perm="'ecom:fbaFee:edit'" :disabled="!query.storeId" @click="sync(query.storeId)">
-          <template #icon><CloudSyncOutlined /></template>{{ $t('ecomFba.dim.sync') }}
-        </a-button>
-      </a-tooltip>
-      <a-button v-perm="'ecom:fbaFee:edit'" @click="uploadRef.open(query.storeId, AmzReportType.ESTIMATED_FEES)">
-        <template #icon><UploadOutlined /></template>{{ $t('ecomFba.common.uploadReport') }}
-      </a-button>
+      <a-dropdown v-perm="'ecom:fbaFee:edit'">
+        <a-button type="primary"><template #icon><CloudSyncOutlined /></template>{{ $t('ecomFba.claim.dataOps') }} <DownOutlined /></a-button>
+        <template #overlay>
+          <a-menu @click="onDataMenu">
+            <a-menu-item key="sync" :disabled="!query.storeId" :title="query.storeId ? '' : $t('ecomFba.common.pickStoreFirst')">
+              <CloudSyncOutlined /> {{ $t('ecomFba.dim.sync') }}
+            </a-menu-item>
+            <a-menu-item key="upload"><UploadOutlined /> {{ $t('ecomFba.common.uploadReport') }}</a-menu-item>
+          </a-menu>
+        </template>
+      </a-dropdown>
       <a-tooltip :title="$t('ecomFba.dim.tip')"><InfoCircleOutlined class="tip-icon" /></a-tooltip>
     </TableToolbar>
     <a-table
@@ -62,7 +65,7 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
-import { CloudSyncOutlined, InfoCircleOutlined, UploadOutlined } from '@ant-design/icons-vue'
+import { CloudSyncOutlined, DownOutlined, InfoCircleOutlined, UploadOutlined } from '@ant-design/icons-vue'
 import TableToolbar from '@/components/TableToolbar.vue'
 import TableActions from '@/components/common/TableActions.vue'
 import { actionColumn } from '@/components/common/tableActions'
@@ -104,6 +107,10 @@ const dimRef = ref()
 const uploadRef = ref()
 const remove = useAction(deleteDim, { successKey: 'common.msg.deleteSuccess', reload: () => load() })
 const sync = useAction(syncDims, { successKey: (ids) => t('ecomFba.common.syncCreated', { n: (ids || []).length }) })
+function onDataMenu({ key }) {
+  if (key === 'sync') sync(query.storeId)
+  else uploadRef.value.open(query.storeId, AmzReportType.ESTIMATED_FEES)
+}
 </script>
 
 <style scoped>

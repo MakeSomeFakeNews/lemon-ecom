@@ -1,7 +1,7 @@
 <template>
   <div class="filters">
-    <a-range-picker v-model:value="range" value-format="YYYY-MM-DD" :allow-clear="false" :presets="presets" />
-    <StoreSelect v-model:value="storeId" allow-clear :placeholder="$t('ecomAnalytics.common.allStores')" class="filter" />
+    <a-range-picker v-model:value="range" value-format="YYYY-MM-DD" :allow-clear="false" :presets="presets" @change="load" />
+    <StoreSelect v-model:value="storeId" allow-clear :placeholder="$t('ecomAnalytics.common.allStores')" class="filter" @update:value="load" />
     <a-input v-model:value="keyword" allow-clear :placeholder="$t('ecomAnalytics.common.keywordPh')" class="filter" @press-enter="load" />
     <a-radio-group v-model:value="metric" button-style="solid" @change="load">
       <a-radio-button :value="AbcMetric.SALES">{{ $t('ecomAnalytics.product.bySales') }}</a-radio-button>
@@ -113,7 +113,21 @@ const chartOption = computed(() => {
         barMaxWidth: 24,
         data: top.map((r) => nz(r.value))
       },
-      { name: t('ecomAnalytics.product.cumShare'), type: 'line', yAxisIndex: 1, smooth: true, data: top.map((r) => nz(r.cumSharePercent)) }
+      {
+        name: t('ecomAnalytics.product.cumShare'),
+        type: 'line',
+        yAxisIndex: 1,
+        smooth: true,
+        data: top.map((r) => nz(r.cumSharePercent)),
+        // A / B 类阈值参考线
+        markLine: {
+          silent: true,
+          symbol: 'none',
+          lineStyle: { type: 'dashed', color: '#fa8c16' },
+          label: { position: 'insideEndTop', formatter: (p) => `${p.value}%` },
+          data: [{ yAxis: aPercent.value }, { yAxis: bPercent.value }]
+        }
+      }
     ]
   }
 })
@@ -158,7 +172,17 @@ onMounted(load)
 .stat {
   padding: 12px 16px;
   border: 1px solid var(--app-border);
+  border-left-width: 3px;
   border-radius: 8px;
+}
+.stat-A {
+  border-left-color: #f5222d;
+}
+.stat-B {
+  border-left-color: #fa8c16;
+}
+.stat-C {
+  border-left-color: #8c8c8c;
 }
 .stat-value {
   margin: 4px 0;

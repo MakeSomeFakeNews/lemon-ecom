@@ -17,6 +17,7 @@ import com.lemon.erp.modules.ecom.mapper.EcomOrderEnhanceMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomOrderItemMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomOrderMapper;
 import com.lemon.erp.modules.ecom.model.EcomLocalStatus;
+import com.lemon.erp.modules.ecom.model.EcomOrderLogAction;
 import com.lemon.erp.modules.ecom.model.FulfillmentType;
 import com.lemon.erp.modules.wms.entity.WmsMaterial;
 import com.lemon.erp.modules.wms.service.WmsMaterialService;
@@ -65,6 +66,7 @@ public class EcomOrderCheckService {
     private final EcomRemoteAreaService remoteAreaService;
     private final EcomOrderSettingService settingService;
     private final EcomOrderService orderService;
+    private final EcomOrderLogService logService;
 
     /**
      * 检查结果（审单规则匹配用）
@@ -169,6 +171,7 @@ public class EcomOrderCheckService {
                     .map(AddressIssue::message).collect(Collectors.joining("; "))));
             orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getLocalStatus, EcomLocalStatus.EXCEPTION)
                     .set(EcomOrder::getException, reason).eq(EcomOrder::getId, o.getId()));
+            logService.log(o.getId(), EcomOrderLogAction.EXCEPTION, reason);
             return reason;
         }
         return null;
@@ -178,6 +181,7 @@ public class EcomOrderCheckService {
         orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getHoldPrevStatus, prev)
                 .set(EcomOrder::getLocalStatus, EcomLocalStatus.ON_HOLD).set(EcomOrder::getHoldReason, abbreviate(reason))
                 .set(EcomOrder::getHoldRuleId, null).eq(EcomOrder::getId, orderId));
+        logService.log(orderId, EcomOrderLogAction.HOLD, reason);
     }
 
     /**

@@ -17,15 +17,19 @@
         LEFT JOIN ecom_shipment_plan sp ON sp.id = i.plan_id
     </sql>
 
+    <sql id="pageFilters">
+        <if test="storeId != null">i.store_id = #{storeId}</if>
+        <if test="status != null">AND i.status = #{status}</if>
+        <if test="keyword != null and keyword != ''">
+            AND (i.doc_no LIKE CONCAT('%', #{keyword}, '%') OR i.shipment_id LIKE CONCAT('%', #{keyword}, '%') OR i.tracking_no LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+    </sql>
+
     <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.entity.EcomInbound">
         SELECT <include refid="columns"/>
         <include refid="joins"/>
         <where>
-            <if test="storeId != null">i.store_id = #{storeId}</if>
-            <if test="status != null">AND i.status = #{status}</if>
-            <if test="keyword != null and keyword != ''">
-                AND (i.doc_no LIKE CONCAT('%', #{keyword}, '%') OR i.shipment_id LIKE CONCAT('%', #{keyword}, '%') OR i.tracking_no LIKE CONCAT('%', #{keyword}, '%'))
-            </if>
+            <include refid="pageFilters"/>
         </where>
         ORDER BY i.id DESC
     </select>
@@ -34,6 +38,16 @@
         SELECT <include refid="columns"/>
         <include refid="joins"/>
         WHERE i.id = #{id}
+    </select>
+
+    <!-- 各状态的条数（状态标签页）：条件与列表相同、不含状态 -->
+    <select id="countByStatus" resultType="java.util.Map">
+        SELECT i.status AS "status", COUNT(*) AS "cnt"
+        FROM ecom_inbound i
+        <where>
+            <include refid="pageFilters"/>
+        </where>
+        GROUP BY i.status
     </select>
 
 </mapper>

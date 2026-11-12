@@ -1,6 +1,7 @@
 <template>
   <FormDrawer :drawer="drawer" :create-title="$t('ecom.store.add')" :edit-title="$t('ecom.store.edit')" width="min(760px, 100vw)">
     <a-form ref="formRef" :model="form" :rules="rules" layout="vertical">
+      <a-divider orientation="left" class="section first">{{ $t('ecom.store.sectionBasic') }}</a-divider>
       <a-row :gutter="16">
         <a-col :xs="24" :sm="12">
           <a-form-item :label="$t('ecom.store.code')" name="code">
@@ -25,6 +26,7 @@
               option-filter-prop="label"
               :placeholder="$t('common.placeholder.select')"
               :options="optionsWithCurrent(dict.ecom_marketplace, form.marketplace)"
+              @change="onMarketplace"
             />
           </a-form-item>
         </a-col>
@@ -38,6 +40,20 @@
             <a-auto-complete v-model:value="form.timezone" :options="timezoneOptions" :filter-option="filterTimezone" :placeholder="$t('ecom.store.timezonePh')" />
           </a-form-item>
         </a-col>
+        <a-col :xs="24" :sm="12">
+          <a-form-item :label="$t('ecom.store.owner')" name="ownerId">
+            <IdentityUserSelect v-model:value="form.ownerId" :label="form.ownerName" />
+          </a-form-item>
+        </a-col>
+        <a-col :xs="24" :sm="12">
+          <a-form-item :label="$t('ecom.store.sellerId')" name="sellerId" :extra="$t('ecom.store.sellerIdExtra')">
+            <a-input v-model:value="form.sellerId" :maxlength="64" />
+          </a-form-item>
+        </a-col>
+      </a-row>
+
+      <a-divider orientation="left" class="section">{{ $t('ecom.store.sectionWarehouse') }}</a-divider>
+      <a-row :gutter="16">
         <a-col :xs="24" :sm="12">
           <a-form-item :label="$t('ecom.store.warehouse')" name="warehouseId" :extra="$t('ecom.store.warehouseExtra')">
             <WarehouseSelect v-model:value="form.warehouseId" :allow-clear="false" />
@@ -61,16 +77,6 @@
         <a-col :xs="12" :sm="8">
           <a-form-item :label="$t('ecom.store.safetyDays')" name="safetyDays" :extra="$t('ecom.store.safetyDaysExtra')">
             <a-input-number v-model:value="form.safetyDays" :min="0" :max="365" :precision="0" :addon-after="$t('common.unit.day')" class="full" />
-          </a-form-item>
-        </a-col>
-        <a-col :xs="24" :sm="12">
-          <a-form-item :label="$t('ecom.store.owner')" name="ownerId">
-            <IdentityUserSelect v-model:value="form.ownerId" :label="form.ownerName" />
-          </a-form-item>
-        </a-col>
-        <a-col :xs="24" :sm="12">
-          <a-form-item :label="$t('ecom.store.sellerId')" name="sellerId" :extra="$t('ecom.store.sellerIdExtra')">
-            <a-input v-model:value="form.sellerId" :maxlength="64" />
           </a-form-item>
         </a-col>
       </a-row>
@@ -323,6 +329,37 @@ const clearCredentials = useAction(clearStoreCredentials, {
   }
 })
 
+/** 站点对应的常用币种与时区：选择站点时带出（币种需已在币种管理中启用） */
+const MARKET_DEFAULTS = {
+  US: ['USD', 'America/Los_Angeles'],
+  CA: ['CAD', 'America/Toronto'],
+  MX: ['MXN', 'America/Mexico_City'],
+  BR: ['BRL', 'America/Sao_Paulo'],
+  UK: ['GBP', 'Europe/London'],
+  DE: ['EUR', 'Europe/Berlin'],
+  FR: ['EUR', 'Europe/Paris'],
+  IT: ['EUR', 'Europe/Rome'],
+  ES: ['EUR', 'Europe/Madrid'],
+  NL: ['EUR', 'Europe/Amsterdam'],
+  PL: ['PLN', 'Europe/Warsaw'],
+  SE: ['SEK', 'Europe/Stockholm'],
+  AE: ['AED', 'Asia/Dubai'],
+  SA: ['SAR', 'Asia/Riyadh'],
+  JP: ['JPY', 'Asia/Tokyo'],
+  AU: ['AUD', 'Australia/Sydney'],
+  SG: ['SGD', 'Asia/Singapore'],
+  MY: ['MYR', 'Asia/Kuala_Lumpur'],
+  TH: ['THB', 'Asia/Bangkok'],
+  PH: ['PHP', 'Asia/Manila'],
+  VN: ['VND', 'Asia/Ho_Chi_Minh'],
+  ID: ['IDR', 'Asia/Jakarta']
+}
+function onMarketplace(v) {
+  const [currency, timezone] = MARKET_DEFAULTS[v] || []
+  if (currency && currencyOptions(currencies.value).some((o) => o.value === currency)) form.value.currency = currency
+  if (timezone) form.value.timezone = timezone
+}
+
 defineExpose({ openCreate: drawer.openCreate, openEdit: drawer.openEdit })
 </script>
 
@@ -333,6 +370,9 @@ defineExpose({ openCreate: drawer.openCreate, openEdit: drawer.openEdit })
 .section {
   margin: 8px 0 16px;
   font-size: 14px;
+}
+.section.first {
+  margin-top: 0;
 }
 .connector-meta {
   display: flex;

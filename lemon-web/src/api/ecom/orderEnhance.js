@@ -19,6 +19,8 @@ export const tagOrders = (orderIds, tagIds) => request.post('/ecom/order/tag', {
 export const untagOrders = (orderIds, tagIds) => request.post('/ecom/order/untag', { ids: orderIds, tagIds })
 /** 内部备注历史 */
 export const listOrderNotes = (id) => request.get(`/ecom/order/${id}/notes`)
+/** 订单操作日志（新的在前，带操作人） */
+export const listOrderLogs = (id) => request.get(`/ecom/order/${id}/logs`)
 export const addOrderNote = (id, content) => request.post(`/ecom/order/${id}/notes`, { content })
 /** 地址校验、黑名单、利润预估的结果；POST 为重新校验 */
 export const getOrderCheck = (id) => request.get(`/ecom/order/${id}/check`)

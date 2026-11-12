@@ -105,7 +105,7 @@ npm run dev
 
 `sys_menu.type`：`M` 目录、`C` 菜单（对应前端页面）、`F` 按钮（只有权限标识）。
 
-菜单层级：一级目录是**模块**，和「首页」一起显示在页面顶部的导航栏；侧边栏只显示当前模块的菜单，在首页、个人中心等不属于模块的页面显示模块列表（默认的「顶部模块 + 侧边菜单」布局，其他布局见「界面设置」）。模块下可以再建一层目录作为侧边栏的**分组**（如 电商 → 店铺与商品 / 订单与售后 / 库存与物流 / 结算与分析），分组不填路由地址，页面地址仍拼接在模块路径之后（`/scm/purchase`）。切换模块时回到该模块上次打开的页面；移动端抽屉显示完整的菜单树。新增页面放在对应的分组下，并给需要的角色勾选（勾选页面会自动勾选所在分组和模块）。
+菜单层级：一级目录是**模块**，和「首页」一起显示在页面顶部的导航栏；侧边栏只显示当前模块的菜单，在首页、个人中心等不属于模块的页面显示模块列表（默认的「顶部模块 + 侧边菜单」布局，其他布局见「界面设置」）。模块下可以再建一层目录作为侧边栏的**分组**（如 订单管理 → 订单处理 / 售后客服 / 订单设置），分组不填路由地址，页面地址仍拼接在模块路径之后（`/scm/purchase`）。切换模块时回到该模块上次打开的页面；移动端抽屉显示完整的菜单树。新增页面放在对应的分组下，并给需要的角色勾选（勾选页面会自动勾选所在分组和模块）。
 
 权限分两层：
 
@@ -409,7 +409,18 @@ public void onOrderApproved(FlowFinishedEvent e) {
 
 ## 跨境电商
 
-代码在 `modules/ecom`（Gradle 模块 `lemon-modules/lemon-ecom`，依赖 fin、scm、wms），前端 `views/ecom`、`api/ecom`、`components/ecom`（`StoreSelect`、`ChannelSelect` 等），语言包 `locales/<语言>/ecom.js`、`ecomOrder.js`、`ecomReport.js`。顶部模块「电商」（`/ecom`，菜单 ID 17）分四个分组：店铺与商品（平台店铺 `/ecom/store`、在线商品 `/ecom/listing`）、订单与售后（平台订单 `/ecom/order`、退货退款 `/ecom/return`）、库存与物流（头程货件 `/ecom/inbound`、平台仓库存 `/ecom/platform-stock`、补货建议 `/ecom/replenish`、采购计划 `/ecom/purchase-plan`、物流渠道 `/ecom/logistics`）、结算与分析（电商看板 `/ecom/dashboard`、平台结算 `/ecom/settlement`、广告数据 `/ecom/ad`、利润分析 `/ecom/profit`）。进销存报表（`ecom/jxc`，接口 `/ecom/jxc/*`）也在这个模块中，菜单在「供应链」下，见「供应链管理 → 进销存报表」。
+代码在 `modules/ecom`（Gradle 模块 `lemon-modules/lemon-ecom`，依赖 fin、scm、wms），前端 `views/ecom`、`api/ecom`、`components/ecom`（`StoreSelect`、`ChannelSelect` 等），语言包 `locales/<语言>/ecom.js`、`ecomOrder.js`、`ecomReport.js`。电商功能分布在顶部的四个模块和两个原有模块中（页面地址统一为 `/ecom/<页面>`，模块只是导航上的归类，移动菜单不改地址）：
+
+| 模块（菜单 ID） | 侧边栏分组 |
+|---|---|
+| 商品管理（19，`/product`） | 商品资料（本地商品 `/wms/material`、在线商品、SKU 配对）、刊登定价、产品开发 |
+| 订单管理（20，`/order`） | 订单处理（平台订单、包裹打单、扫描发货、物流跟踪）、售后客服（退货退款、售后工单、买家消息、评价管理、回复模板）、订单设置 |
+| 运营管理（23，`/ops`） | 店铺管理（平台店铺、渠道接入、店铺授权）、广告管理、运营监控（ASIN 监控、促销、运营目标与绩效）、数据分析（电商看板、利润分析、销量统计 / 预测、商品分析） |
+| 物流管理（22，`/logistics`） | 头程物流（发货计划、头程货件、物流渠道）、FBA、海外仓 |
+| 供应链（5，`/scm`） | 补货采购（补货建议、采购计划、采购订单 / 入库 / 退货）、1688 采购、批发销售、往来单位、进销存报表 |
+| 财务管理（7，`/fin`） | 平台结算（平台结算、回款对账、费用映射、税务）及原有财务分组 |
+
+电商看板同时是登录后的首页（有 `ecom:dashboard:list` 权限时）。顶部导航显示模块全名，不再去掉「管理」后缀。进销存报表（`ecom/jxc`，接口 `/ecom/jxc/*`）也在这个模块中，菜单在「供应链」下，见「供应链管理 → 进销存报表」。
 
 设计上电商模块不另建一套库存和往来：**店铺对应一个客户**，平台订单出库就是一张销售出库单（直接开单），退货入库就是销售退货单，头程货件就是一张在途调拨单，平台结算生成的是收款单；库存、成本、应收、凭证都由 wms / scm / fin 原有机制处理，电商模块只负责平台侧的数据（店铺、SKU 映射、平台订单与费用、结算、广告、平台库存）和利润口径。金额分两层：订单 / 店铺币种的原币金额照原样保存，本位币金额另存一列（`total_base`、`net_base` 等），汇率按日期所在月取「币种汇率」（`fin_exchange_rate`，经 `framework/finance/ExchangeRateProvider`），没有汇率时报错（`ecom.error.exchangeRateMissing`），不在代码里写默认汇率；成本、物流成本、利润、报表金额都是本位币。
 
@@ -550,7 +561,7 @@ public void onOrderApproved(FlowFinishedEvent e) {
 
 ### 利润与财务
 
-参考领星的利润报表 / 费用管理 / 回款对账：费用细化到平台报告的类型并分摊到 SKU，拆出 VAT / 销售税，按订单口径和结算口径出多维利润，平台回款与银行 / 收款平台到账对账并处理汇兑差额。菜单都在「结算与分析」（984）下：费用映射 `/ecom/fee-mapping`（470）、税务 `/ecom/tax`（471）、回款对账 `/ecom/payout`（472），利润分析页面升级为多维利润报表。前端语言包 `locales/<语言>/ecomProfit.js`。
+参考领星的利润报表 / 费用管理 / 回款对账：费用细化到平台报告的类型并分摊到 SKU，拆出 VAT / 销售税，按订单口径和结算口径出多维利润，平台回款与银行 / 收款平台到账对账并处理汇兑差额。菜单都在「财务管理 - 平台结算」（990）下：费用映射 `/ecom/fee-mapping`（470）、税务 `/ecom/tax`（471）、回款对账 `/ecom/payout`（472），利润分析页面升级为多维利润报表。前端语言包 `locales/<语言>/ecomProfit.js`。
 
 | 功能 | 说明 |
 | --- | --- |
@@ -569,7 +580,7 @@ public void onOrderApproved(FlowFinishedEvent e) {
 
 ### 数据分析
 
-顶部「电商」下的分组「数据分析」（菜单 987）：销量统计 `/ecom/sales-stats`（490）、销量预测 `/ecom/forecast`（491）、商品分析 `/ecom/product-analysis`（492）。代码在 `modules/ecom/analytics`（Mapper 在子包 `analytics.mapper`，由 `AnalyticsMapperConfig` 单独登记扫描；XML 在 `mapper/ecom/analytics/`），前端 `views/ecom/sales-stats`、`forecast`、`product-analysis`，接口 `api/ecom/analytics.js`，语言包 `locales/<语言>/ecomAnalytics.js`。与利润分析一样统计全公司数据（不按数据权限过滤），金额为本位币，比率为百分数；统计都在 `EcomAnalyticsMapper.xml` 中 `GROUP BY`，下单时间按区间条件（不对 `order_time` 套函数），按天聚合用 `CAST(order_time AS DATE)`，只读关联 wms 的库存、批次、流水、成本表。
+「运营管理 - 数据分析」（菜单 996）：销量统计 `/ecom/sales-stats`（490）、销量预测 `/ecom/forecast`（491）、商品分析 `/ecom/product-analysis`（492）。代码在 `modules/ecom/analytics`（Mapper 在子包 `analytics.mapper`，由 `AnalyticsMapperConfig` 单独登记扫描；XML 在 `mapper/ecom/analytics/`），前端 `views/ecom/sales-stats`、`forecast`、`product-analysis`，接口 `api/ecom/analytics.js`，语言包 `locales/<语言>/ecomAnalytics.js`。与利润分析一样统计全公司数据（不按数据权限过滤），金额为本位币，比率为百分数；统计都在 `EcomAnalyticsMapper.xml` 中 `GROUP BY`，下单时间按区间条件（不对 `order_time` 套函数），按天聚合用 `CAST(order_time AS DATE)`，只读关联 wms 的库存、批次、流水、成本表。
 
 | 表 | 说明 |
 | --- | --- |
@@ -621,7 +632,7 @@ public void onOrderApproved(FlowFinishedEvent e) {
 
 ### 客服与评价
 
-电商下的分组「客服」（菜单 986）：买家消息 `/ecom/cs-message`、评价管理 `/ecom/cs-review`、回复模板 `/ecom/cs-template`、售后工单 `/ecom/cs-ticket`。代码在 `ecom/cs` 包（`connector`、`service`、`controller`、`dto`、`entity`、`model`），Mapper 在 `ecom/mapper`（`EcomMessageThreadMapper` 等），前端 `views/ecom/cs-*`、`components/ecom/cs`（`TemplatePicker`、`AfterSaleModal`），接口 `api/ecom/cs.js`，语言包 `locales/<语言>/ecomCs.js`，后端消息键 `ecom.*.cs.*`。
+「订单管理 - 售后客服」（菜单 993）：买家消息 `/ecom/cs-message`、评价管理 `/ecom/cs-review`、回复模板 `/ecom/cs-template`、售后工单 `/ecom/cs-ticket`。代码在 `ecom/cs` 包（`connector`、`service`、`controller`、`dto`、`entity`、`model`），Mapper 在 `ecom/mapper`（`EcomMessageThreadMapper` 等），前端 `views/ecom/cs-*`、`components/ecom/cs`（`TemplatePicker`、`AfterSaleModal`），接口 `api/ecom/cs.js`，语言包 `locales/<语言>/ecomCs.js`，后端消息键 `ecom.*.cs.*`。
 
 | 部分 | 说明 |
 | --- | --- |

@@ -10,6 +10,7 @@ import com.lemon.erp.modules.ecom.mapper.EcomOrderMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomPackageItemMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomPackageMapper;
 import com.lemon.erp.modules.ecom.model.EcomLocalStatus;
+import com.lemon.erp.modules.ecom.model.EcomOrderLogAction;
 import com.lemon.erp.modules.ecom.model.EcomPackageStatus;
 import com.lemon.erp.modules.ecom.model.FulfillmentType;
 import com.lemon.erp.modules.wms.service.WmsWarehouseService;
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -52,21 +54,31 @@ public class EcomOrderBatchService {
     private final EcomOutboundSupport outboundSupport;
     private final EcomOrderCheckService checkService;
     private final TransactionTemplate transactionTemplate;
+    private final EcomOrderLogService logService;
 
     public Map<String, String> assign(List<Long> ids, Long warehouseId, Long channelId) {
         if (warehouseId == null && channelId == null) {
             throw new BizException("ecom.error.ord.assignNothing");
         }
+        List<String> names = new ArrayList<>();
         if (warehouseId != null) {
-            warehouseService.get(warehouseId);
+            names.add(EcomOrderLogService.text("ecom.log.assignWarehouse", warehouseService.get(warehouseId).getName()));
         }
         if (channelId != null) {
-            logisticsService.get(channelId);
+            names.add(EcomOrderLogService.text("ecom.log.assignChannel", logisticsService.get(channelId).getName()));
         }
+        String logText = String.join("; ", names);
         Map<String, String> out = new LinkedHashMap<>();
         for (Long id : ids.stream().distinct().toList()) {
             try {
-                String msg = transactionTemplate.execute(s -> assignOne(id, warehouseId, channelId));
+                String msg = transactionTemplate.execute(s -> {
+                    String shortage = assignOne(id, warehouseId, channelId);
+                    logService.log(id, EcomOrderLogAction.ASSIGN, logText);
+                    if (shortage != null) {
+                        logService.log(id, EcomOrderLogAction.OUT_OF_STOCK, shortage);
+                    }
+                    return shortage;
+                });
                 if (msg != null) {
                     out.put(orderNo(id), msg);
                 }

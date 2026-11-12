@@ -1,108 +1,110 @@
 <template>
-  <a-spin :spinning="loading && !detail" class="chat-spin">
-    <div v-if="thread" class="chat">
-      <div class="chat-head">
-        <div class="who">
-          <span class="buyer">{{ thread.buyerName || thread.conversationId }}</span>
-          <span class="sub-text">{{ thread.storeName }}</span>
-          <DictTag type="ecom_platform" :value="thread.platform" />
-          <a-tag v-if="thread.overdue" color="red" :bordered="false">{{ $t('ecomCs.message.overdue') }}</a-tag>
-          <DictTag v-else type="ecom_cs_thread_status" :value="thread.status" />
-          <a-tag v-for="tag in tags" :key="tag" :bordered="false">{{ tag }}</a-tag>
-        </div>
-        <div class="meta sub-text">
-          <span v-if="thread.ownerName">{{ $t('ecomCs.message.owner') }}: {{ thread.ownerName }}</span>
-          <span v-if="thread.status === CsThreadStatus.PENDING && thread.replyDeadline" :class="{ late: thread.overdue }">
-            {{ $t('ecomCs.message.deadline') }} {{ thread.replyDeadline }}（{{ $t('ecomCs.message.replyHours', { n: detail.replyHours }) }}）
-          </span>
-        </div>
-        <a-space class="actions" wrap>
-          <a-button v-perm="'ecom:csMessage:edit'" size="small" @click="editModal.open(thread)">
-            <template #icon><TagsOutlined /></template>{{ $t('ecomCs.message.edit') }}
-          </a-button>
-          <a-button v-if="thread.status !== CsThreadStatus.CLOSED" v-perm="'ecom:csMessage:edit'" size="small" @click="close(thread.id)">
-            <template #icon><CheckOutlined /></template>{{ $t('ecomCs.message.close') }}
-          </a-button>
-          <a-button v-else v-perm="'ecom:csMessage:edit'" size="small" @click="reopen(thread.id)">
-            <template #icon><UndoOutlined /></template>{{ $t('ecomCs.message.reopen') }}
-          </a-button>
-          <a-button v-perm="'ecom:csTicket:add'" size="small" @click="emit('after-sale', thread)">
-            <template #icon><ToolOutlined /></template>{{ $t('ecomCs.ticket.action') }}
-          </a-button>
-        </a-space>
-      </div>
-
-      <a-alert v-if="detail.tickets?.length" type="success" class="tickets" :show-icon="false" banner>
-        <template #message>
-          <span v-for="k in detail.tickets" :key="k.id" class="ticket">
-            <DictTag type="ecom_cs_ticket_type" :value="k.ticketType" />
-            <router-link v-if="k.returnId" :to="{ path: '/ecom/return', query: { id: k.returnId } }">{{ k.returnNo }}</router-link>
-            <router-link v-else-if="k.resendOrderId" :to="{ path: '/ecom/order', query: { keyword: k.resendOrderNo } }">{{ k.resendOrderNo }}</router-link>
-          </span>
-        </template>
-      </a-alert>
-
-      <div ref="scroller" class="messages">
-        <div v-if="!messages.length" class="empty"><a-empty :description="$t('ecomCs.message.noMessages')" /></div>
-        <div v-for="m in messages" :key="m.id" class="msg" :class="m.direction === CsDirection.SELLER ? 'mine' : 'theirs'">
-          <div class="bubble" :class="{ failed: m.sendStatus === CsSendStatus.FAILED }">
-            <div v-if="m.content" class="text">{{ m.content }}</div>
-            <div v-if="translations[m.id]" class="translation">{{ translations[m.id] }}</div>
-            <div v-for="url in attachments(m)" :key="url" class="attach">
-              <a :href="url" target="_blank" rel="noopener noreferrer"><PaperClipOutlined /> {{ fileName(url) }}</a>
-            </div>
-            <div v-if="!m.content && !attachments(m).length" class="sub-text">[{{ m.msgType }}]</div>
+  <div class="chat-root">
+    <a-spin :spinning="loading && !detail">
+      <div v-if="thread" class="chat">
+        <div class="chat-head">
+          <div class="who">
+            <span class="buyer">{{ thread.buyerName || thread.conversationId }}</span>
+            <span class="sub-text">{{ thread.storeName }}</span>
+            <DictTag type="ecom_platform" :value="thread.platform" />
+            <a-tag v-if="thread.overdue" color="red" :bordered="false">{{ $t('ecomCs.message.overdue') }}</a-tag>
+            <DictTag v-else type="ecom_cs_thread_status" :value="thread.status" />
+            <a-tag v-for="tag in tags" :key="tag" :bordered="false">{{ tag }}</a-tag>
           </div>
-          <div class="info sub-text">
-            <span>{{ m.sentTime }}</span>
-            <span v-if="m.senderName"> · {{ m.senderName }}</span>
-            <template v-if="m.direction === CsDirection.SELLER && m.sendStatus && m.sendStatus !== CsSendStatus.SENT">
-              · <DictTag type="ecom_cs_send_status" :value="m.sendStatus" />
-            </template>
-            <span v-if="m.direction === CsDirection.SELLER && m.sendStatus === CsSendStatus.SENT && !m.platformMessageId"> · {{ $t('ecomCs.message.recorded') }}</span>
-            <template v-if="canAi && aiStatus.available && m.content && m.direction === CsDirection.BUYER">
-              · <a v-if="!translations[m.id]" class="translate-link" @click="translateMessage(m)">
-                <LoadingOutlined v-if="translating[m.id]" /> {{ $t('ecomFix.ai.translate') }}</a>
-              <a v-else class="translate-link" @click="hideTranslation(m)">{{ $t('ecomFix.ai.hideTranslation') }}</a>
-            </template>
+          <div class="meta sub-text">
+            <span v-if="thread.ownerName">{{ $t('ecomCs.message.owner') }}: {{ thread.ownerName }}</span>
+            <span v-if="thread.status === CsThreadStatus.PENDING && thread.replyDeadline" :class="{ late: thread.overdue }">
+              {{ $t('ecomCs.message.deadline') }} {{ thread.replyDeadline }}（{{ $t('ecomCs.message.replyHours', { n: detail.replyHours }) }}）
+            </span>
           </div>
-          <div v-if="m.sendStatus === CsSendStatus.FAILED" class="failed-line">
-            <span class="error">{{ m.errorMessage }}</span>
-            <a-button v-perm="'ecom:csMessage:reply'" type="link" size="small" @click="resend(m.id)">{{ $t('ecomCs.message.resend') }}</a-button>
-          </div>
+          <a-space class="actions" wrap>
+            <a-button v-perm="'ecom:csMessage:edit'" size="small" @click="editModal.open(thread)">
+              <template #icon><TagsOutlined /></template>{{ $t('ecomCs.message.edit') }}
+            </a-button>
+            <a-button v-if="thread.status !== CsThreadStatus.CLOSED" v-perm="'ecom:csMessage:edit'" size="small" @click="close(thread.id)">
+              <template #icon><CheckOutlined /></template>{{ $t('ecomCs.message.close') }}
+            </a-button>
+            <a-button v-else v-perm="'ecom:csMessage:edit'" size="small" @click="reopen(thread.id)">
+              <template #icon><UndoOutlined /></template>{{ $t('ecomCs.message.reopen') }}
+            </a-button>
+            <a-button v-perm="'ecom:csTicket:add'" size="small" @click="emit('after-sale', thread)">
+              <template #icon><ToolOutlined /></template>{{ $t('ecomCs.ticket.action') }}
+            </a-button>
+          </a-space>
         </div>
-      </div>
 
-      <div v-if="canReply" class="composer">
-        <div class="tools">
-          <TemplatePicker :platform="thread.platform" :thread-id="thread.id" @apply="applyTemplate" />
-          <template v-if="canAi">
-            <AiTextButton :label="$t('ecomFix.ai.draft')" with-options :action="draft" @done="applyDraft" />
-            <AiTextButton :label="$t('ecomFix.ai.toBuyer')" :action="toBuyer" @done="(text) => (content = text)" />
+        <a-alert v-if="detail.tickets?.length" type="success" class="tickets" :show-icon="false" banner>
+          <template #message>
+            <span v-for="k in detail.tickets" :key="k.id" class="ticket">
+              <DictTag type="ecom_cs_ticket_type" :value="k.ticketType" />
+              <router-link v-if="k.returnId" :to="{ path: '/ecom/return', query: { id: k.returnId } }">{{ k.returnNo }}</router-link>
+              <router-link v-else-if="k.resendOrderId" :to="{ path: '/ecom/order', query: { keyword: k.resendOrderNo } }">{{ k.resendOrderNo }}</router-link>
+            </span>
           </template>
-          <a-tooltip :title="detail.canSend ? $t('ecomCs.message.recordOnlyTip') : $t('ecomCs.message.cannotSendTip')">
-            <a-checkbox v-model:checked="recordOnly" :disabled="!detail.canSend">{{ $t('ecomCs.message.recordOnly') }}</a-checkbox>
-          </a-tooltip>
-          <span class="sub-text counter">{{ content.length }} / 2000</span>
+        </a-alert>
+
+        <div ref="scroller" class="messages">
+          <div v-if="!messages.length" class="empty"><a-empty :description="$t('ecomCs.message.noMessages')" /></div>
+          <div v-for="m in messages" :key="m.id" class="msg" :class="m.direction === CsDirection.SELLER ? 'mine' : 'theirs'">
+            <div class="bubble" :class="{ failed: m.sendStatus === CsSendStatus.FAILED }">
+              <div v-if="m.content" class="text">{{ m.content }}</div>
+              <div v-if="translations[m.id]" class="translation">{{ translations[m.id] }}</div>
+              <div v-for="url in attachments(m)" :key="url" class="attach">
+                <a :href="url" target="_blank" rel="noopener noreferrer"><PaperClipOutlined /> {{ fileName(url) }}</a>
+              </div>
+              <div v-if="!m.content && !attachments(m).length" class="sub-text">[{{ m.msgType }}]</div>
+            </div>
+            <div class="info sub-text">
+              <span>{{ m.sentTime }}</span>
+              <span v-if="m.senderName"> · {{ m.senderName }}</span>
+              <template v-if="m.direction === CsDirection.SELLER && m.sendStatus && m.sendStatus !== CsSendStatus.SENT">
+                · <DictTag type="ecom_cs_send_status" :value="m.sendStatus" />
+              </template>
+              <span v-if="m.direction === CsDirection.SELLER && m.sendStatus === CsSendStatus.SENT && !m.platformMessageId"> · {{ $t('ecomCs.message.recorded') }}</span>
+              <template v-if="canAi && aiStatus.available && m.content && m.direction === CsDirection.BUYER">
+                · <a v-if="!translations[m.id]" class="translate-link" @click="translateMessage(m)">
+                  <LoadingOutlined v-if="translating[m.id]" /> {{ $t('ecomFix.ai.translate') }}</a>
+                <a v-else class="translate-link" @click="hideTranslation(m)">{{ $t('ecomFix.ai.hideTranslation') }}</a>
+              </template>
+            </div>
+            <div v-if="m.sendStatus === CsSendStatus.FAILED" class="failed-line">
+              <span class="error">{{ m.errorMessage }}</span>
+              <a-button v-perm="'ecom:csMessage:reply'" type="link" size="small" @click="resend(m.id)">{{ $t('ecomCs.message.resend') }}</a-button>
+            </div>
+          </div>
         </div>
-        <a-textarea
-          v-model:value="content"
-          :maxlength="2000"
-          :auto-size="{ minRows: 3, maxRows: 8 }"
-          :placeholder="$t('ecomCs.message.replyPh')"
-          @keydown.enter.ctrl.prevent="send"
-          @keydown.enter.meta.prevent="send"
-        />
-        <div class="send-row">
-          <span class="sub-text">{{ $t('ecomCs.message.sendHint') }}</span>
-          <a-button type="primary" :loading="sending" :disabled="!content.trim()" @click="send">
-            <template #icon><SendOutlined /></template>{{ recordOnly ? $t('ecomCs.message.record') : $t('ecomCs.message.send') }}
-          </a-button>
+
+        <div v-if="canReply" class="composer">
+          <div class="tools">
+            <TemplatePicker :platform="thread.platform" :thread-id="thread.id" @apply="applyTemplate" />
+            <template v-if="canAi">
+              <AiTextButton :label="$t('ecomFix.ai.draft')" with-options :action="draft" @done="applyDraft" />
+              <AiTextButton :label="$t('ecomFix.ai.toBuyer')" :action="toBuyer" @done="(text) => (content = text)" />
+            </template>
+            <a-tooltip :title="detail.canSend ? $t('ecomCs.message.recordOnlyTip') : $t('ecomCs.message.cannotSendTip')">
+              <a-checkbox v-model:checked="recordOnly" :disabled="!detail.canSend">{{ $t('ecomCs.message.recordOnly') }}</a-checkbox>
+            </a-tooltip>
+            <span class="sub-text counter">{{ content.length }} / 2000</span>
+          </div>
+          <a-textarea
+            v-model:value="content"
+            :maxlength="2000"
+            :auto-size="{ minRows: 3, maxRows: 8 }"
+            :placeholder="$t('ecomCs.message.replyPh')"
+            @keydown.enter.ctrl.prevent="send"
+            @keydown.enter.meta.prevent="send"
+          />
+          <div class="send-row">
+            <span class="sub-text">{{ $t('ecomCs.message.sendHint') }}</span>
+            <a-button type="primary" :loading="sending" :disabled="!content.trim()" @click="send">
+              <template #icon><SendOutlined /></template>{{ recordOnly ? $t('ecomCs.message.record') : $t('ecomCs.message.send') }}
+            </a-button>
+          </div>
         </div>
       </div>
-    </div>
-    <ThreadEditModal ref="editModal" @success="afterChange" />
-  </a-spin>
+      <ThreadEditModal ref="editModal" @success="afterChange" />
+    </a-spin>
+  </div>
 </template>
 
 <script setup>
@@ -256,8 +258,9 @@ const fileName = (url) => url.split('?')[0].split('/').pop() || url
 </script>
 
 <style scoped>
-.chat-spin,
-.chat-spin :deep(.ant-spin-container) {
+.chat-root,
+.chat-root > :deep(.ant-spin-nested-loading),
+.chat-root > :deep(.ant-spin-nested-loading > .ant-spin-container) {
   height: 100%;
 }
 .chat {
@@ -355,9 +358,13 @@ const fileName = (url) => url.split('?')[0].split('/').pop() || url
 }
 .tools {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 8px 12px;
   margin-bottom: 8px;
+}
+.tools > * {
+  white-space: nowrap;
 }
 .counter {
   margin-left: auto;

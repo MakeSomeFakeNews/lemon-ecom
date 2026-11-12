@@ -1,67 +1,95 @@
 <template>
   <SubPage :open="open" :title="detail ? $t('ecomOrder.inbound.detailTitle', { no: detail.docNo }) : $t('ecomOrder.inbound.title')" @close="open = false">
-    <template v-if="detail" #extra>
-      <DictTag type="ecom_inbound_status" :value="detail.status" />
+    <template v-if="detail" #title>
+      <span class="title-no">{{ $t('ecomOrder.inbound.detailTitle', { no: detail.docNo }) }}</span>
+      <DictTag type="ecom_inbound_status" :value="detail.status" class="title-tag" />
     </template>
-
-    <a-spin :spinning="loading">
-      <template v-if="detail">
-        <a-descriptions :column="{ xs: 1, sm: 2, lg: 4 }" size="small" class="block">
-          <a-descriptions-item :label="$t('ecomOrder.common.docNo')">{{ detail.docNo }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.common.store')">{{ detail.storeName || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.inbound.shipmentId')">{{ detail.shipmentId || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.inbound.transferDoc')">{{ detail.transferDocNo || '-' }}</a-descriptions-item>
-          <a-descriptions-item v-if="detail.planNo" :label="$t('ecomCatalog.plan.planNo')">{{ detail.planNo }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.inbound.fromWarehouse')">{{ detail.fromWarehouseName || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.inbound.toWarehouse')">{{ detail.toWarehouseName || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.common.channel')">{{ detail.channelName || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.common.carrier')">{{ detail.carrier || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.common.trackingNo')">{{ detail.trackingNo || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.inbound.shipDate')">{{ detail.shipDate || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.inbound.etaDate')">{{ detail.etaDate || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.inbound.receiveDate')">{{ detail.receiveDate || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.inbound.boxCount')">{{ detail.boxCount ?? '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.inbound.weight')">{{ detail.weight != null ? qty(detail.weight, 3) : '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.inbound.volume')">{{ detail.volume != null ? qty(detail.volume) : '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.inbound.totalQty')">{{ qty(detail.totalQty) }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.inbound.freight')">{{ baseMoney(detail.freight) }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.inbound.duty')">{{ baseMoney(detail.duty) }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.inbound.otherCost')">{{ baseMoney(detail.otherCost) }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomProfit.inbound.importVat')">{{ baseMoney(detail.importVat) }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.inbound.totalCost')"><b>{{ baseMoney(totalCost(detail)) }}</b></a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.inbound.unitLanded')">
-            <a-tooltip :title="$t('ecomOrder.inbound.unitLandedHint')">
-              <b class="dashed">¥{{ price(unitLanded) }}</b>
-            </a-tooltip>
-          </a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.common.createBy')">{{ detail.createByName || '-' }} {{ detail.createTime }}</a-descriptions-item>
-          <a-descriptions-item v-if="detail.remark" :label="$t('common.field.remark')" :span="2">{{ detail.remark }}</a-descriptions-item>
-        </a-descriptions>
-
-        <div class="section-title">{{ $t('ecomOrder.inbound.items') }}</div>
-        <a-table row-key="id" size="small" :columns="itemColumns" :data-source="detail.items || []" :pagination="false" :scroll="{ x: 900 }">
-          <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'material'">
-              <div>{{ record.materialCode }} {{ record.materialName }}</div>
-              <div class="sub-text">{{ record.materialSpec }}</div>
-            </template>
-            <template v-else-if="column.key === 'qty'">{{ qty(record.qty) }} {{ record.unit || '' }}</template>
-            <template v-else-if="column.key === 'receivedQty'">{{ record.receivedQty != null ? qty(record.receivedQty) : '-' }}</template>
-            <template v-else-if="column.key === 'unitLanded'">{{ record.unitLanded != null ? `¥${price(record.unitLanded)}` : '-' }}</template>
-          </template>
-        </a-table>
-
-        <InboundBoxes :detail="detail" @changed="load(currentId)" />
-      </template>
-    </a-spin>
-
-    <template v-if="detail && actions.length" #footer>
-      <div class="drawer-footer">
+    <template v-if="detail && actions.length" #extra>
+      <a-space wrap>
         <a-button v-for="a in actions" :key="a.key" :type="a.primary ? 'primary' : 'default'" :danger="a.danger" @click="a.run">
           <template #icon><component :is="a.icon" /></template>{{ a.label }}
         </a-button>
-      </div>
+      </a-space>
     </template>
+
+    <a-spin :spinning="loading">
+      <a-skeleton v-if="!detail" active :paragraph="{ rows: 8 }" />
+      <template v-else>
+        <InboundProgress :detail="detail" class="block" />
+
+        <div class="kpis block">
+          <div class="kpi">
+            <div class="kpi-label">{{ $t('ecomOrder.inbound.totalQty') }}</div>
+            <div class="kpi-value">{{ qty(detail.totalQty) }}</div>
+          </div>
+          <div class="kpi clickable" @click="tab = 'boxes'">
+            <div class="kpi-label">{{ $t('ecomOrder.inbound.boxCount') }}</div>
+            <div class="kpi-value">{{ detail.boxCount ?? '-' }}</div>
+            <div class="kpi-sub">{{ detail.weight != null ? `${qty(detail.weight, 3)} kg` : '' }}{{ detail.volume != null ? ` · ${qty(detail.volume)} m³` : '' }}</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">{{ $t('ecomOrder.inbound.totalCost') }}</div>
+            <div class="kpi-value">{{ baseMoney(totalCost(detail)) }}</div>
+            <div class="kpi-sub">{{ $t('ecomOrder.inbound.costBreak', { f: money(detail.freight), d: money(detail.duty), o: money(detail.otherCost) }) }}</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">
+              {{ $t('ecomOrder.inbound.unitLanded') }}
+              <a-tooltip :title="$t('ecomOrder.inbound.unitLandedHint')"><QuestionCircleOutlined class="hint" /></a-tooltip>
+            </div>
+            <div class="kpi-value">¥{{ price(unitLanded) }}</div>
+          </div>
+        </div>
+
+        <div class="section-title">{{ $t('ecomOrder.inbound.basicInfo') }}</div>
+        <a-descriptions :column="{ xs: 1, sm: 2, lg: 4 }" size="small" class="block">
+          <a-descriptions-item :label="$t('ecomOrder.common.store')">{{ detail.storeName || '-' }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomOrder.inbound.shipmentId')">{{ detail.shipmentId || '-' }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomOrder.inbound.fromWarehouse')">{{ detail.fromWarehouseName || '-' }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomOrder.inbound.toWarehouse')">{{ detail.toWarehouseName || '-' }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomOrder.inbound.transferDoc')">{{ detail.transferDocNo || '-' }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomCatalog.plan.planNo')">{{ detail.planNo || '-' }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomOrder.common.createBy')">{{ detail.createByName || '-' }} {{ detail.createTime }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('common.field.remark')">{{ detail.remark || '-' }}</a-descriptions-item>
+        </a-descriptions>
+
+        <div class="section-title">{{ $t('ecomOrder.inbound.logisticsInfo') }}</div>
+        <a-descriptions :column="{ xs: 1, sm: 2, lg: 4 }" size="small" class="block">
+          <a-descriptions-item :label="$t('ecomOrder.common.channel')">{{ detail.channelName || '-' }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomOrder.common.carrier')">{{ detail.carrier || '-' }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomOrder.common.trackingNo')">
+            <a-typography-text v-if="detail.trackingNo" :copyable="{ text: detail.trackingNo }">{{ detail.trackingNo }}</a-typography-text>
+            <template v-else>-</template>
+          </a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomProfit.inbound.importVat')">{{ baseMoney(detail.importVat) }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomOrder.inbound.shipDate')">{{ detail.shipDate || '-' }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomOrder.inbound.etaDate')">{{ detail.etaDate || '-' }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomOrder.inbound.receiveDate')">{{ detail.receiveDate || '-' }}</a-descriptions-item>
+        </a-descriptions>
+
+        <a-tabs v-model:active-key="tab" class="detail-tabs">
+          <a-tab-pane key="items" :tab="`${$t('ecomOrder.inbound.items')} (${(detail.items || []).length})`">
+            <a-table row-key="id" size="small" :columns="itemColumns" :data-source="detail.items || []" :pagination="false" :scroll="{ x: 900 }">
+              <template #bodyCell="{ column, record }">
+                <template v-if="column.key === 'material'">
+                  <div>{{ record.materialCode }} {{ record.materialName }}</div>
+                  <div class="sub-text">{{ record.materialSpec }}</div>
+                </template>
+                <template v-else-if="column.key === 'qty'">{{ qty(record.qty) }} <span class="sub-text">{{ record.unit || '' }}</span></template>
+                <template v-else-if="column.key === 'receivedQty'">
+                  <span v-if="received && record.receivedQty != null" :class="{ warn: Number(record.receivedQty) < Number(record.qty) }">{{ qty(record.receivedQty) }}</span>
+                  <template v-else>-</template>
+                </template>
+                <template v-else-if="column.key === 'unitLanded'">{{ record.unitLanded != null ? `¥${price(record.unitLanded)}` : '-' }}</template>
+              </template>
+            </a-table>
+          </a-tab-pane>
+          <a-tab-pane key="boxes" :tab="(detail.boxes || []).length ? `${$t('ecomCatalog.box.section')} (${detail.boxes.length})` : $t('ecomCatalog.box.section')">
+            <InboundBoxes :detail="detail" @changed="load(currentId)" />
+          </a-tab-pane>
+        </a-tabs>
+      </template>
+    </a-spin>
   </SubPage>
 </template>
 
@@ -69,15 +97,17 @@
 import { computed, ref } from 'vue'
 import { Modal, message } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
-import { DeleteOutlined, DollarOutlined, EditOutlined, ImportOutlined, SendOutlined, StopOutlined } from '@ant-design/icons-vue'
+import { DeleteOutlined, DollarOutlined, EditOutlined, ImportOutlined, QuestionCircleOutlined, SendOutlined, StopOutlined } from '@ant-design/icons-vue'
 import SubPage from '@/components/SubPage.vue'
 import DictTag from '@/components/DictTag.vue'
 import { cancelEcomInbound, deleteEcomInbound, getEcomInbound, submitEcomInbound } from '@/api/ecom/inbound'
 import { useUserStore } from '@/store/user'
-import { price, qty } from '@/utils/number'
+import { InboundStatus } from '@/constants/enums'
+import { money, price, qty } from '@/utils/number'
 import { baseMoney } from '../order/order'
 import { canCancel, canDelete, canEditCosts, canReceive, isDraft, totalCost, unitLandedOf } from './inbound'
 import InboundBoxes from './InboundBoxes.vue'
+import InboundProgress from './InboundProgress.vue'
 
 /**
  * 头程货件详情子页：提交发运、取消、删除在本组件内完成（触发 changed）；编辑、补录费用、签收交给页面打开表单 / 日期弹窗（事件带单据）。
@@ -98,6 +128,8 @@ const itemColumns = [
 ]
 
 const open = ref(false)
+const tab = ref('items')
+const received = computed(() => detail.value?.status === InboundStatus.RECEIVED)
 const loading = ref(false)
 const detail = ref()
 let currentId
@@ -122,6 +154,7 @@ async function load(id) {
 function show(id) {
   currentId = id
   detail.value = undefined
+  tab.value = 'items'
   open.value = true
   return load(id)
 }
@@ -195,16 +228,62 @@ defineExpose({ open: show, reload })
 .block {
   margin-bottom: 16px;
 }
-.section-title {
-  margin: 12px 0 8px;
+.title-no {
   font-weight: 600;
+}
+.title-tag {
+  margin-left: 8px;
+  vertical-align: 1px;
+}
+.section-title {
+  margin: 4px 0 10px;
+  padding-left: 8px;
+  border-left: 3px solid var(--app-primary);
+  font-weight: 600;
+  line-height: 1.2;
+}
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+.kpi {
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: var(--app-bg);
+  border: 1px solid var(--app-border);
+}
+.kpi-label {
+  color: var(--app-text-3);
+  font-size: 12px;
+}
+.kpi-value {
+  margin-top: 4px;
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.kpi-sub {
+  color: var(--app-text-3);
+  font-size: 12px;
+}
+.kpi.clickable {
+  cursor: pointer;
+}
+.kpi.clickable:hover {
+  border-color: var(--app-primary);
+}
+.detail-tabs :deep(.ant-tabs-nav) {
+  margin-bottom: 8px;
+}
+.hint {
+  cursor: help;
 }
 .sub-text {
   color: var(--app-text-3);
   font-size: 12px;
 }
-.dashed {
-  border-bottom: 1px dashed var(--app-text-3);
-  cursor: help;
+.warn {
+  color: var(--ant-color-warning, #faad14);
 }
 </style>

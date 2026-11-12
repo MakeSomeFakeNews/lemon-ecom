@@ -3,16 +3,16 @@
     <a-card v-show="showSearch" :bordered="false" class="page-card">
       <SearchForm :model="query" @search="search" @reset="resetQuery">
         <a-form-item :label="$t('common.field.status')" name="status">
-          <a-select v-model:value="query.status" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_dev_status)" />
+          <a-select v-model:value="query.status" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_dev_status)" @change="search" />
         </a-form-item>
         <a-form-item :label="$t('common.field.keyword')" name="keyword">
           <a-input v-model:value="query.keyword" :placeholder="$t('ecomDev.project.keywordPh')" allow-clear @press-enter="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomDev.project.platform')" name="platform">
-          <a-select v-model:value="query.platform" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_platform)" />
+          <a-select v-model:value="query.platform" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_platform)" @change="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomDev.project.source')" name="source">
-          <a-select v-model:value="query.source" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_dev_source)" />
+          <a-select v-model:value="query.source" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_dev_source)" @change="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomDev.project.owner')" name="ownerId">
           <UserSelect v-model:value="query.ownerId" />
@@ -22,12 +22,12 @@
 
     <a-card :bordered="false" class="page-card table-card">
       <TableToolbar :exporter="exportAll" v-model:size="size" v-model:checked="checked" v-model:show-search="showSearch" :columns="columns" @refresh="load">
+        <a-button v-perm="'ecom:devProject:add'" type="primary" @click="form.openCreate()">
+          <template #icon><PlusOutlined /></template>{{ $t('ecomDev.project.add') }}
+        </a-button>
         <a-button @click="router.push('/ecom/dev-board')"><template #icon><ProjectOutlined /></template>{{ $t('ecomDev.project.board') }}</a-button>
         <a-button v-perm="'ecom:profitCalc:list'" @click="router.push('/ecom/profit-calc')">
           <template #icon><CalculatorOutlined /></template>{{ $t('ecomDev.project.calc') }}
-        </a-button>
-        <a-button v-perm="'ecom:devProject:add'" type="primary" @click="form.openCreate()">
-          <template #icon><PlusOutlined /></template>{{ $t('ecomDev.project.add') }}
         </a-button>
       </TableToolbar>
 
@@ -47,8 +47,8 @@
               <img v-if="imagesOf(record)[0]" :src="imagesOf(record)[0]" class="thumb" alt="" />
               <div v-else class="thumb empty"><PictureOutlined /></div>
               <div class="info">
-                <a @click="openDetail(record)">{{ record.name }}</a>
-                <div class="sub-text">{{ record.docNo }}<span v-if="record.categoryName"> · {{ record.categoryName }}</span></div>
+                <a class="ellipsis" :title="record.name" @click="openDetail(record)">{{ record.name }}</a>
+                <div class="sub-text ellipsis">{{ record.docNo }}<span v-if="record.categoryName"> · {{ record.categoryName }}</span></div>
               </div>
             </div>
           </template>
@@ -121,17 +121,17 @@ const router = useRouter()
 const dict = useDict('ecom_dev_status', 'ecom_platform', 'ecom_dev_source')
 
 const columns = [
-  { title: t('ecomDev.project.product'), key: 'product', dataIndex: 'name', width: 280 },
-  { title: t('ecomDev.project.platform'), key: 'platform', width: 130, exportValue: (r) => `${r.platform || ''} ${r.marketplace || ''}` },
+  { title: t('ecomDev.project.product'), key: 'product', dataIndex: 'name', width: 260, fixed: 'left' },
+  { title: t('common.field.status'), key: 'status', dataIndex: 'status', width: 110, dict: 'ecom_dev_status' },
+  { title: t('ecomDev.project.platform'), key: 'platform', width: 120, exportValue: (r) => `${r.platform || ''} ${r.marketplace || ''}` },
   { title: t('ecomDev.project.source'), key: 'source', dataIndex: 'source', width: 100, dict: 'ecom_dev_source' },
   { title: t('ecomDev.project.targetPrice'), key: 'targetPrice', dataIndex: 'targetPrice', width: 120, align: 'right' },
-  { title: t('ecomDev.project.estPurchasePrice'), key: 'estPurchasePrice', dataIndex: 'estPurchasePrice', width: 110, align: 'right' },
-  { title: t('ecomDev.project.estMargin'), key: 'estMargin', dataIndex: 'estMargin', width: 110, align: 'right' },
-  { title: t('ecomDev.project.estMonthlySales'), dataIndex: 'estMonthlySales', width: 100, align: 'right' },
-  { title: t('ecomDev.project.samples'), key: 'samples', width: 90, align: 'center', exportValue: (r) => `${r.passedSampleCount || 0}/${r.sampleCount || 0}` },
-  { title: t('ecomDev.project.owner'), dataIndex: 'ownerName', width: 100 },
-  { title: t('common.field.status'), key: 'status', dataIndex: 'status', width: 110, dict: 'ecom_dev_status' },
-  { title: t('common.field.createTime'), dataIndex: 'createTime', width: 165 },
+  { title: t('ecomDev.project.estPurchasePrice'), key: 'estPurchasePrice', dataIndex: 'estPurchasePrice', width: 100, align: 'right' },
+  { title: t('ecomDev.project.estMargin'), key: 'estMargin', dataIndex: 'estMargin', width: 100, align: 'right' },
+  { title: t('ecomDev.project.estMonthlySales'), dataIndex: 'estMonthlySales', width: 90, align: 'right' },
+  { title: t('ecomDev.project.samples'), key: 'samples', width: 110, align: 'center', exportValue: (r) => `${r.passedSampleCount || 0}/${r.sampleCount || 0}` },
+  { title: t('ecomDev.project.owner'), dataIndex: 'ownerName', width: 100, ellipsis: true },
+  { title: t('common.field.createTime'), dataIndex: 'createTime', width: 160 },
   actionColumn(4, [t('common.action.view')])
 ]
 const { checked, visibleColumns, scrollX } = useColumns(columns, 'ecom-dev-project')
@@ -178,6 +178,7 @@ const rowActions = (record) => [
   gap: 8px;
 }
 .thumb {
+  border: 1px solid var(--app-border);
   width: 40px;
   height: 40px;
   border-radius: 4px;
@@ -188,11 +189,18 @@ const rowActions = (record) => [
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--app-fill, #f5f5f5);
+  background: var(--app-hover);
   color: var(--app-text-3);
 }
 .info {
   min-width: 0;
+  flex: 1;
+}
+.ellipsis {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .sub-text {
   color: var(--app-text-3);

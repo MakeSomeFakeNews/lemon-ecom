@@ -1,25 +1,37 @@
 <template>
   <SubPage :open="open" :title="detail ? $t('ecomOrder.order.detailTitle', { no: detail.platformOrderNo }) : $t('ecomOrder.order.title')" @close="open = false">
-    <template v-if="detail" #extra>
-      <a-space>
-        <DictTag type="ecom_order_status" :value="detail.status" />
-        <DictTag type="ecom_local_status" :value="detail.localStatus" />
-        <a-tag v-if="isOverdue(detail)" color="error" :bordered="false">{{ $t('ecomOrder.order.overdue') }}</a-tag>
-        <DictTag v-if="detail.orderType && detail.orderType !== EcomOrderType.PLATFORM" type="ecom_order_type" :value="detail.orderType" />
-        <a-tag v-for="tg in detail.tags || []" :key="tg.id" :color="tg.color" :bordered="false">{{ tg.name }}</a-tag>
+    <template v-if="detail" #title>
+      <span class="head-title">
+        {{ $t('ecomOrder.order.detailTitle', { no: detail.platformOrderNo }) }}
+        <a-typography-text :copyable="{ text: detail.platformOrderNo, tooltip: false }" />
+      </span>
+      <DictTag type="ecom_local_status" :value="detail.localStatus" />
+      <a-tag v-if="isOverdue(detail)" color="error" :bordered="false">{{ $t('ecomOrder.order.overdue') }}</a-tag>
+      <DictTag v-if="detail.orderType && detail.orderType !== EcomOrderType.PLATFORM" type="ecom_order_type" :value="detail.orderType" />
+      <a-tag v-for="tg in detail.tags || []" :key="tg.id" :color="tg.color" :bordered="false">{{ tg.name }}</a-tag>
+    </template>
+    <template v-if="detail && actions.length" #extra>
+      <a-space :size="8">
+        <a-button v-for="a in headActions" :key="a.key" :type="a.primary ? 'primary' : 'default'" :danger="a.danger" @click="a.run">
+          <template #icon><component :is="a.icon" /></template>{{ a.label }}
+        </a-button>
+        <a-dropdown v-if="moreActions.length" trigger="click" placement="bottomRight">
+          <a-button>{{ $t('ecomOrdUi.batch.more') }}<DownOutlined /></a-button>
+          <template #overlay>
+            <a-menu @click="({ key }) => moreActions.find((a) => a.key === key)?.run()">
+              <a-menu-item v-for="a in moreActions" :key="a.key" :danger="a.danger">
+                <template #icon><component :is="a.icon" /></template>{{ a.label }}
+              </a-menu-item>
+            </a-menu>
+          </template>
+        </a-dropdown>
       </a-space>
     </template>
 
     <a-spin :spinning="loading">
-      <template v-if="detail">
-        <a-alert
-          v-if="detail.localStatus === EcomLocalStatus.ON_HOLD"
-          type="warning"
-          show-icon
-          class="block"
-          :message="$t('ecomOrder.ops.held')"
-          :description="detail.holdReason || '-'"
-        />
+      <a-skeleton v-if="!detail" active :paragraph="{ rows: 12 }" />
+      <template v-else>
+        <a-alert v-if="detail.localStatus === EcomLocalStatus.ON_HOLD" type="warning" show-icon class="block" :message="$t('ecomOrder.ops.held')" :description="detail.holdReason || '-'" />
         <a-alert
           v-if="detail.exception && detail.localStatus !== EcomLocalStatus.SHIPPED"
           :type="detail.localStatus === EcomLocalStatus.EXCEPTION ? 'error' : 'warning'"
@@ -28,116 +40,118 @@
           :message="$t('ecomOrder.order.exception')"
           :description="detail.exception"
         />
-
-        <div class="section-title">{{ $t('ecomOrder.order.sectionInfo') }}</div>
-        <a-descriptions :column="{ xs: 1, sm: 2, lg: 3 }" size="small" class="block">
-          <a-descriptions-item :label="$t('ecomOrder.common.store')">
-            {{ detail.storeName || '-' }} <DictTag type="ecom_platform" :value="detail.platform" />
-          </a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.common.platformOrderNo')">{{ detail.platformOrderNo }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.order.fulfillment')"><DictTag type="ecom_fulfillment" :value="detail.fulfillment" /></a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.order.orderTime')">{{ detail.orderTime || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.order.paidTime')">{{ detail.paidTime || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.order.shipBy')">
-            <span :class="{ 'overdue-text': isOverdue(detail) }">{{ detail.shipBy || '-' }}</span>
-          </a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.order.deliverBy')">{{ detail.deliverBy || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.ops.planShipTime')">{{ detail.planShipTime || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.ops.weight')">{{ detail.weight != null ? `${Number(detail.weight)} ${$t('ecomOrder.common.kg')}` : '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.ops.matchedRules')">{{ detail.matchedRules || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.order.buyer')">
-            {{ detail.buyerName || '-' }}<span v-if="detail.buyerEmail" class="sub-text"> {{ detail.buyerEmail }}</span>
-          </a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.order.receiver')">{{ [detail.shipName, detail.shipPhone].filter(Boolean).join(' ') || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.order.address')" :span="3">{{ address || '-' }}</a-descriptions-item>
-          <a-descriptions-item v-if="detail.sourceOrderNo" :label="$t('ecomOrd.resend.sourceOrder')">
-            <a @click="show(detail.sourceOrderId)">{{ detail.sourceOrderNo }}</a>
-          </a-descriptions-item>
-          <a-descriptions-item v-if="detail.note" :label="$t('ecomOrder.order.note')" :span="3">{{ detail.note }}</a-descriptions-item>
-          <a-descriptions-item v-if="detail.remark" :label="$t('common.field.remark')" :span="3">{{ detail.remark }}</a-descriptions-item>
-        </a-descriptions>
-
-        <div class="section-title">{{ $t('ecomOrder.order.sectionAmount') }}</div>
-        <a-descriptions :column="{ xs: 1, sm: 2, lg: 4 }" size="small" class="block">
-          <a-descriptions-item :label="$t('ecomOrder.order.itemAmount')">{{ fcMoney(detail.currency, detail.itemAmount) }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.order.shippingAmount')">{{ fcMoney(detail.currency, detail.shippingAmount) }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.order.taxAmount')">{{ fcMoney(detail.currency, detail.taxAmount) }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.order.discountAmount')">{{ fcMoney(detail.currency, detail.discountAmount) }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.order.totalAmount')"><b>{{ fcMoney(detail.currency, detail.totalAmount) }}</b></a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.order.exchangeRate')">{{ detail.exchangeRate != null ? Number(detail.exchangeRate) : '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.order.totalBase')" :span="2"><b>{{ baseMoney(detail.totalBase) }}</b></a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.order.platformFee')">
-            {{ fcMoney(detail.currency, detail.platformFee) }}
-            <a-tag :bordered="false" :color="detail.feeActual === 1 ? 'green' : 'default'" class="fee-tag">
-              {{ detail.feeActual === 1 ? $t('ecomOrder.order.feeActual') : $t('ecomOrder.order.feeEstimated') }}
-            </a-tag>
-          </a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.order.fulfillmentFee')">{{ fcMoney(detail.currency, detail.fulfillmentFee) }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.order.otherFee')">{{ fcMoney(detail.currency, detail.otherFee) }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.order.refundAmount')">{{ fcMoney(detail.currency, detail.refundAmount) }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.order.costAmount')">{{ baseMoney(detail.costAmount) }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.order.shippingCost')">{{ baseMoney(detail.shippingCost) }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.order.profit')" :span="2">
-            <b :class="{ 'profit-negative': Number(detail.profit) < 0 }">{{ baseMoney(detail.profit) }}</b>
-          </a-descriptions-item>
-        </a-descriptions>
-
-        <div class="section-title">{{ $t('ecomOrder.order.sectionItems') }}</div>
-        <a-table row-key="id" size="small" :columns="itemColumns" :data-source="detail.items || []" :pagination="false" :scroll="{ x: 1400 }" class="block">
-          <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'title'">
-              <div class="title-cell" :title="record.title">{{ record.title || '-' }}</div>
-            </template>
-            <template v-else-if="column.key === 'qty'">{{ qty(record.qty) }}</template>
-            <template v-else-if="column.key === 'price'">{{ price(record.price) }}</template>
-            <template v-else-if="['amount', 'shipping', 'tax', 'discount'].includes(column.key)">{{ money(record[column.key]) }}</template>
-            <template v-else-if="column.key === 'material'">
-              <template v-if="record.bundle === 1 && record.parts?.length">
-                <a-tag color="purple" :bordered="false">{{ $t('ecomCatalog.listing.bundle') }}</a-tag>
-                <div v-for="p in record.parts" :key="p.id" class="sub-text">{{ p.materialCode }} {{ p.materialName }} × {{ qty(p.unitQty) }}</div>
-              </template>
-              <template v-else-if="record.materialId">
-                <div>{{ record.materialCode }} {{ record.materialName }}</div>
-                <div class="sub-text">{{ record.materialSpec }}</div>
-              </template>
-              <a-tag v-else color="error" :bordered="false">{{ $t('ecomOrder.common.unmapped') }}</a-tag>
-            </template>
-            <template v-else-if="column.key === 'materialQty'">
-              <template v-if="record.bundle === 1 && record.parts?.length">
-                <div v-for="p in record.parts" :key="p.id">{{ qty(p.materialQty) }} {{ p.unit || '' }}</div>
-              </template>
-              <template v-else>{{ record.materialId ? `${qty(record.materialQty)} ${record.unit || ''}` : '-' }}</template>
-            </template>
-            <template v-else-if="column.key === 'allocatedQty'">{{ qty(record.allocatedQty) }}</template>
-            <template v-else-if="column.key === 'cost'">{{ record.cost != null ? baseMoney(record.cost) : '-' }}</template>
+        <a-alert v-if="check && (check.issues.length || check.blacklistId)" :type="check.invalid || check.blacklistId ? 'error' : 'warning'" show-icon class="block">
+          <template #message>{{ check.invalid ? $t('ecomOrd.check.invalid') : check.blacklistId ? $t('ecomOrd.check.blacklisted') : $t('ecomOrd.check.warnings') }}</template>
+          <template #description>
+            <div v-if="check.blacklistDesc" class="issue"><a-tag color="magenta" :bordered="false">{{ $t('ecomOrd.check.blacklist') }}</a-tag>{{ check.blacklistDesc }}</div>
+            <div v-for="(i, k) in check.issues" :key="k" class="issue">
+              <a-tag :color="i.error ? 'error' : 'warning'" :bordered="false">{{ i.error ? $t('ecomOrd.addr.error') : $t('ecomOrd.addr.warn') }}</a-tag>{{ i.message }}
+            </div>
+            <a-space class="issue-actions">
+              <a-button v-if="canEdit(detail) && can('ecom:order:edit')" size="small" @click="addressModal.open(detail, check.issues)">{{ $t('ecomOrd.addr.edit') }}</a-button>
+              <a-button v-if="can('ecom:order:audit')" size="small" :loading="rechecking" @click="recheck">{{ $t('ecomOrd.check.recheck') }}</a-button>
+            </a-space>
           </template>
-        </a-table>
+        </a-alert>
 
-        <OrderEnhancePanel :detail="detail" @changed="afterEnhance" @address="(issues) => addressModal.open(detail, issues)" @open-order="show" />
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-label">{{ $t('ecomOrder.order.totalAmount') }}</div>
+            <div class="stat-value">{{ fcMoney(detail.currency, detail.totalAmount) }}</div>
+            <div class="stat-sub">{{ baseMoney(detail.totalBase) }} · {{ $t('ecomOrder.order.exchangeRate') }} {{ detail.exchangeRate != null ? Number(detail.exchangeRate) : '-' }}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">{{ isShipped ? $t('ecomOrder.order.profit') : $t('ecomOrd.estimate.profit') }}</div>
+            <div class="stat-value" :class="{ negative: Number(shownProfit) < 0 }">{{ shownProfit != null ? baseMoney(shownProfit) : '-' }}</div>
+            <div class="stat-sub">{{ $t('ecomOrdUi.detail.rate') }} {{ shownRate != null ? `${shownRate}%` : '-' }}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">{{ $t('ecomOrdUi.detail.items') }}</div>
+            <div class="stat-value">{{ $t('ecomOrdUi.detail.itemsValue', { lines: (detail.items || []).length, qty: totalQty }) }}</div>
+            <div class="stat-sub">{{ $t('ecomOrdUi.list.packages', { n: (detail.packages || []).length }) }}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">{{ detail.shipTime ? $t('ecomOrder.order.shipTime') : $t('ecomOrder.order.shipBy') }}</div>
+            <div class="stat-value" :class="{ negative: isOverdue(detail) }">{{ (detail.shipTime || detail.shipBy || '-').slice(0, 16) }}</div>
+            <div class="stat-sub"><DictTag type="ecom_fulfillment" :value="detail.fulfillment" /> <DictTag type="ecom_order_status" :value="detail.status" /></div>
+          </div>
+        </div>
 
-        <div class="section-title">{{ $t('ecomOrder.ops.packages') }}</div>
-        <OrderPackages :packages="detail.packages || []" class="block" />
-        <OwhOrderOutbounds :order-id="detail.id" :refresh-key="detail.updateTime" class="block" />
-
-        <div class="section-title">{{ $t('ecomOrder.order.sectionShip') }}</div>
-        <a-descriptions :column="{ xs: 1, sm: 2, lg: 3 }" size="small">
-          <a-descriptions-item :label="$t('ecomOrder.order.tradeDoc')">{{ detail.tradeDocNo || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.order.outWarehouse')">{{ detail.warehouseName || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.common.channel')">{{ detail.channelName || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.common.carrier')">{{ detail.carrier || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.common.trackingNo')">{{ detail.trackingNo || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.order.shipTime')">{{ detail.shipTime || $t('ecomOrder.order.notShipped') }}</a-descriptions-item>
-        </a-descriptions>
+        <a-row :gutter="[16, 16]">
+          <a-col :xs="24" :xl="16">
+            <section class="panel">
+              <div class="panel-title">{{ $t('ecomOrder.order.sectionItems') }}</div>
+              <OrderDetailItems :items="detail.items || []" />
+            </section>
+            <section class="panel">
+              <div class="panel-title">{{ $t('ecomOrdUi.detail.logistics') }}</div>
+              <a-descriptions :column="{ xs: 1, sm: 2, lg: 3 }" size="small" class="block">
+                <a-descriptions-item :label="$t('ecomOrder.order.outWarehouse')">{{ detail.warehouseName || '-' }}</a-descriptions-item>
+                <a-descriptions-item :label="$t('ecomOrder.common.channel')">{{ detail.channelName || '-' }}</a-descriptions-item>
+                <a-descriptions-item :label="$t('ecomOrder.order.tradeDoc')">{{ detail.tradeDocNo || '-' }}</a-descriptions-item>
+                <a-descriptions-item :label="$t('ecomOrder.common.carrier')">{{ detail.carrier || '-' }}</a-descriptions-item>
+                <a-descriptions-item :label="$t('ecomOrder.common.trackingNo')">{{ detail.trackingNo || '-' }}</a-descriptions-item>
+                <a-descriptions-item :label="$t('ecomOrder.order.shipTime')">{{ detail.shipTime || $t('ecomOrder.order.notShipped') }}</a-descriptions-item>
+              </a-descriptions>
+              <OrderLogistics :detail="detail" :tracks="tracks" @pull="pull" @reconfirm="reconfirm" />
+            </section>
+            <section v-if="detail.orderType !== EcomOrderType.RESEND && resends.resends.length" class="panel">
+              <div class="panel-title">{{ $t('ecomOrd.resend.list') }} · {{ $t('ecomOrd.resend.afterSaleCost', { amount: baseMoney(resends.afterSaleCost) }) }}</div>
+              <a-table row-key="id" size="small" :columns="resendColumns" :data-source="resends.resends" :pagination="false" :scroll="{ x: 700 }">
+                <template #bodyCell="{ column, record }">
+                  <template v-if="column.key === 'no'"><a @click="show(record.id)">{{ record.platformOrderNo }}</a></template>
+                  <template v-else-if="column.key === 'localStatus'"><DictTag type="ecom_local_status" :value="record.localStatus" /></template>
+                  <template v-else-if="column.key === 'cost'">{{ baseMoney(Number(record.costAmount || 0) + Number(record.shippingCost || 0)) }}</template>
+                </template>
+              </a-table>
+            </section>
+            <section class="panel">
+              <div class="panel-title">{{ $t('ecomOrdUi.detail.timeline') }}</div>
+              <OrderTimeline :logs="logs" :adding="adding" @add="onAddNote" />
+            </section>
+          </a-col>
+          <a-col :xs="24" :xl="8">
+            <section class="panel">
+              <div class="panel-title">{{ $t('ecomOrdUi.detail.buyer') }}</div>
+              <a-descriptions :column="1" size="small" class="side-desc">
+                <a-descriptions-item :label="$t('ecomOrder.order.buyer')">{{ detail.buyerName || '-' }}</a-descriptions-item>
+                <a-descriptions-item :label="$t('ecomOrder.order.buyerEmail')"><span class="break">{{ detail.buyerEmail || '-' }}</span></a-descriptions-item>
+                <a-descriptions-item :label="$t('ecomOrder.order.receiver')">{{ detail.shipName || '-' }}</a-descriptions-item>
+                <a-descriptions-item :label="$t('ecomOrder.order.shipPhone')">{{ detail.shipPhone || '-' }}</a-descriptions-item>
+                <a-descriptions-item :label="$t('ecomOrder.order.address')">
+                  <div class="address">
+                    <div>{{ detail.shipAddress || '-' }}</div>
+                    <div>{{ [detail.shipCity, detail.shipState, detail.shipPostcode].filter(Boolean).join(', ') }}</div>
+                    <div><span v-if="detail.shipCountry" class="country">{{ detail.shipCountry }}</span></div>
+                  </div>
+                </a-descriptions-item>
+                <a-descriptions-item v-if="detail.note" :label="$t('ecomOrder.order.note')">{{ detail.note }}</a-descriptions-item>
+              </a-descriptions>
+            </section>
+            <section class="panel">
+              <div class="panel-title">{{ $t('ecomOrdUi.detail.profit') }}</div>
+              <OrderProfitCard :detail="detail" />
+            </section>
+            <section class="panel">
+              <div class="panel-title">{{ $t('ecomOrder.order.sectionInfo') }}</div>
+              <a-descriptions :column="1" size="small" class="side-desc">
+                <a-descriptions-item :label="$t('ecomOrder.common.store')">{{ detail.storeName || '-' }} <DictTag type="ecom_platform" :value="detail.platform" /></a-descriptions-item>
+                <a-descriptions-item :label="$t('ecomOrder.order.orderTime')">{{ detail.orderTime || '-' }}</a-descriptions-item>
+                <a-descriptions-item :label="$t('ecomOrder.order.paidTime')">{{ detail.paidTime || '-' }}</a-descriptions-item>
+                <a-descriptions-item :label="$t('ecomOrder.order.shipBy')"><span :class="{ negative: isOverdue(detail) }">{{ detail.shipBy || '-' }}</span></a-descriptions-item>
+                <a-descriptions-item :label="$t('ecomOrder.order.deliverBy')">{{ detail.deliverBy || '-' }}</a-descriptions-item>
+                <a-descriptions-item :label="$t('ecomOrder.ops.planShipTime')">{{ detail.planShipTime || '-' }}</a-descriptions-item>
+                <a-descriptions-item :label="$t('ecomOrder.ops.weight')">{{ detail.weight != null ? `${Number(detail.weight)} ${$t('ecomOrder.common.kg')}` : '-' }}</a-descriptions-item>
+                <a-descriptions-item :label="$t('ecomOrder.ops.matchedRules')">{{ detail.matchedRules || '-' }}</a-descriptions-item>
+                <a-descriptions-item v-if="detail.sourceOrderNo" :label="$t('ecomOrd.resend.sourceOrder')"><a @click="show(detail.sourceOrderId)">{{ detail.sourceOrderNo }}</a></a-descriptions-item>
+                <a-descriptions-item v-if="detail.remark" :label="$t('common.field.remark')">{{ detail.remark }}</a-descriptions-item>
+              </a-descriptions>
+            </section>
+          </a-col>
+        </a-row>
       </template>
     </a-spin>
 
-    <template v-if="detail && actions.length" #footer>
-      <div class="drawer-footer">
-        <a-button v-for="a in actions" :key="a.key" :type="a.primary ? 'primary' : 'default'" :danger="a.danger" @click="a.run">
-          <template #icon><component :is="a.icon" /></template>{{ a.label }}
-        </a-button>
-      </div>
-    </template>
     <ResendModal ref="resendModal" @done="(id) => { emit('changed'); show(id) }" />
     <AddressModal ref="addressModal" @done="afterEnhance" />
     <BlacklistModal ref="blacklistModal" @done="afterEnhance" />
@@ -150,6 +164,7 @@ import { Modal, message } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
 import {
   AuditOutlined,
+  DownOutlined,
   CarOutlined,
   CloudUploadOutlined,
   EditOutlined,
@@ -166,15 +181,16 @@ import {
 } from '@ant-design/icons-vue'
 import SubPage from '@/components/SubPage.vue'
 import DictTag from '@/components/DictTag.vue'
-import OrderPackages from './OrderPackages.vue'
-import OrderEnhancePanel from './OrderEnhancePanel.vue'
+import OrderDetailItems from './OrderDetailItems.vue'
+import OrderLogistics from './OrderLogistics.vue'
+import OrderProfitCard from './OrderProfitCard.vue'
+import OrderTimeline from './OrderTimeline.vue'
+import { useOrderEnhance } from './useOrderEnhance'
 import ResendModal from './ResendModal.vue'
 import AddressModal from './AddressModal.vue'
 import BlacklistModal from './BlacklistModal.vue'
-import OwhOrderOutbounds from '@/components/ecom/owh/OwhOrderOutbounds.vue'
 import { auditEcomOrders, cancelEcomOrder, confirmEcomOrderShipment, getEcomOrder, recheckEcomOrders, rematchEcomOrder, unholdEcomOrders } from '@/api/ecom/order'
 import { useUserStore } from '@/store/user'
-import { money, price, qty } from '@/utils/number'
 import { EcomLocalStatus, EcomOrderType } from '@/constants/enums'
 import {
   ORDER_RESULT_KEYS,
@@ -206,20 +222,13 @@ const { t } = useI18n()
 const userStore = useUserStore()
 const can = (perm) => userStore.hasPerm(perm)
 
-const itemColumns = [
-  { title: t('ecomOrder.order.itemSku'), dataIndex: 'sellerSku', width: 150 },
-  { title: t('ecomOrder.order.itemPlatformId'), dataIndex: 'platformItemId', width: 140 },
-  { title: t('ecomOrder.order.itemTitle'), key: 'title', width: 260 },
-  { title: t('ecomOrder.common.qty'), key: 'qty', width: 80, align: 'right' },
-  { title: t('ecomOrder.order.itemPrice'), key: 'price', width: 100, align: 'right' },
-  { title: t('ecomOrder.order.itemAmountCol'), key: 'amount', width: 110, align: 'right' },
-  { title: t('ecomOrder.order.itemShipping'), key: 'shipping', width: 90, align: 'right' },
-  { title: t('ecomOrder.order.itemTax'), key: 'tax', width: 90, align: 'right' },
-  { title: t('ecomOrder.order.itemDiscount'), key: 'discount', width: 90, align: 'right' },
-  { title: t('ecomOrder.order.itemMaterial'), key: 'material', width: 220 },
-  { title: t('ecomOrder.order.itemMaterialQty'), key: 'materialQty', width: 110, align: 'right' },
-  { title: t('ecomOrder.ops.allocated'), key: 'allocatedQty', width: 80, align: 'right' },
-  { title: t('ecomOrder.order.itemCost'), key: 'cost', width: 120, align: 'right' }
+const resendColumns = [
+  { title: t('ecomOrder.common.platformOrderNo'), key: 'no', width: 180 },
+  { title: t('ecomOrder.order.orderTime'), dataIndex: 'orderTime', width: 160 },
+  { title: t('ecomOrder.order.localStatus'), key: 'localStatus', width: 100 },
+  { title: t('ecomOrder.common.trackingNo'), dataIndex: 'trackingNo', width: 160 },
+  { title: t('ecomOrd.resend.cost'), key: 'cost', width: 120, align: 'right' },
+  { title: t('common.field.remark'), dataIndex: 'remark', width: 200, ellipsis: true }
 ]
 
 const open = ref(false)
@@ -236,10 +245,20 @@ async function afterEnhance() {
   emit('changed')
 }
 
-const address = computed(() => {
+const { check, logs, resends, tracks, adding, rechecking, addNote, recheck, pull, reconfirm } = useOrderEnhance(detail, () => emit('changed'))
+async function onAddNote(content, done) {
+  if (await addNote(content)) done()
+}
+
+const isShipped = computed(() => [EcomLocalStatus.SHIPPED, EcomLocalStatus.CLOSED].includes(detail.value?.localStatus))
+const shownProfit = computed(() => (isShipped.value ? detail.value?.profit : detail.value?.estProfit))
+const shownRate = computed(() => {
   const d = detail.value
-  return d ? [d.shipCountry, d.shipState, d.shipCity, d.shipPostcode, d.shipAddress].filter(Boolean).join(' ') : ''
+  if (!d) return null
+  if (!isShipped.value) return d.estProfitRate != null ? Number(d.estProfitRate) : null
+  return Number(d.totalBase) ? Math.round((Number(d.profit) / Number(d.totalBase)) * 10000) / 100 : null
 })
+const totalQty = computed(() => (detail.value?.items || []).reduce((sum, it) => sum + (Number(it.qty) || 0), 0))
 
 async function load(id) {
   loading.value = true
@@ -353,6 +372,13 @@ const actions = computed(() => {
   return list
 })
 
+/** 标题栏直接显示主要操作（审核、出库、发货等）和修改，其余收进「更多」 */
+const HEAD_KEYS = ['audit', 'recheck', 'outbound', 'ship', 'unhold', 'rematch', 'edit']
+const headActions = computed(() =>
+  actions.value.filter((a) => HEAD_KEYS.includes(a.key)).slice(0, 3).sort((a, b) => Number(!!a.primary) - Number(!!b.primary))
+)
+const moreActions = computed(() => actions.value.filter((a) => !headActions.value.includes(a)))
+
 defineExpose({ open: show, reload })
 </script>
 
@@ -360,25 +386,80 @@ defineExpose({ open: show, reload })
 .block {
   margin-bottom: 16px;
 }
-.section-title {
-  margin: 12px 0 8px;
+.head-title {
+  margin-right: 8px;
   font-weight: 600;
 }
-.sub-text {
+.issue {
+  margin-bottom: 4px;
+}
+.issue-actions {
+  margin-top: 6px;
+}
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.stat {
+  padding: 12px 16px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+}
+.stat-label {
   color: var(--app-text-3);
   font-size: 12px;
 }
-.fee-tag {
-  margin-left: 6px;
-}
-.title-cell {
-  max-width: 260px;
+.stat-value {
+  margin: 4px 0 2px;
   overflow: hidden;
+  font-size: 20px;
+  font-weight: 600;
+  white-space: nowrap;
   text-overflow: ellipsis;
+}
+.stat-sub {
+  color: var(--app-text-3);
+  font-size: 12px;
+}
+.stat-sub :deep(.ant-tag) {
+  font-size: 11px;
+  line-height: 16px;
+}
+@media (max-width: 991px) {
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.panel {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+}
+.panel-title {
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+.side-desc :deep(.ant-descriptions-item-label) {
+  min-width: 84px;
+  color: var(--app-text-3);
   white-space: nowrap;
 }
-.overdue-text,
-.profit-negative {
+.address {
+  line-height: 20px;
+}
+.country {
+  padding: 0 4px;
+  border: 1px solid var(--app-border);
+  border-radius: 3px;
+  font-size: 12px;
+}
+.break {
+  word-break: break-all;
+}
+.negative {
   color: var(--ant-color-error, #ff4d4f);
 }
 </style>

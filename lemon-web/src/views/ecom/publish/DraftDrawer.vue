@@ -15,7 +15,7 @@
             </template>
             <template v-else-if="column.key === 'status'"><DictTag type="ecom_publish_status" :value="record.status" /></template>
             <template v-else-if="column.key === 'ops'">
-              <a @click="emit('edit-item', record.id)">{{ EDITABLE.includes(record.status) ? $t('common.action.edit') : $t('common.action.view') }}</a>
+              <a @click="editItem(record.id)">{{ EDITABLE.includes(record.status) ? $t('common.action.edit') : $t('common.action.view') }}</a>
             </template>
           </template>
         </a-table>
@@ -166,6 +166,12 @@ async function save(apply) {
   } finally {
     saving.value = false
   }
+}
+
+/** 进入刊登工作台编辑该店铺（关闭抽屉，工作台中可切换其他店铺） */
+function editItem(id) {
+  open.value = false
+  emit('edit-item', id)
 }
 
 async function addStores() {

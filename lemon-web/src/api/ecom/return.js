@@ -2,8 +2,10 @@ import request from '@/utils/request'
 
 const ids = (v) => [].concat(v).join(',')
 
-/** 退货退款 /ecom/return：分页条件 storeId、status（EcomReturnStatus）、keyword（单据号 / 平台订单号 / 买家） */
+/** 退货退款 /ecom/return：分页条件 storeId、returnType（ReturnType）、status（EcomReturnStatus）、keyword（单据号 / 平台订单号 / 买家） */
 export const pageEcomReturn = (params) => request.get('/ecom/return', { params })
+/** 各状态的单据数：{ 状态: 数量 }，条件同列表、不含状态 */
+export const ecomReturnStatusCounts = (params) => request.get('/ecom/return/status-counts', { params })
 /** 详情含 items */
 export const getEcomReturn = (id) => request.get(`/ecom/return/${id}`)
 /** 新增（ReturnRequest）：orderId、returnType、reason、refundAmount（为空按明细合计）、warehouseId（退货退款必填）、remark、items[{ orderItemId, qty, refundAmount }]，返回 ID */

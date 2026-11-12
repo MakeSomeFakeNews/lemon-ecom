@@ -2,13 +2,13 @@
   <div class="tab-body">
     <a-alert type="info" show-icon class="tip" :message="$t('ecomCs.request.tip')" />
     <div class="filters">
-      <StoreSelect v-model:value="query.storeId" :platform="EcomPlatform.AMAZON" :placeholder="$t('ecomCs.common.allStores')" class="filter" />
-      <a-select v-model:value="query.state" :options="stateOptions" class="filter-sm" />
+      <StoreSelect v-model:value="query.storeId" :platform="EcomPlatform.AMAZON" :placeholder="$t('ecomCs.common.allStores')" class="filter" @update:value="search" />
+      <a-select v-model:value="query.state" :options="stateOptions" class="filter-sm" @change="search" />
       <a-input v-model:value="query.keyword" allow-clear :placeholder="$t('ecomCs.request.keywordPh')" class="filter" @press-enter="search" />
       <a-button type="primary" @click="search">
         <template #icon><SearchOutlined /></template>{{ $t('common.action.query') }}
       </a-button>
-      <a-button v-perm="'ecom:csReview:request'" :disabled="!selectedKeys.length" :loading="requesting" @click="requestSelected">
+      <a-button v-if="selectedKeys.length" v-perm="'ecom:csReview:request'" :loading="requesting" @click="requestSelected">
         <template #icon><StarOutlined /></template>{{ $t('ecomCs.request.requestN', { n: selectedKeys.length }) }}
       </a-button>
     </div>

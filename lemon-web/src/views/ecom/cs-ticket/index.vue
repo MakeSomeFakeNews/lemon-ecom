@@ -2,24 +2,24 @@
   <div class="table-page">
     <a-card v-show="showSearch" :bordered="false" class="page-card">
       <SearchForm :model="query" @search="search" @reset="resetQuery">
-        <a-form-item :label="$t('ecomCs.common.store')" name="storeId">
-          <StoreSelect v-model:value="query.storeId" :placeholder="$t('common.placeholder.all')" />
-        </a-form-item>
-        <a-form-item :label="$t('ecomCs.ticket.type')" name="ticketType">
-          <a-select v-model:value="query.ticketType" allow-clear :placeholder="$t('common.placeholder.all')" :options="toOptions(dict.ecom_cs_ticket_type)" />
-        </a-form-item>
-        <a-form-item :label="$t('ecomCs.ticket.source')" name="sourceType">
-          <a-select v-model:value="query.sourceType" allow-clear :placeholder="$t('common.placeholder.all')" :options="sourceOptions" />
-        </a-form-item>
         <a-form-item :label="$t('common.field.keyword')" name="keyword">
           <a-input v-model:value="query.keyword" allow-clear :placeholder="$t('ecomCs.ticket.keywordPh')" @press-enter="search" />
+        </a-form-item>
+        <a-form-item :label="$t('ecomCs.common.store')" name="storeId">
+          <StoreSelect v-model:value="query.storeId" :placeholder="$t('common.placeholder.all')" @update:value="search" />
+        </a-form-item>
+        <a-form-item :label="$t('ecomCs.ticket.type')" name="ticketType">
+          <a-select v-model:value="query.ticketType" allow-clear :placeholder="$t('common.placeholder.all')" :options="toOptions(dict.ecom_cs_ticket_type)" @change="search" />
+        </a-form-item>
+        <a-form-item :label="$t('ecomCs.ticket.source')" name="sourceType">
+          <a-select v-model:value="query.sourceType" allow-clear :placeholder="$t('common.placeholder.all')" :options="sourceOptions" @change="search" />
         </a-form-item>
       </SearchForm>
     </a-card>
 
     <a-card :bordered="false" class="page-card table-card">
       <TableToolbar v-model:size="size" v-model:checked="checked" v-model:show-search="showSearch" :columns="columns" :exporter="exportAll" @refresh="load">
-        <span class="sub-text">{{ $t('ecomCs.ticket.tip') }}</span>
+        <span class="sub-text tip">{{ $t('ecomCs.ticket.tip') }}</span>
       </TableToolbar>
       <a-table
         row-key="id"
@@ -29,6 +29,7 @@
         :loading="loading"
         :pagination="pagination"
         :scroll="{ x: scrollX, y: '100%' }"
+        class="ticket-table"
         @change="onTableChange"
       >
         <template #bodyCell="{ column, record }">
@@ -42,6 +43,7 @@
             <router-link :to="{ path: '/ecom/order', query: { id: record.orderId } }">{{ record.platformOrderNo }}</router-link>
           </template>
           <template v-else-if="column.key === 'result'">
+            <span v-if="!record.returnId && !record.resendOrderId">-</span>
             <template v-if="record.returnId">
               <router-link :to="{ path: '/ecom/return', query: { id: record.returnId } }">{{ record.returnNo }}</router-link>
               <DictTag type="ecom_return_status" :value="record.returnStatus" class="gap" />
@@ -86,7 +88,7 @@ const columns = [
   {
     title: t('ecomCs.ticket.result'),
     key: 'result',
-    width: 260,
+    width: 300,
     exportValue: (r) => r.returnNo || r.resendOrderNo
   },
   { title: t('common.field.remark'), dataIndex: 'remark', width: 200, ellipsis: true },
@@ -121,5 +123,11 @@ onMounted(load)
 }
 .gap {
   margin-left: 6px;
+}
+.tip {
+  align-self: center;
+}
+.ticket-table :deep(td) {
+  white-space: nowrap;
 }
 </style>

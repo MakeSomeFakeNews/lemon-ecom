@@ -3,13 +3,13 @@
     <a-card v-show="showSearch" :bordered="false" class="page-card">
       <SearchForm :model="query" @search="search" @reset="resetQuery">
         <a-form-item :label="$t('ecomFba.common.store')" name="storeId">
-          <StoreSelect v-model:value="query.storeId" :platform="EcomPlatform.AMAZON" :placeholder="$t('ecomFba.common.allStores')" />
+          <StoreSelect v-model:value="query.storeId" :platform="EcomPlatform.AMAZON" :placeholder="$t('ecomFba.common.allStores')" @change="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomFba.report.reportType')" name="reportType">
-          <a-select v-model:value="query.reportType" allow-clear :placeholder="$t('common.placeholder.all')" :options="toOptions(dict.ecom_amz_report_type)" />
+          <a-select v-model:value="query.reportType" allow-clear :placeholder="$t('common.placeholder.all')" :options="toOptions(dict.ecom_amz_report_type)" @change="search" />
         </a-form-item>
         <a-form-item :label="$t('common.field.status')" name="status">
-          <a-select v-model:value="query.status" allow-clear :placeholder="$t('common.placeholder.all')" :options="toOptions(dict.ecom_amz_report_status)" />
+          <a-select v-model:value="query.status" allow-clear :placeholder="$t('common.placeholder.all')" :options="toOptions(dict.ecom_amz_report_status)" @change="search" />
         </a-form-item>
       </SearchForm>
     </a-card>
@@ -36,7 +36,15 @@
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'reportType'"><DictTag type="ecom_amz_report_type" :value="record.reportType" /></template>
-          <template v-else-if="column.key === 'status'"><DictTag type="ecom_amz_report_status" :value="record.status" /></template>
+          <template v-else-if="column.key === 'status'">
+            <a-tooltip :title="record.message || undefined">
+              <span class="status-cell">
+                <DictTag type="ecom_amz_report_status" :value="record.status" />
+                <LoadingOutlined v-if="isRunning(record)" class="spin" />
+                <ExclamationCircleOutlined v-else-if="record.status === AmzReportStatus.FAILED && record.message" class="err" />
+              </span>
+            </a-tooltip>
+          </template>
           <template v-else-if="column.key === 'range'">
             <span v-if="record.dataStart">{{ record.dataStart }} ~ {{ record.dataEnd }}</span>
             <span v-else class="sub-text">-</span>
@@ -46,7 +54,7 @@
             <span v-else class="sub-text">API</span>
           </template>
           <template v-else-if="column.key === 'message'">
-            <span :class="{ err: record.status === AmzReportStatus.FAILED }">{{ record.message || '' }}</span>
+            <span :class="{ err: record.status === AmzReportStatus.FAILED }" :title="record.message">{{ record.message || '' }}</span>
           </template>
           <template v-else-if="column.key === 'action'">
             <TableActions :actions="rowActions(record)" />
@@ -62,7 +70,7 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
-import { InfoCircleOutlined, PlusOutlined, SyncOutlined, UploadOutlined } from '@ant-design/icons-vue'
+import { ExclamationCircleOutlined, InfoCircleOutlined, LoadingOutlined, PlusOutlined, SyncOutlined, UploadOutlined } from '@ant-design/icons-vue'
 import DictTag from '@/components/DictTag.vue'
 import SearchForm from '@/components/SearchForm.vue'
 import TableToolbar from '@/components/TableToolbar.vue'
@@ -89,10 +97,10 @@ const dict = useDict('ecom_amz_report_type', 'ecom_amz_report_status')
 const columns = [
   { title: t('ecomFba.common.store'), dataIndex: 'storeName', width: 160, ellipsis: true },
   { title: t('ecomFba.report.reportType'), key: 'reportType', dataIndex: 'reportType', width: 150, dict: 'ecom_amz_report_type' },
-  { title: t('common.field.status'), key: 'status', dataIndex: 'status', width: 90, dict: 'ecom_amz_report_status' },
+  { title: t('common.field.status'), key: 'status', dataIndex: 'status', width: 110, dict: 'ecom_amz_report_status' },
   { title: t('ecomFba.report.dataRange'), key: 'range', width: 200, exportValue: (r) => (r.dataStart ? `${r.dataStart} ~ ${r.dataEnd}` : '') },
   { title: t('ecomFba.report.reportId'), dataIndex: 'reportId', width: 140, ellipsis: true },
-  { title: t('ecomFba.report.uploaded'), key: 'uploaded', dataIndex: 'uploaded', width: 70 },
+  { title: t('ecomFba.report.uploaded'), key: 'uploaded', dataIndex: 'uploaded', width: 80 },
   { title: t('ecomFba.report.rowCount'), dataIndex: 'rowCount', width: 80, align: 'right' },
   { title: t('ecomFba.report.appliedCount'), dataIndex: 'appliedCount', width: 80, align: 'right' },
   { title: t('ecomFba.report.pollCount'), dataIndex: 'pollCount', width: 90, align: 'right' },
@@ -133,6 +141,15 @@ const rowActions = (record) => [
 .sub-text {
   color: var(--app-text-3);
   font-size: 12px;
+}
+.status-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.spin {
+  color: var(--app-primary);
 }
 .err {
   color: var(--status-critical, #cf1322);

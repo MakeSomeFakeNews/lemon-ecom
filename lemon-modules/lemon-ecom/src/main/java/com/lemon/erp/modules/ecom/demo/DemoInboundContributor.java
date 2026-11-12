@@ -1,7 +1,9 @@
 package com.lemon.erp.modules.ecom.demo;
 
 import com.lemon.erp.modules.ecom.dto.GenerateInboundRequest;
+import com.lemon.erp.modules.ecom.dto.InboundBoxRequest;
 import com.lemon.erp.modules.ecom.dto.InboundRequest;
+import com.lemon.erp.modules.ecom.dto.InboundSkuLine;
 import com.lemon.erp.modules.ecom.dto.ShipmentPlanRequest;
 import com.lemon.erp.modules.ecom.entity.EcomShipmentPlan;
 import com.lemon.erp.modules.ecom.entity.EcomShipmentPlanItem;
@@ -156,6 +158,10 @@ public class DemoInboundContributor implements DemoContributor {
                         BigDecimal.valueOf(weight).setScale(3, RoundingMode.HALF_UP), BigDecimal.valueOf(boxes * 0.06).setScale(4, RoundingMode.HALF_UP),
                         money(weight * perKg), money(DemoCatalog.scale(DemoCatalog.store(storeCode).currency()) == 0 ? 0 : value * 0.035), money(180 + boxes * 12.0), null, items);
                 Long id = inboundService.create(req);
+                // 在途批次和最近一批已签收的货件录入逐箱装箱明细（装箱页、装箱单 / 箱唛打印有数据可看）
+                if (b.receiveAgo() == null || i == 2) {
+                    packBoxes(id, boxes, weight);
+                }
                 boolean approving = inboundService.submit(id);
                 if (!approving && b.receiveAgo() != null) {
                     inboundService.receive(id, today.minusDays(b.receiveAgo()));
@@ -198,6 +204,47 @@ public class DemoInboundContributor implements DemoContributor {
                         "FBA1" + DemoListingContributor.code(ctx, 8), channels.get("DEMO-SEA-JP"), lines))));
             }
         }
+    }
+
+    /**
+     * 按平台 SKU 顺序装箱：每箱装 ⌈总件数 ÷ 箱数⌉ 件，外箱 60 × 40 × 40 cm，毛重按货件毛重平均分摊
+     *
+     * @param boxes  箱数
+     * @param weight 货件毛重（kg）
+     */
+    private void packBoxes(Long id, int boxes, double weight) {
+        List<InboundSkuLine> lines = inboundService.detail(id).getSkuLines().stream().filter(l -> l.sellerSku() != null).toList();
+        BigDecimal total = lines.stream().map(InboundSkuLine::qty).reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (boxes <= 0 || total.signum() <= 0) {
+            return;
+        }
+        BigDecimal perBox = total.divide(BigDecimal.valueOf(boxes), 0, RoundingMode.CEILING);
+        BigDecimal boxWeight = BigDecimal.valueOf(weight / boxes).setScale(3, RoundingMode.HALF_UP);
+        List<InboundBoxRequest.Box> out = new ArrayList<>();
+        List<InboundBoxRequest.Item> current = new ArrayList<>();
+        BigDecimal room = perBox;
+        for (InboundSkuLine l : lines) {
+            BigDecimal left = l.qty();
+            while (left.signum() > 0) {
+                BigDecimal take = left.min(room);
+                current.add(new InboundBoxRequest.Item(l.sellerSku(), take));
+                left = left.subtract(take);
+                room = room.subtract(take);
+                if (room.signum() <= 0) {
+                    out.add(demoBox(boxWeight, current));
+                    current = new ArrayList<>();
+                    room = perBox;
+                }
+            }
+        }
+        if (!current.isEmpty()) {
+            out.add(demoBox(boxWeight, current));
+        }
+        inboundService.saveBoxes(id, new InboundBoxRequest(out));
+    }
+
+    private static InboundBoxRequest.Box demoBox(BigDecimal weight, List<InboundBoxRequest.Item> items) {
+        return new InboundBoxRequest.Box(BigDecimal.valueOf(60), BigDecimal.valueOf(40), BigDecimal.valueOf(40), weight, null, items);
     }
 
     /** 物料 → 店铺平台仓配送的单品平台 SKU */

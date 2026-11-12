@@ -47,7 +47,7 @@
       <div v-for="(c, i) in form.conditions" :key="i" class="cond">
         <a-select v-model:value="c.metric" :options="metricOptions" class="metric" />
         <a-select v-model:value="c.operator" :options="operatorOptions" class="op" />
-        <a-input-number v-model:value="c.value" :min="0" :precision="4" class="val" />
+        <a-input-number v-model:value="c.value" :min="0" class="val" />
         <a-button type="text" danger :disabled="form.conditions.length <= 1" @click="form.conditions.splice(i, 1)"><DeleteOutlined /></a-button>
       </div>
       <a-button type="dashed" size="small" :disabled="form.conditions.length >= 10" class="add-cond" @click="form.conditions.push(emptyCondition())">

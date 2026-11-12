@@ -44,7 +44,7 @@
       </template>
       <template v-else-if="column.kind">{{ fmt(column.kind, record[column.key]) }}</template>
       <template v-else-if="column.key === 'action'">
-        <TableActions :actions="[{ type: 'disable', label: $t('ecomAds.searchTerm.negate'), perm: 'ecom:ad:edit', show: !record.negated && !!record.adGroupId, onClick: () => negate([record]) }]" />
+        <TableActions :actions="[{ type: 'disable', label: $t('ecomUiOps.ad.negate'), tip: $t('ecomAds.searchTerm.negate'), perm: 'ecom:ad:edit', show: !record.negated && !!record.adGroupId, onClick: () => negate([record]) }]" />
       </template>
     </template>
   </a-table>
@@ -90,7 +90,7 @@ const columns = [
   { title: t('ecomAds.searchTerm.keywordText'), key: 'keywordText', width: 180, ellipsis: true },
   ...metricColumns(),
   { title: t('ecomAds.common.currency'), dataIndex: 'currency', key: 'currency', width: 70 },
-  actionColumn(1)
+  actionColumn(1, [t('ecomUiOps.ad.negate')])
 ]
 const scrollX = computed(() => sumWidth(columns))
 

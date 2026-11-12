@@ -22,22 +22,25 @@
         <a-button v-perm="'ecom:competitor:add'" @click="importOpen = true"><template #icon><ImportOutlined /></template>{{ $t('common.action.import') }}</a-button>
         <a-button v-perm="'ecom:competitor:add'" @click="fetchOpen = true"><template #icon><CloudDownloadOutlined /></template>{{ $t('ecomPublish.competitor.fetch') }}</a-button>
         <a-button v-if="selectedKeys.length" v-perm="'ecom:competitor:remove'" danger @click="remove(selectedKeys)">{{ $t('ecomPublish.list.deleteN', { n: selectedKeys.length }) }}</a-button>
-        <span class="sub-text">{{ $t('ecomPublish.competitor.tip') }}</span>
+        <a-tooltip :title="$t('ecomPublish.competitor.tip')"><QuestionCircleOutlined class="tip-icon" /></a-tooltip>
       </TableToolbar>
       <a-table row-key="id" :size="size" :columns="visibleColumns" :data-source="list" :loading="loading" :pagination="pagination" :row-selection="rowSelection"
                :scroll="{ x: scrollX, y: '100%' }" @change="onTableChange">
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'sku'">
-            <div>{{ record.sellerSku }} <span v-if="record.platformItemId" class="sub-text">{{ record.platformItemId }}</span></div>
-            <div class="sub-text ellipsis" :title="record.title">{{ record.title }}</div>
+            <div class="ellipsis">{{ record.sellerSku }} <span v-if="record.platformItemId" class="sub-text">{{ record.platformItemId }}</span></div>
+            <a-tooltip :title="record.title"><div class="sub-text ellipsis">{{ record.title }}</div></a-tooltip>
           </template>
           <template v-else-if="column.key === 'store'">
             <div>{{ record.storeName }}</div>
             <DictTag v-if="record.platform" type="ecom_platform" :value="record.platform" />
           </template>
-          <template v-else-if="column.key === 'myPrice'">{{ record.myPrice != null ? price(record.myPrice) : '-' }}</template>
+          <template v-else-if="column.key === 'myPrice'">
+            <template v-if="record.myPrice != null">{{ price(record.myPrice) }} <span class="cur">{{ record.currency }}</span></template>
+            <span v-else>-</span>
+          </template>
           <template v-else-if="column.key === 'lowest'">
-            <span v-if="record.lowestPrice != null" :class="gapClass(record)">{{ price(record.lowestPrice) }}</span>
+            <span v-if="record.lowestPrice != null" :class="gapClass(record)">{{ price(record.lowestPrice) }} <span class="cur">{{ record.currency }}</span></span>
             <span v-else>-</span>
             <div v-if="Number(record.lowestShipping) > 0" class="sub-text">+ {{ price(record.lowestShipping) }}</div>
           </template>
@@ -92,7 +95,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Modal, message } from 'ant-design-vue'
-import { CloudDownloadOutlined, ImportOutlined, PlusOutlined } from '@ant-design/icons-vue'
+import { CloudDownloadOutlined, ImportOutlined, PlusOutlined, QuestionCircleOutlined } from '@ant-design/icons-vue'
 import DictTag from '@/components/DictTag.vue'
 import ImportModal from '@/components/ImportModal.vue'
 import SearchForm from '@/components/SearchForm.vue'
@@ -118,14 +121,14 @@ const columns = [
   { title: t('ecomPublish.competitor.snapshotTime'), dataIndex: 'snapshotTime', width: 165 },
   { title: t('ecomPublish.common.store'), key: 'store', dataIndex: 'storeName', width: 160 },
   { title: t('ecomPublish.common.sellerSku'), key: 'sku', dataIndex: 'sellerSku', width: 240 },
-  { title: t('ecomPublish.competitor.myPrice'), key: 'myPrice', dataIndex: 'myPrice', width: 100, align: 'right' },
-  { title: t('ecomPublish.competitor.lowestPrice'), key: 'lowest', dataIndex: 'lowestPrice', width: 110, align: 'right' },
-  { title: t('ecomPublish.competitor.buyboxPrice'), key: 'buybox', dataIndex: 'buyboxPrice', width: 150, align: 'right' },
+  { title: t('ecomPublish.competitor.myPrice'), key: 'myPrice', dataIndex: 'myPrice', width: 130, align: 'right' },
+  { title: t('ecomPublish.competitor.lowestPrice'), key: 'lowest', dataIndex: 'lowestPrice', width: 130, align: 'right' },
+  { title: t('ecomPublish.competitor.buyboxPrice'), key: 'buybox', dataIndex: 'buyboxPrice', width: 160, align: 'right' },
   { title: t('ecomPublish.competitor.offerCount'), dataIndex: 'offerCount', width: 80, align: 'right' },
   { title: t('ecomPublish.competitor.competitor'), dataIndex: 'competitor', width: 160, ellipsis: true },
-  { title: t('ecomPublish.competitor.source'), key: 'source', dataIndex: 'source', width: 100, dict: 'ecom_competitor_source' },
+  { title: t('ecomPublish.competitor.source'), key: 'source', dataIndex: 'source', width: 110, dict: 'ecom_competitor_source' },
   { title: t('common.field.remark'), dataIndex: 'remark', width: 160, ellipsis: true },
-  actionColumn(1)
+  actionColumn(1, [t('common.action.delete')])
 ]
 const { checked, visibleColumns, scrollX } = useColumns(columns, 'ecom-competitor-price')
 const showSearch = ref(true)
@@ -222,6 +225,14 @@ const importSample = { storeCode: 'US01', sellerSku: 'SKU-0001', lowestPrice: 19
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 220px;
+}
+.cur {
+  color: var(--app-text-3);
+  font-size: 12px;
+}
+.tip-icon {
+  color: var(--app-text-3);
+  cursor: help;
 }
 .block {
   margin-bottom: 12px;

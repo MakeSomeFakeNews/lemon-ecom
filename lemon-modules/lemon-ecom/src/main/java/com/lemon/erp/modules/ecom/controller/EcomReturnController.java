@@ -7,6 +7,7 @@ import com.lemon.erp.framework.log.OperType;
 import com.lemon.erp.modules.ecom.dto.ReturnRequest;
 import com.lemon.erp.modules.ecom.entity.EcomReturn;
 import com.lemon.erp.modules.ecom.model.EcomReturnStatus;
+import com.lemon.erp.modules.ecom.model.ReturnType;
 import com.lemon.erp.modules.ecom.service.EcomReturnService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 退货退款 /ecom/return
@@ -37,9 +39,16 @@ public class EcomReturnController {
     @GetMapping
     @PreAuthorize("@ss.hasPerm('ecom:return:list')")
     public R<PageResult<EcomReturn>> page(@RequestParam(defaultValue = "1") long current, @RequestParam(defaultValue = "10") long size,
-                                          @RequestParam(required = false) Long storeId, @RequestParam(required = false) EcomReturnStatus status,
-                                          @RequestParam(required = false) String keyword) {
-        return R.ok(returnService.page(current, size, storeId, status, keyword));
+                                          @RequestParam(required = false) Long storeId, @RequestParam(required = false) ReturnType returnType,
+                                          @RequestParam(required = false) EcomReturnStatus status, @RequestParam(required = false) String keyword) {
+        return R.ok(returnService.page(current, size, storeId, returnType, status, keyword));
+    }
+
+    @GetMapping("/status-counts")
+    @PreAuthorize("@ss.hasPerm('ecom:return:list')")
+    public R<Map<String, Long>> statusCounts(@RequestParam(required = false) Long storeId, @RequestParam(required = false) ReturnType returnType,
+                                             @RequestParam(required = false) String keyword) {
+        return R.ok(returnService.statusCounts(storeId, returnType, keyword));
     }
 
     @GetMapping("/{id}")

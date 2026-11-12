@@ -7,6 +7,7 @@ import com.lemon.erp.common.exception.BizException;
 import com.lemon.erp.common.i18n.Messages;
 import com.lemon.erp.common.result.PageResult;
 import com.lemon.erp.common.util.Decimals;
+import com.lemon.erp.framework.dict.DictLookup;
 import com.lemon.erp.framework.excel.ImportExecutor;
 import com.lemon.erp.framework.excel.ImportRequest;
 import com.lemon.erp.framework.excel.ImportResult;
@@ -32,7 +33,9 @@ import com.lemon.erp.modules.ecom.mapper.EcomPackageItemMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomPackageMapper;
 import com.lemon.erp.modules.ecom.model.EcomConstants;
 import com.lemon.erp.modules.ecom.model.EcomLocalStatus;
+import com.lemon.erp.modules.ecom.model.EcomOrderLogAction;
 import com.lemon.erp.modules.ecom.model.EcomOrderStatus;
+import com.lemon.erp.modules.ecom.model.EcomOrderType;
 import com.lemon.erp.modules.ecom.model.FulfillmentType;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
@@ -58,6 +61,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * 平台订单：导入 / 同步写入 → 匹配在线商品得到本地物料 → 出库（直接开单生成销售出库，客户为店铺对应的客户，金额按汇率折为本位币）
@@ -91,6 +95,8 @@ public class EcomOrderService {
     private final Validator validator;
     private final TransactionTemplate transactionTemplate;
     private final ApplicationEventPublisher eventPublisher;
+    private final EcomOrderLogService logService;
+    private final DictLookup dictLookup;
 
     // ---------------------------------------------------------------- 查询
 
@@ -99,7 +105,18 @@ public class EcomOrderService {
         Page<EcomOrder> page = Page.of(current, size);
         orderMapper.selectPageList(page, query);
         attachTags(page.getRecords());
+        attachBriefItems(page.getRecords());
         return PageResult.of(page);
+    }
+
+    /** 列表行内显示的商品（缩略图、SKU × 数量） */
+    private void attachBriefItems(List<EcomOrder> orders) {
+        if (orders.isEmpty()) {
+            return;
+        }
+        Map<Long, List<EcomOrderItem>> byOrder = itemMapper.selectBriefByOrderIds(orders.stream().map(EcomOrder::getId).toList())
+                .stream().collect(Collectors.groupingBy(EcomOrderItem::getOrderId));
+        orders.forEach(o -> o.setItems(byOrder.getOrDefault(o.getId(), List.of())));
     }
 
     /** 带出订单的标签 */
@@ -350,9 +367,21 @@ public class EcomOrderService {
         items.forEach(i -> i.setOrderId(o.getId()));
         itemMapper.insertBatch(items);
         outboundSupport.saveParts(o.getId(), items);
+        logService.log(o.getId(), EcomOrderLogAction.CREATE, createLogText(o, updateExisting));
+        if (o.getOrderType() == EcomOrderType.RESEND && o.getSourceOrderId() != null) {
+            logService.log(o.getSourceOrderId(), EcomOrderLogAction.RESEND, EcomOrderLogService.text("ecom.log.resendCreated", o.getPlatformOrderNo()));
+        }
         // 审单规则（同一事务中同步执行，规则出错不影响写入）
         eventPublisher.publishEvent(new OrderSavedEvent(o.getId()));
         return true;
+    }
+
+    /** 写入日志的内容：来源（同步 / 导入 / 手工 / 补发），SKU 未匹配时带上异常 */
+    private static String createLogText(EcomOrder o, boolean synced) {
+        String source = o.getOrderType() == EcomOrderType.MANUAL ? EcomOrderLogService.text("ecom.log.createManual")
+                : o.getOrderType() == EcomOrderType.RESEND ? EcomOrderLogService.text("ecom.log.createResend")
+                : EcomOrderLogService.text(synced ? "ecom.log.createSync" : "ecom.log.createImport");
+        return o.getException() == null ? source : source + EcomOrderLogService.text("ecom.log.withException", o.getException());
     }
 
     /** 新订单写入后执行审单规则（EcomOrderOpsService 同步处理） */
@@ -361,6 +390,8 @@ public class EcomOrderService {
 
     /** 渠道同步发现平台状态变化：取消的未出库订单关闭；平台已发货（FBA）的订单记为平台状态已发货，本地仍需出库记账 */
     private void syncStatus(EcomOrder o, EcomOrderStatus status) {
+        logService.log(o.getId(), EcomOrderLogAction.PLATFORM_STATUS, EcomOrderLogService.text("ecom.log.platformStatus",
+                dictLookup.options("ecom_order_status").getOrDefault(status.name(), status.name())));
         if (status == EcomOrderStatus.CANCELLED && !CANCEL_DENIED.contains(o.getLocalStatus())) {
             if (packageService.hasLabeled(o.getId())) {
                 // 已打单的订单被买家取消：拦截（挂起），由人工取消包裹面单后再关闭
@@ -424,6 +455,7 @@ public class EcomOrderService {
         String exception = outboundSupport.matchAndSave(o.getStoreId(), items);
         orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getException, exception)
                 .set(EcomOrder::getLocalStatus, exception == null ? EcomLocalStatus.PENDING : EcomLocalStatus.EXCEPTION).eq(EcomOrder::getId, id));
+        logService.log(id, EcomOrderLogAction.REMATCH, exception == null ? EcomOrderLogService.text("ecom.log.matched") : exception);
     }
 
     /** 订单是否已全部匹配物料（不是异常） */
@@ -511,6 +543,7 @@ public class EcomOrderService {
         o.setProfit(profitOf(o));
         orderMapper.updateById(o);
         orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getException, null).eq(EcomOrder::getId, id));
+        logService.log(id, EcomOrderLogAction.OUTBOUND, EcomOrderLogService.text("ecom.log.outbound", r.docNo()));
     }
 
     /** 平台配送订单的头程分摊：各物料最近一次货件的单件头程成本 × 数量 */
@@ -546,6 +579,7 @@ public class EcomOrderService {
         o.setLocalStatus(EcomLocalStatus.SHIPPED);
         o.setProfit(profitOf(o));
         orderMapper.updateById(o);
+        logService.log(id, EcomOrderLogAction.SHIP, o.getCarrier() + " " + o.getTrackingNo());
         eventPublisher.publishEvent(new OrderShippedEvent(o.getId()));
     }
 
@@ -566,6 +600,7 @@ public class EcomOrderService {
         packageService.releaseOrder(id);
         orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getStatus, EcomOrderStatus.CANCELLED)
                 .set(EcomOrder::getLocalStatus, EcomLocalStatus.CLOSED).set(EcomOrder::getHoldReason, null).eq(EcomOrder::getId, id));
+        logService.log(id, EcomOrderLogAction.CANCEL, null);
     }
 
     /** 修改收件信息、备注（未发货时） */
@@ -594,6 +629,8 @@ public class EcomOrderService {
             orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getTaxType, null).set(EcomOrder::getVatRate, null).eq(EcomOrder::getId, id));
         }
         orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getWeight, req.weight()).eq(EcomOrder::getId, id));
+        logService.log(id, EcomOrderLogAction.EDIT, Stream.of(o.getShipName(), o.getShipCountry(), o.getShipState(), o.getShipCity(), o.getShipPostcode(),
+                o.getShipAddress()).filter(StringUtils::hasText).collect(Collectors.joining(", ")));
         // 地址可能变化：重新校验地址、黑名单与利润预估
         eventPublisher.publishEvent(new EcomOrderCheckService.AddressChangedEvent(id));
     }

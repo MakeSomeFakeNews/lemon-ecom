@@ -374,5 +374,31 @@ export default {
   pkg: {
     push: '推送海外仓',
     owhStatus: '海外仓出库'
+  },
+  flow: {
+    draft: '草稿',
+    pending: '待推送',
+    pushed: '已推送',
+    receiving: '收货中',
+    received: '已收货',
+    erpReceived: 'ERP 签收',
+    erpStocked: 'ERP 入库',
+    outbound: '已出库',
+    shipped: '已发货',
+    pushFailed: '推送失败',
+    intercepting: '截单中',
+    outPushed: '调出仓处理中',
+    inTransit: '在途',
+    cancelled: '已取消'
+  },
+  section: {
+    basic: '基本信息',
+    logistics: '物流信息',
+    progress: '收货进度',
+    quality: '质检结果',
+    route: '调拨路线'
+  },
+  misc: {
+    batchHint: '勾选包裹后可批量推送海外仓'
   }
 }

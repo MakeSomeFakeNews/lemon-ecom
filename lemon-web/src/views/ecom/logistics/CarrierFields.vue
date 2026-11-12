@@ -71,7 +71,10 @@ async function clear() {
 .section-title {
   display: block;
   margin: 8px 0 12px;
-  font-weight: 500;
+  padding-left: 8px;
+  border-left: 3px solid var(--app-primary);
+  font-weight: 600;
+  line-height: 1.2;
 }
 .cred-head {
   display: flex;

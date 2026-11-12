@@ -17,13 +17,28 @@
         SELECT <include refid="columns"/>
         <include refid="joins"/>
         <where>
-            <if test="storeId != null">r.store_id = #{storeId}</if>
+            <include refid="filters"/>
             <if test="status != null">AND r.status = #{status}</if>
-            <if test="keyword != null and keyword != ''">
-                AND (r.doc_no LIKE CONCAT('%', #{keyword}, '%') OR r.platform_order_no LIKE CONCAT('%', #{keyword}, '%') OR o.buyer_name LIKE CONCAT('%', #{keyword}, '%'))
-            </if>
         </where>
         ORDER BY r.id DESC
+    </select>
+
+    <!-- 列表与状态计数共用的条件（不含状态） -->
+    <sql id="filters">
+        <if test="storeId != null">AND r.store_id = #{storeId}</if>
+        <if test="returnType != null">AND r.return_type = #{returnType}</if>
+        <if test="keyword != null and keyword != ''">
+            AND (r.doc_no LIKE CONCAT('%', #{keyword}, '%') OR r.platform_order_no LIKE CONCAT('%', #{keyword}, '%') OR o.buyer_name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+    </sql>
+
+    <select id="countByStatus" resultType="java.util.Map">
+        SELECT r.status AS "status", COUNT(*) AS "cnt"
+        <include refid="joins"/>
+        <where>
+            <include refid="filters"/>
+        </where>
+        GROUP BY r.status
     </select>
 
     <select id="selectDetail" resultType="com.lemon.erp.modules.ecom.entity.EcomReturn">

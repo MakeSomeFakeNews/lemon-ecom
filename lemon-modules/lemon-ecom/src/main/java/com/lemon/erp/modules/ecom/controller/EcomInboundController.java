@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 头程货件 /ecom/inbound
@@ -41,6 +42,13 @@ public class EcomInboundController {
                                            @RequestParam(required = false) Long storeId, @RequestParam(required = false) InboundStatus status,
                                            @RequestParam(required = false) String keyword) {
         return R.ok(inboundService.page(current, size, storeId, status, keyword));
+    }
+
+    /** 各状态的货件数（状态标签页）：{ 状态: 数量 }，条件与列表相同、不含状态 */
+    @GetMapping("/status-counts")
+    @PreAuthorize("@ss.hasPerm('ecom:inbound:list')")
+    public R<Map<String, Long>> statusCounts(@RequestParam(required = false) Long storeId, @RequestParam(required = false) String keyword) {
+        return R.ok(inboundService.statusCounts(storeId, keyword));
     }
 
     @GetMapping("/{id}")

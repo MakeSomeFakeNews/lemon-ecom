@@ -1,5 +1,11 @@
 <template>
   <SubPage :open="open" :title="detail ? `${$t('ecomReport.settlement.title')} ${detail.settlementNo}` : ''" @close="open = false">
+    <template #title>
+      <template v-if="detail">
+        <span>{{ $t('ecomReport.settlement.title') }} {{ detail.settlementNo }}</span>
+        <DictTag type="ecom_settlement_status" :value="detail.status" class="title-tag" />
+      </template>
+    </template>
     <template #extra>
       <a-button
         v-if="detail && detail.status === SettlementStatus.IMPORTED"
@@ -18,30 +24,31 @@
           <a-descriptions-item :label="$t('ecomReport.settlement.period')">{{ detail.periodStart }} ~ {{ detail.periodEnd }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomReport.common.currency')">{{ detail.currency }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomReport.settlement.exchangeRate')">{{ qty(detail.exchangeRate, 6) }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('common.field.status')">
-            <DictTag type="ecom_settlement_status" :value="detail.status" />
-            <span v-if="detail.finSettlementId" class="sub-text">{{ $t('ecomReport.settlement.receiptGenerated') }}</span>
+          <a-descriptions-item :label="$t('ecomDat.settlement.receipt')">
+            <span v-if="detail.finSettlementId">{{ $t('ecomReport.settlement.receiptGenerated') }}</span>
+            <span v-else class="muted">-</span>
           </a-descriptions-item>
           <a-descriptions-item :label="$t('ecomReport.settlement.itemCount')">{{ items.length }}</a-descriptions-item>
           <a-descriptions-item :label="$t('common.field.createTime')">{{ detail.createTime }}</a-descriptions-item>
           <a-descriptions-item v-if="detail.remark" :label="$t('common.field.remark')" :span="4">{{ detail.remark }}</a-descriptions-item>
         </a-descriptions>
 
-        <div class="section-title">{{ $t('ecomReport.settlement.amounts') }}</div>
-        <div class="amounts">
-          <div v-for="a in AMOUNTS" :key="a.key" class="amount" :class="{ net: a.net }">
-            <div class="sub-text">{{ $t(`ecomReport.settlement.${a.key}`) }}</div>
-            <div class="amount-value" :class="{ neg: nz(detail[a.key]) < 0 }">{{ money(detail[a.key]) }}</div>
-          </div>
-        </div>
+        <div class="section-title">{{ $t('ecomDat.settlement.composition') }}</div>
+        <SettlementComposition :settlement="detail" />
 
-        <div class="section-title">{{ $t('ecomReport.settlement.items') }}</div>
+        <div class="items-head">
+          <span class="section-title">{{ $t('ecomReport.settlement.items') }}</span>
+          <a-radio-group v-model:value="typeFilter" size="small" class="type-filter" @change="pagination.current = 1">
+            <a-radio-button value="">{{ $t('common.status.all') }} {{ items.length }}</a-radio-button>
+            <a-radio-button v-for="g in typeGroups" :key="g.type" :value="g.type">{{ typeLabel(g.type) }} {{ g.count }}</a-radio-button>
+          </a-radio-group>
+        </div>
         <a-table
           row-key="id"
           size="small"
           :columns="itemColumns"
-          :data-source="items"
-          :pagination="items.length > pagination.pageSize ? pagination : false"
+          :data-source="shownItems"
+          :pagination="shownItems.length > pagination.pageSize ? pagination : false"
           :scroll="{ x: itemScrollX }"
           @change="(p) => applyPageChange(pagination, p)"
         >
@@ -68,10 +75,13 @@ import { CheckCircleOutlined } from '@ant-design/icons-vue'
 import DictTag from '@/components/DictTag.vue'
 import SubPage from '@/components/SubPage.vue'
 import SettlementAllocations from './SettlementAllocations.vue'
+import SettlementComposition from './SettlementComposition.vue'
 import { applyPageChange, localPagination } from '@/components/ecom/ecomReport'
 import { getSettlement } from '@/api/ecom/settlement'
 import { sumWidth } from '@/composables/useColumns'
 import { money, nz, qty } from '@/utils/number'
+import { useDict } from '@/composables/useDict'
+import { findDict } from '@/utils/dict'
 import { SettlementStatus } from '@/constants/enums'
 import { t } from '@/locales'
 
@@ -81,19 +91,8 @@ import { t } from '@/locales'
  */
 const emit = defineEmits(['confirm'])
 
-/** 头部汇总的金额字段（与 EcomSettlement 一致），净额加粗 */
-const AMOUNTS = [
-  { key: 'salesAmount' },
-  { key: 'refundAmount' },
-  { key: 'commissionFee' },
-  { key: 'fulfillmentFee' },
-  { key: 'storageFee' },
-  { key: 'adFee' },
-  { key: 'otherFee' },
-  { key: 'adjustment' },
-  { key: 'netAmount', net: true },
-  { key: 'netBase', net: true }
-]
+const dict = useDict('ecom_settlement_item_type')
+const typeLabel = (v) => findDict(dict.ecom_settlement_item_type, v)?.label || v
 
 const itemColumns = [
   { title: t('ecomReport.settlement.postedDate'), dataIndex: 'postedDate', width: 110 },
@@ -109,6 +108,14 @@ const open = ref(false)
 const loading = ref(false)
 const detail = ref()
 const items = computed(() => detail.value?.items || [])
+/** 明细按类型筛选（类型与条数按出现顺序） */
+const typeFilter = ref('')
+const typeGroups = computed(() => {
+  const map = new Map()
+  items.value.forEach((r) => map.set(r.itemType, (map.get(r.itemType) || 0) + 1))
+  return [...map].map(([type, count]) => ({ type, count }))
+})
+const shownItems = computed(() => (typeFilter.value ? items.value.filter((r) => r.itemType === typeFilter.value) : items.value))
 const pagination = reactive(localPagination(20))
 
 async function load(id) {
@@ -116,6 +123,7 @@ async function load(id) {
   try {
     detail.value = await getSettlement(id)
     pagination.current = 1
+    typeFilter.value = ''
   } finally {
     loading.value = false
   }
@@ -142,33 +150,28 @@ defineExpose({ open: openDetail, reload })
   font-weight: 500;
   margin-bottom: 8px;
 }
-.amounts {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 12px;
-  margin-bottom: 20px;
+.title-tag {
+  margin-left: 8px;
+  vertical-align: 2px;
 }
-.amount {
-  padding: 10px 14px;
-  border-radius: 8px;
-  background: var(--app-hover);
+.items-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
 }
-.amount.net {
-  background: var(--app-primary-bg);
+.items-head .section-title {
+  margin-bottom: 0;
 }
-.amount-value {
-  margin-top: 4px;
-  font-size: 16px;
-  font-weight: 600;
-  white-space: nowrap;
+.muted {
+  color: var(--app-text-3);
 }
 .sub-text {
   color: var(--app-text-3);
   font-size: 12px;
   margin-left: 4px;
-}
-.amount .sub-text {
-  margin-left: 0;
 }
 .neg {
   color: var(--status-critical, #cf1322);

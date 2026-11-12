@@ -76,9 +76,11 @@ final class SysFeatureCatalog {
 
     static final List<Feature> FEATURES = List.of(
             new Feature(Key.CORE.name(), "system.label.corePlatform", "system.label.core", "system.label.systemAdministrationApprovalWorkflowsMasterData", true,
-                    List.of(1L, 2L, 3L, 914L, 903L), List.of()),
+                    List.of(1L, 2L, 3L, 914L, 903L, 137L), List.of()),
             // 电商
-            f(Key.ECOM, "system.label.ecom", "system.label.ecomGroup", "system.label.ecomDesc", List.of(17L), Key.INVENTORY, Key.SALES, Key.ARAP),
+            // 商品管理（本地商品属于基础平台）、订单管理、运营管理、物流管理、供应链的 1688 采购、财务管理的平台结算；补货建议、采购计划在供应链的「补货采购」中，随采购开通
+            f(Key.ECOM, "system.label.ecom", "system.label.ecomGroup", "system.label.ecomDesc",
+                    List.of(19L, 20L, 23L, 22L, 995L, 990L), Key.INVENTORY, Key.PURCHASE, Key.SALES, Key.ARAP),
             // 供应链
             f(Key.PURCHASE, "system.label.purchasing", "system.label.supplyChain", "system.label.purchaseDesc", List.of(901L), Key.INVENTORY),
             f(Key.SALES, "system.label.salesRecords", "system.label.supplyChain", "system.label.salesRecordsDesc", List.of(902L), Key.INVENTORY),

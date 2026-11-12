@@ -92,12 +92,13 @@ const columns = computed(() => {
   const label = { key: 'label', title: t(`ecomAnalytics.sales.dim${m.dimension}`), width: 200, fixed: 'left' }
   const store = withStore ? [{ key: 'store', title: t('ecomAnalytics.common.store'), width: 130, ellipsis: true }] : []
   const periods = m.periods.map((p, i) => ({ key: `p${i}`, periodIndex: i, title: periodTitle(m.grain, p), width: valueWidth.value, align: 'right' }))
+  // 上期、去年同期在时间段之后；合计、环比、同比固定在右侧，横向滚动时始终可见
   const right = [
-    { key: 'total', title: t('ecomAnalytics.common.total'), width: 110, align: 'right' },
     { key: 'prev', title: t('ecomAnalytics.sales.prev'), width: 100, align: 'right' },
-    { key: 'mom', title: t('ecomAnalytics.sales.mom'), width: 90, align: 'right' },
     { key: 'yoyValue', title: t('ecomAnalytics.sales.yoyValue'), width: 100, align: 'right' },
-    { key: 'yoy', title: t('ecomAnalytics.sales.yoy'), width: 90, align: 'right' }
+    { key: 'total', title: t('ecomAnalytics.common.total'), width: 110, align: 'right', fixed: 'right' },
+    { key: 'mom', title: t('ecomAnalytics.sales.mom'), width: 90, align: 'right', fixed: 'right' },
+    { key: 'yoy', title: t('ecomAnalytics.sales.yoy'), width: 90, align: 'right', fixed: 'right' }
   ]
   return [label, ...store, ...periods, ...right]
 })

@@ -44,16 +44,22 @@
       :loading="loading"
       :pagination="pagination"
       :row-selection="rowSelection"
-      :scroll="{ x: scrollX, y: '100%' }"
+      :row-class-name="(r) => (r.newAlerts ? 'row-alert' : '')"
+      :scroll="{ x: scrollX + 32, y: '100%' }"
       @change="onTableChange"
     >
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'product'">
           <div class="product">
-            <a-image v-if="record.mainImage" :src="record.mainImage" :width="44" :height="44" class="thumb" />
+            <a-image v-if="record.mainImage" :src="record.mainImage" :width="44" :height="44" :fallback="IMG_FALLBACK" class="thumb" />
             <div v-else class="thumb empty" />
             <div class="product-text">
-              <a class="ellipsis" :title="record.title" @click="detailRef.open(record.id)">{{ record.title || record.itemId }}</a>
+              <div class="title-line">
+                <a class="ellipsis" :title="record.title" @click="detailRef.open(record.id)">{{ record.title || record.itemId }}</a>
+                <a-tooltip v-if="record.newAlerts" :title="$t('ecomUiOps.monitor.alertTip', { n: record.newAlerts })">
+                  <a-tag color="error" class="alert-tag" @click="emit('alerts', record.id)"><BellFilled /> {{ record.newAlerts }}</a-tag>
+                </a-tooltip>
+              </div>
               <div class="sub-text">
                 <span class="mono">{{ record.itemId }}</span>
                 <span v-if="record.sellerSku"> · {{ record.sellerSku }}</span>
@@ -78,6 +84,21 @@
         <template v-else-if="column.key === 'rankSub'">
           <div>{{ rankText(record.rankSub) }}</div>
           <div class="sub-text ellipsis" :title="record.subCategory">{{ record.subCategory }}</div>
+        </template>
+        <template v-else-if="column.key === 'trend'">
+          <div v-if="trends[record.id]" class="trend-cell">
+            <div class="trend-row">
+              <span class="trend-label">{{ $t('ecomUiOps.monitor.rank') }}</span>
+              <Sparkline v-if="trends[record.id].hasRank" :values="trends[record.id].rank" invert color="#1677ff" :height="18" :area="false" class="trend-spark" />
+              <span v-else class="sub-text trend-spark">-</span>
+            </div>
+            <div class="trend-row">
+              <span class="trend-label">{{ $t('ecomUiOps.monitor.rating') }}</span>
+              <Sparkline v-if="trends[record.id].hasRating" :values="trends[record.id].rating" color="#fa8c16" :height="18" :area="false" class="trend-spark" />
+              <span v-else class="sub-text trend-spark">-</span>
+            </div>
+          </div>
+          <a-skeleton-input v-else active size="small" class="trend-skeleton" />
         </template>
         <template v-else-if="column.key === 'rating'">
           <span>{{ record.rating ?? '-' }}</span>
@@ -119,10 +140,11 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
-import { CloudDownloadOutlined, ImportOutlined, PlusOutlined, QuestionCircleOutlined, WarningOutlined } from '@ant-design/icons-vue'
+import { BellFilled, CloudDownloadOutlined, ImportOutlined, PlusOutlined, QuestionCircleOutlined, WarningOutlined } from '@ant-design/icons-vue'
+import Sparkline from '@/components/ecom/Sparkline.vue'
 import SearchForm from '@/components/SearchForm.vue'
 import TableToolbar from '@/components/TableToolbar.vue'
 import DictTag from '@/components/DictTag.vue'
@@ -130,7 +152,7 @@ import ImportModal from '@/components/ImportModal.vue'
 import StoreSelect from '@/components/ecom/StoreSelect.vue'
 import TableActions from '@/components/common/TableActions.vue'
 import { actionColumn } from '@/components/common/tableActions'
-import { changeMonitorStatus, deleteMonitor, fetchMonitors, importSnapshots, monitorFetchPlatforms, pageMonitor } from '@/api/ecom/oper'
+import { changeMonitorStatus, deleteMonitor, fetchMonitors, importSnapshots, monitorFetchPlatforms, monitorTrends, pageMonitor } from '@/api/ecom/oper'
 import { useAction } from '@/composables/useAction'
 import { useColumns } from '@/composables/useColumns'
 import { useDict } from '@/composables/useDict'
@@ -154,6 +176,7 @@ const columns = [
   { title: t('ecomOper.common.platform'), key: 'platform', dataIndex: 'platform', width: 150, dict: 'ecom_platform' },
   { title: t('ecomOper.monitor.rankMain'), key: 'rankMain', dataIndex: 'rankMain', width: 170 },
   { title: t('ecomOper.monitor.rankSub'), key: 'rankSub', dataIndex: 'rankSub', width: 150 },
+  { title: t('ecomUiOps.monitor.trend'), key: 'trend', width: 150, exportValue: () => '' },
   { title: t('ecomOper.monitor.rating'), key: 'rating', dataIndex: 'rating', width: 90, align: 'right' },
   { title: t('ecomOper.monitor.reviewCount'), key: 'reviewCount', dataIndex: 'reviewCount', width: 100, align: 'right' },
   { title: t('ecomOper.monitor.sellerCount'), key: 'sellerCount', dataIndex: 'sellerCount', width: 90, align: 'right' },
@@ -170,6 +193,33 @@ const emptyQuery = () => ({ storeId: undefined, platform: undefined, monitorType
 const query = reactive(emptyQuery())
 const { list, loading, size, pagination, load, search, onTableChange, exportAll, selectedKeys, rowSelection } = useTable(pageMonitor, query, {
   params: (q) => ({ ...q, alertOnly: q.alertOnly || undefined })
+})
+
+/** 图片加载失败时的占位（灰底） */
+const IMG_FALLBACK =
+  'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44"><rect width="44" height="44" fill="#f0f0f0"/></svg>')
+
+/** 近 30 天排名 / 评分迷你趋势：列表加载后按当前页一次请求（GET /ecom/oper/monitor/trends），按监控 ID 缓存到下一次加载 */
+const TREND_DAYS = 30
+const trends = reactive({})
+const hasValues = (list) => (list || []).filter((v) => v != null).length > 1
+let trendSeq = 0
+watch(list, async (rows) => {
+  const seq = ++trendSeq
+  Object.keys(trends).forEach((k) => delete trends[k])
+  if (!rows.length) return
+  let res = []
+  try {
+    res = (await monitorTrends(rows.map((r) => r.id), TREND_DAYS)) || []
+  } catch {
+    res = []
+  }
+  if (seq !== trendSeq) return
+  const byId = new Map(res.map((x) => [x.monitorId, x]))
+  rows.forEach((r) => {
+    const x = byId.get(r.id)
+    trends[r.id] = { rank: x?.rankMain || [], rating: x?.rating || [], hasRank: hasValues(x?.rankMain), hasRating: hasValues(x?.rating) }
+  })
 })
 
 function resetQuery() {
@@ -267,6 +317,12 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* 标签页内的搜索区与工具栏之间留出间距 */
+.search-form {
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--app-border);
+}
 .tab-body {
   flex: 1;
   min-height: 0;
@@ -287,6 +343,47 @@ onMounted(async () => {
   width: 44px;
   height: 44px;
   background: var(--app-fill, #f5f5f5);
+}
+.title-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.title-line .ellipsis {
+  min-width: 0;
+}
+.alert-tag {
+  flex: none;
+  margin: 0;
+  padding: 0 5px;
+  font-size: 11px;
+  line-height: 16px;
+  cursor: pointer;
+}
+.trend-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.trend-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.trend-label {
+  flex: none;
+  width: 28px;
+  color: var(--app-text-3);
+  font-size: 11px;
+}
+.trend-spark {
+  flex: 1;
+  min-width: 0;
+}
+.trend-skeleton {
+  width: 100% !important;
+  min-width: 0 !important;
 }
 .product-text {
   min-width: 0;
@@ -319,5 +416,12 @@ onMounted(async () => {
 .tip-icon {
   color: var(--app-text-3);
   cursor: help;
+}
+</style>
+
+<style>
+/* 有未处理预警的行：左侧红色标记 */
+.ant-table-tbody > tr.row-alert > td:first-child {
+  box-shadow: inset 3px 0 0 #ff4d4f;
 }
 </style>

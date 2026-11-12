@@ -20,8 +20,6 @@
           <template #tab>{{ s.label }} <span class="count">{{ counts[s.value] || 0 }}</span></template>
         </a-tab-pane>
       </a-tabs>
-      <a-alert v-if="settings && !settings.publicUrlConfigured" type="warning" show-icon closable class="url-banner"
-               :message="$t('ecomPublish.image.publicUrlMissing')" :description="$t('ecomPublish.image.publicUrlHow')" />
       <TableToolbar v-model:size="size" v-model:checked="checked" v-model:show-search="showSearch" :columns="columns" :exporter="exportAll" @refresh="reload">
         <a-button v-perm="'ecom:publish:add'" type="primary" @click="createRef.open()">
           <template #icon><PlusOutlined /></template>{{ $t('ecomPublish.list.create') }}
@@ -33,7 +31,13 @@
           <a-button v-perm="'ecom:publish:push'" @click="offlineSelected">{{ $t('ecomPublish.list.offlineN', { n: selectedKeys.length }) }}</a-button>
           <a-button v-perm="'ecom:publish:remove'" danger @click="removeSelected">{{ $t('ecomPublish.list.deleteN', { n: selectedKeys.length }) }}</a-button>
         </template>
-        <span class="sub-text">{{ $t('ecomPublish.list.tip') }}</span>
+        <a-tooltip :title="$t('ecomPublish.list.tip')">
+          <QuestionCircleOutlined class="tip-icon" />
+        </a-tooltip>
+        <a-popover v-if="settings && !settings.publicUrlConfigured" :title="$t('ecomPublish.image.publicUrlMissing')" placement="bottomLeft" :overlay-style="{ maxWidth: '420px' }">
+          <template #content><div class="url-how">{{ $t('ecomPublish.image.publicUrlHow') }}</div></template>
+          <a-tag color="warning" class="url-tag"><WarningOutlined /> {{ $t('ecomPublish.list.publicUrlShort') }}</a-tag>
+        </a-popover>
       </TableToolbar>
       <a-table
         row-key="id"
@@ -88,8 +92,8 @@
     </a-card>
 
     <CreateDraftModal ref="createRef" @success="onCreated" />
-    <DraftDrawer ref="draftRef" @changed="reload" @edit-item="(id) => itemRef.openEdit({ id })" />
-    <ItemEditor ref="itemRef" @success="reload" />
+    <DraftDrawer ref="draftRef" @changed="onDraftChanged" @edit-item="(id) => itemRef.editItem(id)" />
+    <ItemEditor ref="itemRef" @success="reload" @open-draft="(id) => draftRef.open(id)" />
     <PublishLogs ref="logsRef" />
     <a-modal v-model:open="resultOpen" :title="$t('ecomPublish.list.resultTitle')" :footer="null" width="min(640px, 100vw)">
       <a-alert type="info" show-icon :message="$t('ecomPublish.list.resultSummary', { ok: result.succeeded, total: result.total })" />
@@ -106,7 +110,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Modal, message } from 'ant-design-vue'
-import { CloudUploadOutlined, PictureOutlined, PlusOutlined, StopOutlined } from '@ant-design/icons-vue'
+import { CloudUploadOutlined, PictureOutlined, PlusOutlined, QuestionCircleOutlined, StopOutlined, WarningOutlined } from '@ant-design/icons-vue'
 import DictTag from '@/components/DictTag.vue'
 import SearchForm from '@/components/SearchForm.vue'
 import TableToolbar from '@/components/TableToolbar.vue'
@@ -190,6 +194,11 @@ function onCreated(draftId) {
   reload()
   draftRef.value.open(draftId)
 }
+/** 主内容修改 / 增加店铺后：刷新列表，打开着的刊登工作台也重新加载 */
+function onDraftChanged() {
+  reload()
+  itemRef.value?.refresh()
+}
 const openItem = (r) => (EDITABLE.includes(r.status) ? itemRef.value.openEdit(r) : itemRef.value.openView(r))
 
 // 提交 / 下架的结果：有失败时列出原因
@@ -250,11 +259,20 @@ const rowActions = (r) => {
 </script>
 
 <style scoped>
-.url-banner {
-  margin-bottom: 8px;
+.tip-icon {
+  align-self: center;
+  color: var(--app-text-3);
+  cursor: help;
 }
-.status-tabs {
-  margin-bottom: 4px;
+.url-tag {
+  align-self: center;
+  height: 24px;
+  margin-inline-end: 0;
+  line-height: 22px;
+  cursor: help;
+}
+.url-how {
+  white-space: pre-wrap;
 }
 .count {
   color: var(--app-text-3);
@@ -300,7 +318,7 @@ const rowActions = (r) => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 200px;
+  max-width: 100%;
 }
 .error-text.multi {
   white-space: normal;
@@ -312,6 +330,14 @@ const rowActions = (r) => {
 </style>
 
 <style>
+/* 状态标签页只作切换头，按内容高度显示，剩余高度留给表格 */
+.ecom-publish .table-card > .ant-card-body > .status-tabs {
+  flex: none;
+  margin-bottom: 4px;
+}
+.ecom-publish .table-card > .ant-card-body > .status-tabs > .ant-tabs-nav {
+  margin-bottom: 8px;
+}
 html[data-theme='dark'] .ecom-publish .error-text {
   color: #ff7875;
 }

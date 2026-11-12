@@ -1,17 +1,15 @@
 <template>
   <div class="table-page">
-    <FreightEstimate />
-
     <a-card v-show="showSearch" :bordered="false" class="page-card">
       <SearchForm :model="query" @search="search" @reset="resetQuery">
         <a-form-item :label="$t('ecom.logistics.channel')" name="keyword">
-          <a-input v-model:value="query.keyword" :placeholder="$t('ecom.logistics.keywordPh')" allow-clear />
+          <a-input v-model:value="query.keyword" :placeholder="$t('ecom.logistics.keywordPh')" allow-clear @press-enter="search" />
         </a-form-item>
         <a-form-item :label="$t('ecom.logistics.transportMode')" name="transportMode">
-          <a-select v-model:value="query.transportMode" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_transport_mode)" />
+          <a-select v-model:value="query.transportMode" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_transport_mode)" @change="search" />
         </a-form-item>
         <a-form-item :label="$t('common.field.status')" name="status">
-          <a-select v-model:value="query.status" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.sys_common_status, true)" />
+          <a-select v-model:value="query.status" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.sys_common_status, true)" @change="search" />
         </a-form-item>
       </SearchForm>
     </a-card>
@@ -21,6 +19,7 @@
         <a-button v-perm="'ecom:logistics:add'" type="primary" @click="formRef.openCreate()">
           <template #icon><PlusOutlined /></template>{{ $t('ecom.logistics.add') }}
         </a-button>
+        <a-button @click="estimateRef.open()"><template #icon><CalculatorOutlined /></template>{{ $t('ecom.logistics.estimateTitle') }}</a-button>
       </TableToolbar>
 
       <a-table
@@ -35,7 +34,8 @@
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'name'">
-            <div>{{ record.name }}</div>
+            <a v-if="userStore.hasPerm('ecom:logistics:edit')" @click="formRef.openEdit(record)">{{ record.name }}</a>
+            <div v-else>{{ record.name }}</div>
             <div class="sub-text">{{ record.code }}</div>
           </template>
           <template v-else-if="column.key === 'transportMode'">
@@ -66,13 +66,14 @@
     </a-card>
 
     <LogisticsForm ref="formRef" @success="load" />
+    <FreightEstimate ref="estimateRef" />
   </div>
 </template>
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { PlusOutlined } from '@ant-design/icons-vue'
+import { CalculatorOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import DictTag from '@/components/DictTag.vue'
 import SearchForm from '@/components/SearchForm.vue'
 import StatusSwitch from '@/components/StatusSwitch.vue'
@@ -96,14 +97,14 @@ const userStore = useUserStore()
 const dict = useDict('sys_common_status', 'ecom_transport_mode')
 
 const columns = [
-  { title: t('ecom.logistics.channel'), key: 'name', width: 220, exportValue: (r) => `${r.code} ${r.name}` },
+  { title: t('ecom.logistics.channel'), key: 'name', width: 200, fixed: 'left', exportValue: (r) => `${r.code} ${r.name}` },
   { title: t('ecom.logistics.provider'), dataIndex: 'provider', width: 160, ellipsis: true },
   { title: t('ecom.logistics.transportMode'), key: 'transportMode', dataIndex: 'transportMode', width: 110, dict: 'ecom_transport_mode' },
-  { title: t('ecom.logistics.supplier'), dataIndex: 'supplierName', width: 180, ellipsis: true },
+  { title: t('ecom.logistics.supplier'), dataIndex: 'supplierName', width: 220, ellipsis: true },
   { title: t('ecom.logistics.days'), key: 'days', width: 110, exportValue: (r) => daysText(r) },
   { title: t('ecom.logistics.rateCount'), key: 'rateCount', dataIndex: 'rateCount', width: 90, align: 'right' },
   { title: t('common.field.status'), key: 'status', dataIndex: 'status', width: 90, dict: 'sys_common_status' },
-  { title: t('common.field.remark'), dataIndex: 'remark', width: 180, ellipsis: true },
+  { title: t('common.field.remark'), dataIndex: 'remark', width: 240, ellipsis: true },
   actionColumn(2)
 ]
 const { checked, visibleColumns, scrollX } = useColumns(columns, 'ecom-logistics')
@@ -119,6 +120,7 @@ function resetQuery() {
 }
 
 const formRef = ref()
+const estimateRef = ref()
 const remove = useAction(deleteLogistics, { successKey: 'common.msg.deleteSuccess', reload: () => load() })
 </script>
 

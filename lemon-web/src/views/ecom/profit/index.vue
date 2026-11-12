@@ -2,8 +2,8 @@
   <div class="profit-page">
     <a-card :bordered="false" class="page-card">
       <div class="filters">
-        <a-range-picker v-model:value="range" value-format="YYYY-MM-DD" :allow-clear="false" :presets="presets" />
-        <StoreSelect v-model:value="storeId" :placeholder="$t('ecomReport.common.allStores')" class="filter" />
+        <a-range-picker v-model:value="range" value-format="YYYY-MM-DD" :allow-clear="false" :presets="presets" @change="load" />
+        <StoreSelect v-model:value="storeId" :placeholder="$t('ecomReport.common.allStores')" class="filter" @update:value="load" />
         <a-radio-group v-if="tab !== 'fees'" v-model:value="basis" button-style="solid" @change="load">
           <a-radio-button v-for="b in BASES" :key="b" :value="b">{{ $t(`ecomProfit.basis.${b}`) }}</a-radio-button>
         </a-radio-group>
@@ -22,8 +22,24 @@
           <template #icon><DownloadOutlined /></template>{{ $t('common.action.export') }}
         </a-button>
       </div>
-      <div class="sub-text tip">{{ tab === 'fees' ? $t('ecomProfit.feesTip') : $t(`ecomProfit.basisTip.${basis}`) }}</div>
+      <a-tooltip :title="tipText" placement="bottomLeft" overlay-class-name="profit-tip-pop">
+        <div class="sub-text tip"><InfoCircleOutlined /> {{ tipText }}</div>
+      </a-tooltip>
     </a-card>
+
+    <!-- 汇总指标（按当前口径与筛选条件的合计） -->
+    <div v-if="tab !== 'fees'" class="kpis">
+      <div v-for="k in KPIS" :key="k.key" class="page-card kpi">
+        <div class="kpi-label">{{ k.label }}</div>
+        <a-skeleton v-if="loading && !rows.length" active :title="false" :paragraph="{ rows: 1, width: '60%' }" />
+        <div v-else class="kpi-value" :class="k.tone ? k.tone(total[k.key]) : ''">
+          <template v-if="k.kind === 'percent'">{{ percent(total[k.key]) }}</template>
+          <template v-else-if="k.kind === 'int'">{{ num(total[k.key]) }}</template>
+          <template v-else><span class="kpi-unit">¥</span>{{ money(total[k.key]) }}</template>
+        </div>
+        <div v-if="k.sub" class="kpi-sub">{{ k.sub() }}</div>
+      </div>
+    </div>
 
     <a-card :bordered="false" class="page-card">
       <a-tabs v-model:active-key="tab" class="tabs" @change="load">
@@ -41,7 +57,7 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { DownloadOutlined, SearchOutlined } from '@ant-design/icons-vue'
+import { DownloadOutlined, InfoCircleOutlined, SearchOutlined } from '@ant-design/icons-vue'
 import EChart from '@/components/charts/EChart.vue'
 import StoreSelect from '@/components/ecom/StoreSelect.vue'
 import { exportRows, rangeParams, rangePresets, ratio, sumFields, thisMonth, yuan } from '@/components/ecom/ecomReport'
@@ -49,7 +65,8 @@ import ProfitTable from './ProfitTable.vue'
 import { reportFees, reportProfit } from '@/api/ecom/report'
 import { useDict } from '@/composables/useDict'
 import { findDict } from '@/utils/dict'
-import { nz } from '@/utils/number'
+import { money, num, nz } from '@/utils/number'
+import { percent, shortMoney } from '@/components/charts/charts'
 import { ProfitBasis, ProfitDimension, SettlementItemType } from '@/constants/enums'
 import { t } from '@/locales'
 
@@ -75,7 +92,7 @@ const exporting = ref(false)
 const col = (title, key, extra = {}) => ({ title, key, dataIndex: key, ...extra })
 const m = (key, title, extra = {}) => col(title, key, { kind: 'money', width: 120, align: 'right', ...extra })
 const pct = (key, title) => col(title, key, { kind: 'percent', width: 90, align: 'right' })
-const store = col(t('ecomReport.common.store'), 'storeName', { width: 160, ellipsis: true })
+const store = col(t('ecomReport.common.store'), 'storeName', { width: 160, ellipsis: true, fixed: 'left' })
 
 /** 指标列：数量 → 收入 → 费用 → 成本 → 税 → 毛利 */
 const METRICS = [
@@ -95,18 +112,28 @@ const METRICS = [
   m('lastMile', t('ecomProfit.col.lastMile')),
   m('vat', t('ecomProfit.col.vat')),
   m('withheldTax', t('ecomProfit.col.withheldTax')),
-  m('profit', t('ecomProfit.col.profit'), { width: 130 }),
-  pct('margin', t('ecomProfit.col.margin')),
-  pct('roi', t('ecomProfit.col.roi'))
+  pct('roi', t('ecomProfit.col.roi')),
+  m('profit', t('ecomProfit.col.profit'), { width: 130, fixed: 'right' }),
+  { ...pct('margin', t('ecomProfit.col.margin')), fixed: 'right' }
+]
+/** 毛利率着色：亏损红色、低于 10% 橙色、其余绿色 */
+const marginTone = (v) => (v == null ? '' : nz(v) < 0 ? 'bad' : nz(v) < 10 ? 'warn' : 'good')
+const KPIS = [
+  { key: 'salesNet', label: t('ecomProfit.col.salesNet'), sub: () => `${t('ecomProfit.col.salesGross')} ¥${shortMoney(total.value.salesGross)}` },
+  { key: 'profit', label: t('ecomProfit.col.profit'), tone: (v) => (nz(v) < 0 ? 'bad' : ''), sub: () => `${t('ecomDat.profit.perOrder')} ¥${money(ratio(total.value.profit, total.value.orders) / 100)}` },
+  { key: 'margin', label: t('ecomProfit.col.margin'), kind: 'percent', tone: marginTone, sub: () => `${t('ecomProfit.col.roi')} ${percent(total.value.roi)}` },
+  { key: 'adSpend', label: t('ecomReport.common.adSpend'), sub: () => `${t('ecomDat.profit.ofSales')} ${percent(ratio(total.value.adSpend, total.value.salesNet))}` },
+  { key: 'refund', label: t('ecomReport.common.refund'), sub: () => `${t('ecomDat.profit.ofSales')} ${percent(ratio(Math.abs(nz(total.value.refund)), total.value.salesNet))}` },
+  { key: 'orders', label: t('ecomReport.common.orders'), kind: 'int', sub: () => `${t('common.field.quantity')} ${num(total.value.qty)}` }
 ]
 const LABELS = {
   STORE: [
     store,
-    col(t('ecomReport.common.platform'), 'platform', { kind: 'dict', dict: 'ecom_platform', width: 100 }),
+    col(t('ecomReport.common.platform'), 'platform', { kind: 'dict', dict: 'ecom_platform', width: 120 }),
     col(t('ecomReport.common.marketplace'), 'marketplace', { width: 80 })
   ],
-  PLATFORM: [col(t('ecomReport.common.platform'), 'platform', { kind: 'dict', dict: 'ecom_platform', width: 120 })],
-  MARKETPLACE: [col(t('ecomReport.common.marketplace'), 'marketplace', { width: 100 })],
+  PLATFORM: [col(t('ecomReport.common.platform'), 'platform', { kind: 'dict', dict: 'ecom_platform', width: 140, fixed: 'left' })],
+  MARKETPLACE: [col(t('ecomReport.common.marketplace'), 'marketplace', { width: 110, fixed: 'left' })],
   SKU: [
     store,
     col(t('ecomReport.common.sellerSku'), 'sellerSku', { width: 150 }),
@@ -116,11 +143,11 @@ const LABELS = {
   ],
   SPU: [store, col(t('ecomProfit.col.spu'), 'spu', { width: 150 }), col(t('ecomReport.profit.listingTitle'), 'title', { width: 220, ellipsis: true })],
   MATERIAL: [
-    col(t('ecomReport.profit.material'), 'material', { width: 240, ellipsis: true, exportValue: (r) => [r.materialCode, r.materialName].filter(Boolean).join(' ') })
+    col(t('ecomReport.profit.material'), 'material', { width: 240, ellipsis: true, fixed: 'left', exportValue: (r) => [r.materialCode, r.materialName].filter(Boolean).join(' ') })
   ],
-  OWNER: [col(t('ecomProfit.col.owner'), 'ownerName', { width: 140, exportValue: (r) => r.ownerName || '' })],
-  COUNTRY: [col(t('ecomReport.profit.country'), 'country', { width: 110 })],
-  MONTH: [col(t('ecomProfit.col.month'), 'month', { width: 110 })]
+  OWNER: [col(t('ecomProfit.col.owner'), 'ownerName', { width: 140, fixed: 'left', exportValue: (r) => r.ownerName || '' })],
+  COUNTRY: [col(t('ecomReport.profit.country'), 'country', { width: 110, fixed: 'left' })],
+  MONTH: [col(t('ecomProfit.col.month'), 'month', { width: 110, fixed: 'left' })]
 }
 const FEE_COLUMNS = [
   col(t('ecomReport.profit.itemType'), 'itemType', { kind: 'dict', dict: 'ecom_settlement_item_type', width: 160 }),
@@ -128,6 +155,7 @@ const FEE_COLUMNS = [
   col(t('ecomReport.common.share'), 'share', { kind: 'percent', width: 100, align: 'right' })
 ]
 const columns = computed(() => (tab.value === 'fees' ? FEE_COLUMNS : [...LABELS[tab.value], ...METRICS]))
+const tipText = computed(() => (tab.value === 'fees' ? t('ecomProfit.feesTip') : t(`ecomProfit.basisTip.${basis.value}`)))
 const rowKey = (r) => (tab.value === 'fees' ? r.itemType : r.dimKey || '-')
 
 /** 合计行：数量、金额求和，毛利率、ROI 按合计重算；费用构成的占比不合计 */
@@ -211,7 +239,7 @@ const chartOption = computed(() => {
   }
   const month = tab.value === ProfitDimension.MONTH
   const list = month ? rows.value : [...rows.value].sort((a, b) => nz(b.salesNet) - nz(a.salesNet)).slice(0, 10)
-  const type = month ? 'line' : 'bar'
+  const type = month && list.length > 2 ? 'line' : 'bar'
   return {
     tooltip: { trigger: 'axis', axisPointer: { type: month ? 'line' : 'shadow' }, valueFormatter: (v) => yuan(v) },
     legend: { top: 0 },
@@ -245,6 +273,65 @@ onMounted(load)
 </script>
 
 <style scoped>
+.profit-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.profit-page > .page-card + .page-card {
+  margin-top: 0;
+}
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 16px;
+}
+@media (max-width: 1280px) {
+  .kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.kpi {
+  padding: 14px 16px;
+  background: var(--app-card);
+  margin-top: 0 !important;
+  min-width: 0;
+}
+.kpi-label {
+  font-size: 13px;
+  color: var(--app-text-3);
+}
+.kpi-value {
+  margin-top: 4px;
+  font-size: 20px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kpi-unit {
+  margin-right: 2px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--app-text-3);
+}
+.kpi-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--app-text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.good {
+  color: #389e0d;
+}
+.warn {
+  color: #d46b08;
+}
+.bad {
+  color: var(--status-critical, #cf1322);
+}
 .filters {
   display: flex;
   flex-wrap: wrap;
@@ -256,6 +343,10 @@ onMounted(load)
 }
 .tip {
   margin-top: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: help;
 }
 .sub-text {
   color: var(--app-text-3);
@@ -267,5 +358,11 @@ onMounted(load)
 .chart-card {
   margin-bottom: 16px;
   border: 1px solid var(--app-border);
+}
+</style>
+
+<style>
+.profit-tip-pop {
+  max-width: 560px;
 }
 </style>

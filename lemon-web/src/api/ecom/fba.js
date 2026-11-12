@@ -19,6 +19,8 @@ export const deleteStorageRate = (id) => request.delete(`/ecom/fba/health/rates/
 // ---------------------------------------------------------------- 移除订单 /ecom/fba/removal
 
 export const pageRemoval = (params) => request.get('/ecom/fba/removal', { params })
+/** 各状态的移除订单数（状态标签页）：{ 状态: 数量 }，条件 storeId、removalType、keyword */
+export const removalStatusCounts = (params) => request.get('/ecom/fba/removal/status-counts', { params })
 export const getRemoval = (id) => request.get(`/ecom/fba/removal/${id}`)
 export const addRemoval = (data) => request.post('/ecom/fba/removal', data)
 export const updateRemoval = (id, data) => request.put(`/ecom/fba/removal/${id}`, data)

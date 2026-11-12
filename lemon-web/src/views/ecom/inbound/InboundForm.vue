@@ -2,6 +2,7 @@
   <FormDrawer page :drawer="drawer" :create-title="$t('ecomOrder.inbound.addTitle')" :edit-title="editTitle">
     <a-alert v-if="costsMode" type="info" show-icon class="block" :message="$t('ecomOrder.inbound.costsHint')" />
     <a-form ref="formRef" :model="form" :rules="rules" layout="vertical">
+      <div class="section-title">{{ $t('ecomOrder.inbound.basicInfo') }}</div>
       <a-row :gutter="16">
         <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('ecomOrder.common.store')" name="storeId" :extra="costsMode ? undefined : $t('ecomOrder.inbound.warehouseAuto')">
@@ -23,12 +24,15 @@
             <WarehouseSelect v-model:value="form.toWarehouseId" :allow-clear="false" :disabled="costsMode" />
           </a-form-item>
         </a-col>
+      </a-row>
+      <div class="section-title">{{ $t('ecomOrder.inbound.logisticsInfo') }}</div>
+      <a-row :gutter="16">
         <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('ecomOrder.common.channel')" name="channelId">
             <ChannelSelect v-model:value="form.channelId" :label="form.channelName" />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="12" :lg="6">
+        <a-col :xs="24" :sm="12" :lg="4">
           <a-form-item :label="$t('ecomOrder.common.carrier')" name="carrier">
             <a-input v-model:value="form.carrier" :maxlength="64" />
           </a-form-item>
@@ -38,12 +42,12 @@
             <a-input v-model:value="form.trackingNo" :maxlength="64" />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="12" :lg="3">
+        <a-col :xs="24" :sm="12" :lg="4">
           <a-form-item :label="$t('ecomOrder.inbound.shipDate')" name="shipDate">
             <a-date-picker v-model:value="form.shipDate" value-format="YYYY-MM-DD" class="full" :disabled="costsMode" />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="12" :lg="3">
+        <a-col :xs="24" :sm="12" :lg="4">
           <a-form-item :label="$t('ecomOrder.inbound.etaDate')" name="etaDate">
             <a-date-picker v-model:value="form.etaDate" value-format="YYYY-MM-DD" class="full" />
           </a-form-item>
@@ -63,23 +67,26 @@
             <a-input-number v-model:value="form.volume" :min="0" :precision="4" class="full" />
           </a-form-item>
         </a-col>
-        <a-col :xs="12" :sm="8" :lg="4">
-          <a-form-item :label="`${$t('ecomOrder.inbound.freight')} ${$t('ecomOrder.inbound.costBase')}`" name="freight">
+      </a-row>
+      <div class="section-title">{{ $t('ecomOrder.inbound.costSection') }}</div>
+      <a-row :gutter="16">
+        <a-col :xs="12" :sm="8" :lg="6">
+          <a-form-item :label="$t('ecomOrder.inbound.freight')" name="freight">
             <a-input-number v-model:value="form.freight" :min="0" :precision="2" prefix="¥" class="full" />
           </a-form-item>
         </a-col>
-        <a-col :xs="12" :sm="8" :lg="4">
-          <a-form-item :label="`${$t('ecomOrder.inbound.duty')} ${$t('ecomOrder.inbound.costBase')}`" name="duty">
+        <a-col :xs="12" :sm="8" :lg="6">
+          <a-form-item :label="$t('ecomOrder.inbound.duty')" name="duty">
             <a-input-number v-model:value="form.duty" :min="0" :precision="2" prefix="¥" class="full" />
           </a-form-item>
         </a-col>
-        <a-col :xs="12" :sm="8" :lg="4">
-          <a-form-item :label="`${$t('ecomOrder.inbound.otherCost')} ${$t('ecomOrder.inbound.costBase')}`" name="otherCost">
+        <a-col :xs="12" :sm="8" :lg="6">
+          <a-form-item :label="$t('ecomOrder.inbound.otherCost')" name="otherCost">
             <a-input-number v-model:value="form.otherCost" :min="0" :precision="2" prefix="¥" class="full" />
           </a-form-item>
         </a-col>
-        <a-col :xs="12" :sm="8" :lg="4">
-          <a-form-item :label="`${$t('ecomProfit.inbound.importVat')} ${$t('ecomOrder.inbound.costBase')}`" name="importVat" :extra="$t('ecomProfit.inbound.importVatExtra')">
+        <a-col :xs="12" :sm="8" :lg="6">
+          <a-form-item :label="$t('ecomProfit.inbound.importVat')" name="importVat" :extra="$t('ecomProfit.inbound.importVatExtra')">
             <a-input-number v-model:value="form.importVat" :min="0" :precision="2" prefix="¥" class="full" />
           </a-form-item>
         </a-col>
@@ -102,6 +109,7 @@
         </a-space>
       </div>
       <a-form-item name="items" :rules="itemRules" class="items-item">
+        <a-form-item-rest>
         <LineItemsTable :items="form.items" :columns="itemColumns">
           <template #cell="{ column, record }">
             <template v-if="column.key === 'materialId'">
@@ -122,6 +130,7 @@
             </template>
           </template>
         </LineItemsTable>
+        </a-form-item-rest>
       </a-form-item>
     </a-form>
   </FormDrawer>
@@ -310,7 +319,14 @@ defineExpose({ openCreate, openEdit, openCosts })
   margin-bottom: 8px;
 }
 .section-title {
+  margin: 4px 0 12px;
+  padding-left: 8px;
+  border-left: 3px solid var(--app-primary);
   font-weight: 600;
+  line-height: 1.2;
+}
+.items-head .section-title {
+  margin: 0;
 }
 .dashed {
   border-bottom: 1px dashed var(--app-text-3);

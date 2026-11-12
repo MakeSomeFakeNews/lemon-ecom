@@ -15,12 +15,14 @@
     <div class="summary sub-text">
       {{ $t('ecomFix.dash.hourlySummary', { hour: data.currentHour ?? '-', today: fmt(sum(data.today)), yesterday: fmt(sum(sameHours)) }) }}
     </div>
-    <EChart :option="option" height="300px" />
+    <EChart v-if="hasData" :option="option" height="300px" />
+    <a-empty v-else :image="simpleImage" :description="$t('ecomDat.dash.noData')" class="empty" />
   </a-card>
 </template>
 
 <script setup>
 import { computed, ref } from 'vue'
+import { Empty } from 'ant-design-vue'
 import EChart from '@/components/charts/EChart.vue'
 import { shortMoney } from '@/components/charts/charts'
 import { yuan } from '@/components/ecom/ecomReport'
@@ -31,6 +33,8 @@ import { t } from '@/locales'
  * 实时销量：今日每小时（柱）与昨日（折线）对比，可切换按小时 / 累计、销售额 / 订单数；data 为 /ecom/dashboard/hourly 的结果
  */
 const props = defineProps({ data: { type: Object, default: () => ({ today: [], yesterday: [] }) } })
+const simpleImage = Empty.PRESENTED_IMAGE_SIMPLE
+const hasData = computed(() => [...(props.data.today || []), ...(props.data.yesterday || [])].some((p) => nz(p.orders) || nz(p.sales)))
 const metric = ref('sales')
 const mode = ref('cum')
 
@@ -66,6 +70,9 @@ const option = computed(() => {
 </script>
 
 <style scoped>
+.empty {
+  padding: 96px 0;
+}
 .summary {
   margin-bottom: 4px;
 }

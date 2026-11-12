@@ -19,10 +19,11 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * 演示数据 · 订单作业（order 55）：近三天的自发货订单走真实的作业流程——审核（按可用库存生成包裹或缺货）、填写运单号（待发货）、
- * 包裹发货（逐单生成销售出库、回传发货）、人工挂起；每一步在独立事务中执行，一单失败不影响其他
+ * 包裹发货（逐单生成销售出库、回传发货）、人工挂起，最后整理订单操作日志（{@link DemoOrderLogs}）；每一步在独立事务中执行，一单失败不影响其他
  */
 @Component
 @RequiredArgsConstructor
@@ -36,6 +37,7 @@ public class DemoOrderOpsContributor implements DemoContributor {
     private final EcomOrderMapper orderMapper;
     private final EcomStoreService storeService;
     private final DemoTx tx;
+    private final DemoOrderLogs orderLogs;
 
     @Override
     public int order() {
@@ -96,5 +98,8 @@ public class DemoOrderOpsContributor implements DemoContributor {
             String reason = HOLD_REASONS[i % HOLD_REASONS.length];
             tx.run("hold", () -> opsService.hold(new HoldRequest(List.of(id), reason)));
         }
+        // 操作日志：近期订单按下单时间重排，最近已发货的历史订单补写日志
+        List<Long> recentIds = plan.orders.stream().filter(DemoOrderPlan.Order::recent).map(o -> o.id).filter(Objects::nonNull).toList();
+        tx.run("order-logs", () -> orderLogs.generate(ctx, recentIds));
     }
 }

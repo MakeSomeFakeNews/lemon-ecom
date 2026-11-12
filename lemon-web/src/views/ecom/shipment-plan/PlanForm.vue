@@ -1,6 +1,7 @@
 <template>
   <FormDrawer page :drawer="drawer" :create-title="$t('ecomCatalog.plan.addTitle')" :edit-title="$t('ecomCatalog.plan.editTitle', { no: form.planNo || '' })">
     <a-form ref="formRef" :model="form" :rules="rules" layout="vertical">
+      <div class="section-title head">{{ $t('ecomCatalog.plan.basicInfo') }}</div>
       <a-row :gutter="16">
         <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('ecom.common.store')" name="storeId">
@@ -33,10 +34,13 @@
         <span class="section-title">{{ $t('ecomCatalog.plan.items') }}</span>
         <a-space :size="16" wrap>
           <span>{{ $t('ecomCatalog.plan.totalQty') }} <b>{{ qty(totalQty) }}</b></span>
-          <a-button size="small" :disabled="!form.storeId" @click="lines.addRow()"><template #icon><PlusOutlined /></template>{{ $t('common.action.addRow') }}</a-button>
+          <a-tooltip :title="form.storeId ? '' : $t('ecomCatalog.plan.pickStoreFirst')">
+            <a-button size="small" :disabled="!form.storeId" @click="lines.addRow()"><template #icon><PlusOutlined /></template>{{ $t('common.action.addRow') }}</a-button>
+          </a-tooltip>
         </a-space>
       </div>
       <a-form-item name="items" :rules="itemRules" class="items-item">
+        <a-form-item-rest>
         <LineItemsTable :items="form.items" :columns="itemColumns">
           <template #cell="{ column, record }">
             <template v-if="column.key === 'listingId'">
@@ -51,6 +55,7 @@
             </template>
           </template>
         </LineItemsTable>
+        </a-form-item-rest>
       </a-form-item>
     </a-form>
   </FormDrawer>
@@ -164,7 +169,13 @@ defineExpose({ openCreate, openEdit: drawer.openEdit })
   margin-bottom: 8px;
 }
 .section-title {
+  padding-left: 8px;
+  border-left: 3px solid var(--app-primary);
   font-weight: 600;
+  line-height: 1.2;
+}
+.section-title.head {
+  margin: 4px 0 12px;
 }
 .items-item :deep(.ant-form-item-control-input) {
   min-height: 0;

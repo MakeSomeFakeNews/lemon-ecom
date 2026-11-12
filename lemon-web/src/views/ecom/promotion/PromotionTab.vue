@@ -25,7 +25,9 @@
       <a-button v-perm="'ecom:promotion:add'" type="primary" @click="emit('create')">
         <template #icon><PlusOutlined /></template>{{ $t('ecomOper.promo.add') }}
       </a-button>
-      <span class="sub-text">{{ pushTip }}</span>
+      <a-tooltip :title="pushTip">
+        <QuestionCircleOutlined class="tip-icon" />
+      </a-tooltip>
     </TableToolbar>
     <a-table
       row-key="id"
@@ -64,7 +66,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { CloudUploadOutlined, PlusOutlined } from '@ant-design/icons-vue'
+import { CloudUploadOutlined, PlusOutlined, QuestionCircleOutlined } from '@ant-design/icons-vue'
 import SearchForm from '@/components/SearchForm.vue'
 import TableToolbar from '@/components/TableToolbar.vue'
 import DictTag from '@/components/DictTag.vue'
@@ -89,7 +91,7 @@ const dict = useDict('ecom_platform', 'ecom_promo_type', 'ecom_promo_status', 'e
 const columns = [
   { title: t('ecomOper.promo.name'), key: 'name', dataIndex: 'name', width: 240 },
   { title: t('ecomOper.promo.promoType'), key: 'promoType', dataIndex: 'promoType', width: 130, dict: 'ecom_promo_type' },
-  { title: t('ecomOper.promo.period'), key: 'period', width: 230, exportValue: (r) => periodText(r) },
+  { title: t('ecomOper.promo.period'), key: 'period', width: 250, exportValue: (r) => periodText(r) },
   { title: t('ecomOper.promo.status'), key: 'status', dataIndex: 'status', width: 150, dict: 'ecom_promo_status' },
   { title: t('ecomOper.promo.pushStatus'), key: 'pushStatus', dataIndex: 'pushStatus', width: 100, dict: 'ecom_promo_push_status' },
   { title: t('ecomOper.promo.itemCount'), dataIndex: 'itemCount', width: 80, align: 'right' },
@@ -138,6 +140,12 @@ defineExpose({ reload: () => load() })
 </script>
 
 <style scoped>
+/* 标签页内的搜索区与工具栏之间留出间距 */
+.search-form {
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--app-border);
+}
 .tab-body {
   flex: 1;
   min-height: 0;
@@ -150,5 +158,9 @@ defineExpose({ reload: () => load() })
 .sub-text {
   color: var(--app-text-3);
   font-size: 12px;
+}
+.tip-icon {
+  color: var(--app-text-3);
+  cursor: help;
 }
 </style>

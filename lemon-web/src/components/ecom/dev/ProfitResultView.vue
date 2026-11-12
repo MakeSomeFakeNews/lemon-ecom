@@ -61,7 +61,7 @@
         </a-descriptions-item>
       </a-descriptions>
     </div>
-    <a-empty v-else :description="$t('ecomDev.calc.emptyResult')" />
+    <a-empty v-else :description="$t('ecomDev.calc.emptyResult')" class="empty" />
   </a-spin>
 </template>
 
@@ -135,5 +135,8 @@ const dictText = (v) => findDict(dict.ecom_tax_type, v)?.label || v
 }
 .meta {
   margin-top: 8px;
+}
+.empty {
+  padding: 48px 0;
 }
 </style>

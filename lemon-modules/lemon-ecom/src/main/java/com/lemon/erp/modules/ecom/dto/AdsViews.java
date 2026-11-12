@@ -104,6 +104,9 @@ public final class AdsViews {
         private BigDecimal bidOrBudget;
         private BigDecimal baseBid;
         private String platformId;
+        /** 花费、广告销售额折本位币（按统计截止日所在月的汇率；没有维护汇率时为空），用于跨币种排序 */
+        private BigDecimal baseSpend;
+        private BigDecimal baseSales;
         private Metrics prev;
         private Metrics yoy;
     }

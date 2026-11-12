@@ -21,6 +21,7 @@ import com.lemon.erp.modules.ecom.mapper.EcomReturnItemMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomReturnMapper;
 import com.lemon.erp.modules.ecom.model.EcomConstants;
 import com.lemon.erp.modules.ecom.model.EcomLocalStatus;
+import com.lemon.erp.modules.ecom.model.EcomOrderLogAction;
 import com.lemon.erp.modules.ecom.model.EcomReturnStatus;
 import com.lemon.erp.modules.ecom.model.ReturnType;
 import com.lemon.erp.modules.scm.dto.TradeDocItemRequest;
@@ -41,6 +42,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -63,12 +65,27 @@ public class EcomReturnService {
     private final DocNoService docNoService;
     private final DictLookup dictLookup;
     private final EcomReturnAllocator returnAllocator;
+    private final EcomOrderLogService logService;
 
     // 数据范围按店铺授权（EcomStoreScope，接口执行期间自动过滤），不再按部门 / 制单人
-    public PageResult<EcomReturn> page(long current, long size, Long storeId, EcomReturnStatus status, String keyword) {
+    public PageResult<EcomReturn> page(long current, long size, Long storeId, ReturnType returnType, EcomReturnStatus status, String keyword) {
         Page<EcomReturn> page = Page.of(current, size);
-        returnMapper.selectPageList(page, storeId, status, keyword);
+        returnMapper.selectPageList(page, storeId, returnType, status, keyword);
         return PageResult.of(page);
+    }
+
+    /**
+     * 各状态的单据数（列表的状态标签页），条件与列表相同、不含状态
+     *
+     * @return 状态 → 单据数
+     */
+    // 数据范围按店铺授权（EcomStoreScope，接口执行期间自动过滤）
+    public Map<String, Long> statusCounts(Long storeId, ReturnType returnType, String keyword) {
+        Map<String, Long> out = new LinkedHashMap<>();
+        for (Map<String, Object> row : returnMapper.countByStatus(storeId, returnType, keyword)) {
+            out.put(String.valueOf(row.get("status")), ((Number) row.get("cnt")).longValue());
+        }
+        return out;
     }
 
     public EcomReturn detail(Long id) {
@@ -141,6 +158,9 @@ public class EcomReturnService {
         returnMapper.insert(r);
         items.forEach(i -> i.setReturnId(r.getId()));
         itemMapper.insertBatch(items);
+        logService.log(order.getId(), EcomOrderLogAction.RETURN, EcomOrderLogService.text("ecom.log.returnCreated", r.getDocNo(),
+                dictLookup.options("ecom_return_type").getOrDefault(r.getReturnType().name(), r.getReturnType().name()),
+                r.getCurrency() + " " + r.getRefundAmount().toPlainString()));
         return r.getId();
     }
 
@@ -189,6 +209,7 @@ public class EcomReturnService {
         StatusTransitions.change(returnMapper, EcomReturn::getId, id, EcomReturn::getStatus, EcomReturnStatus.PENDING, EcomReturnStatus.RECEIVED,
                 w -> w.set(EcomReturn::getTradeDocId, docIds.get(0)).set(EcomReturn::getTradeDocNo, docNos.get(0))
                         .set(EcomReturn::getTradeDocNos, nos.length() <= 500 ? nos : nos.substring(0, 500)), "ecom.error.returnStatusChanged");
+        logService.log(order.getId(), EcomOrderLogAction.RETURN, EcomOrderLogService.text("ecom.log.returnReceived", r.getDocNo(), nos));
     }
 
     /**
@@ -249,6 +270,8 @@ public class EcomReturnService {
         StatusTransitions.change(returnMapper, EcomReturn::getId, id, EcomReturn::getStatus, from, EcomReturnStatus.REFUNDED,
                 w -> w.set(EcomReturn::getRefundTime, LocalDateTime.now()), "ecom.error.returnStatusChanged");
         orderService.addRefund(r.getOrderId(), r.getRefundAmount());
+        logService.log(r.getOrderId(), EcomOrderLogAction.REFUND, EcomOrderLogService.text("ecom.log.refunded", r.getDocNo(),
+                r.getCurrency() + " " + r.getRefundAmount().toPlainString()));
     }
 
     /** 关闭：待处理的单取消 */

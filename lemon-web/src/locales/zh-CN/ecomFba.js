@@ -71,7 +71,23 @@ export default {
     missingDims: '{n} 个 SKU 缺少尺寸，未估算仓储费',
     maintainDims: '去维护尺寸',
     ageDistribution: '库龄分布',
-    adviceDistribution: '建议分布'
+    adviceDistribution: '建议分布',
+    skuN: '{n} 个 SKU',
+    agedShare: '占库龄库存 {p}%，点击只看超龄',
+    storageFeeCard: '预估仓储费（本月）',
+    feeBreak: '月仓储费 ¥{m} + 超龄附加费 ¥{a}',
+    suggestions: '建议操作',
+    hideCharts: '收起分析',
+    showCharts: '展开库龄分布与建议操作',
+    claimableLink: '可索赔 ¥{amount}，去索赔',
+    batchSelected: '已选 {n} 项',
+    dataUpdate: '更新数据',
+    adviceDesc: {
+      REMOVE: '长期滞销或库龄超一年，建议创建移除 / 弃置计划',
+      PRICE_DOWN: '冗余且已超龄，建议降价清仓、避免超龄附加费',
+      PROMOTE: '库存冗余，建议站外推广或广告加大曝光',
+      HEALTHY: '库存健康，按补货建议正常补货'
+    }
   },
   rate: {
     title: 'FBA 仓储费费率',
@@ -101,6 +117,15 @@ export default {
     METRIC: '厘米 / 千克'
   },
   removal: {
+    basicInfo: '基本信息',
+    flow: {
+      DRAFT: '创建计划',
+      SUBMITTED: '已提交',
+      PROCESSING: '处理中',
+      COMPLETED: '亚马逊已完成',
+      RECEIVED: '本地已收货',
+      DISPOSED: '弃置出库'
+    },
     keywordPh: '单号 / 移除订单号 / 运单 / SKU',
     all: '全部',
     docNo: '单号',
@@ -164,6 +189,15 @@ export default {
     summaryPaid: '已赔付金额',
     summaryExpiring: '7 天内到期',
     summaryByType: '待处理（按类型）',
+    openCount: '待提交 {p} 条 · 已提交 {s} 条',
+    paidCount: '已赔付 {n} 条 · 已驳回 {r} 条',
+    deadlineCard: '临近截止',
+    within7: '7 天内',
+    within30: '30 天内',
+    nearest: '最近截止 {date}（剩 {n} 天），点击筛选',
+    noExpiring: '30 天内没有到期的索赔',
+    allDeadline: '全部',
+    dataOps: '数据同步',
     tabs: {
       claims: '索赔清单',
       ledger: '库存流水',

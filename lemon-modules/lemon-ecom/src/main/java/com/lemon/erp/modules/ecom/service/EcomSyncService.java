@@ -28,6 +28,7 @@ import com.lemon.erp.modules.ecom.entity.EcomSyncLog;
 import com.lemon.erp.modules.ecom.mapper.EcomChannelMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomOrderMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomSyncLogMapper;
+import com.lemon.erp.modules.ecom.model.EcomOrderLogAction;
 import com.lemon.erp.modules.ecom.model.StoreAuthStatus;
 import com.lemon.erp.modules.ecom.model.EcomOrderType;
 import com.lemon.erp.modules.ecom.model.SyncType;
@@ -70,6 +71,7 @@ public class EcomSyncService {
     private final EcomPackageService packageService;
     private final EcomChannelMapper channelMapper;
     private final TransactionTemplate transactionTemplate;
+    private final EcomOrderLogService orderLogService;
 
     // ---------------------------------------------------------------- 连接器信息与授权
 
@@ -367,6 +369,7 @@ public class EcomSyncService {
             result = connector.confirmShipment(ctx, order, order.getItems());
         } catch (RuntimeException ex) {
             writeLog(store.getId(), SyncType.SHIP_CONFIRM, trigger, start, false, 1, 0, 0, order.getPlatformOrderNo() + ": " + ex.getMessage());
+            orderLogService.log(orderId, EcomOrderLogAction.SHIP_CONFIRM, EcomOrderLogService.text("ecom.log.shipConfirmFailed", ex.getMessage()));
             if (strict) {
                 throw ex;
             }
@@ -385,8 +388,9 @@ public class EcomSyncService {
                         ex.getMessage());
             }
         }
-        writeLog(store.getId(), SyncType.SHIP_CONFIRM, trigger, start, true, 1, 0, result.status() == ShipmentResultStatus.SKIPPED ? 0 : 1,
-                shipmentMessage(order, result, written));
+        String message = shipmentMessage(order, result, written);
+        writeLog(store.getId(), SyncType.SHIP_CONFIRM, trigger, start, true, 1, 0, result.status() == ShipmentResultStatus.SKIPPED ? 0 : 1, message);
+        orderLogService.log(orderId, EcomOrderLogAction.SHIP_CONFIRM, message);
     }
 
     /**

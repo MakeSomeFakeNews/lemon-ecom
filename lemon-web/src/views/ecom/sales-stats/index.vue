@@ -6,24 +6,24 @@
         <a-radio-group v-model:value="query.grain" button-style="solid" @change="onGrain">
           <a-radio-button v-for="g in GRAINS" :key="g" :value="g">{{ $t(`ecomAnalytics.sales.grain${g}`) }}</a-radio-button>
         </a-radio-group>
-        <a-range-picker v-model:value="range" value-format="YYYY-MM-DD" :allow-clear="false" :presets="presets" />
-        <StoreSelect v-model:value="query.storeId" allow-clear :placeholder="$t('ecomAnalytics.common.allStores')" class="filter" />
+        <a-range-picker v-model:value="range" value-format="YYYY-MM-DD" :allow-clear="false" :presets="presets" @change="load" />
+        <StoreSelect v-model:value="query.storeId" allow-clear :placeholder="$t('ecomAnalytics.common.allStores')" class="filter" @update:value="load" />
         <a-select
           v-model:value="query.platform"
           allow-clear
           :placeholder="$t('ecomAnalytics.common.allPlatforms')"
           :options="toOptions(dict.ecom_platform)"
           class="filter-sm"
+          @change="load"
         />
         <a-input v-model:value="query.keyword" allow-clear :placeholder="$t('ecomAnalytics.common.keywordPh')" class="filter" @press-enter="load" />
         <a-button type="primary" :loading="loading" @click="load">
           <template #icon><SearchOutlined /></template>{{ $t('common.action.query') }}
         </a-button>
-        <a-button v-perm="'ecom:salesStats:export'" :disabled="!matrix?.rows.length" :loading="exporting" @click="doExport">
-          <template #icon><DownloadOutlined /></template>{{ $t('common.action.export') }}
-        </a-button>
       </div>
-      <div class="sub-text tip">{{ $t('ecomAnalytics.sales.tip') }}</div>
+      <a-tooltip :title="$t('ecomAnalytics.sales.tip')" placement="bottomLeft">
+        <div class="sub-text tip"><InfoCircleOutlined /> {{ $t('ecomAnalytics.sales.tip') }}</div>
+      </a-tooltip>
     </a-card>
 
     <a-card v-if="matrix" :bordered="false" class="page-card">
@@ -53,10 +53,15 @@
             </div>
           </div>
         </div>
-        <a-radio-group v-model:value="measure" size="small">
-          <a-radio-button value="qty">{{ $t('ecomAnalytics.common.qty') }}</a-radio-button>
-          <a-radio-button value="amount">{{ $t('ecomAnalytics.common.sales') }}</a-radio-button>
-        </a-radio-group>
+        <a-space>
+          <a-radio-group v-model:value="measure" button-style="solid">
+            <a-radio-button value="qty">{{ $t('ecomAnalytics.common.qty') }}</a-radio-button>
+            <a-radio-button value="amount">{{ $t('ecomAnalytics.common.sales') }}</a-radio-button>
+          </a-radio-group>
+          <a-button v-perm="'ecom:salesStats:export'" :disabled="!matrix?.rows.length" :loading="exporting" @click="doExport">
+            <template #icon><DownloadOutlined /></template>{{ $t('common.action.export') }}
+          </a-button>
+        </a-space>
       </div>
       <EChart :option="chartOption" height="260px" class="chart" />
       <SalesMatrixTable :matrix="matrix" :measure="measure" :loading="loading" @trend="openTrend" />
@@ -69,7 +74,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { message } from 'ant-design-vue'
-import { DownloadOutlined, SearchOutlined } from '@ant-design/icons-vue'
+import { DownloadOutlined, InfoCircleOutlined, SearchOutlined } from '@ant-design/icons-vue'
 import EChart from '@/components/charts/EChart.vue'
 import StoreSelect from '@/components/ecom/StoreSelect.vue'
 import { salesMatrix } from '@/api/ecom/analytics'
@@ -129,12 +134,16 @@ const chartOption = computed(() => {
   return {
     tooltip: { trigger: 'axis' },
     legend: { top: 0, type: 'scroll' },
-    grid: { left: 16, right: 16, top: 36, bottom: 8, containLabel: true },
+    grid: { left: 16, right: 16, top: 56, bottom: 8, containLabel: true },
     xAxis: { type: 'category', data: m.periods.map((p) => periodTitle(m.grain, p)) },
-    yAxis: { type: 'value' },
+    // 合计（柱）用左轴，前 5 个对象（线）用右轴，否则线被合计压成一条直线
+    yAxis: [
+      { type: 'value', name: t('ecomAnalytics.common.total'), nameTextStyle: { align: 'left' } },
+      { type: 'value', name: t('ecomDat.sales.top5'), nameTextStyle: { align: 'right' }, splitLine: { show: false } }
+    ],
     series: [
-      { name: t('ecomAnalytics.common.total'), type: 'bar', barMaxWidth: 24, itemStyle: { opacity: 0.45 }, data: m.total[key].map(nz) },
-      ...top.map((r) => ({ name: rowLabel(m.dimension, r), type: 'line', smooth: true, showSymbol: false, data: r[key].map(nz) }))
+      { name: t('ecomAnalytics.common.total'), type: 'bar', barMaxWidth: 24, itemStyle: { color: '#91caff' }, data: m.total[key].map(nz) },
+      ...top.map((r) => ({ name: rowLabel(m.dimension, r), type: 'line', yAxisIndex: 1, smooth: true, showSymbol: false, data: r[key].map(nz) }))
     ]
   }
 })
@@ -171,6 +180,18 @@ onMounted(load)
 }
 .tip {
   margin-top: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: help;
+}
+.sales-stats-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.sales-stats-page > .page-card + .page-card {
+  margin-top: 0;
 }
 .sub-text {
   color: var(--app-text-3);
@@ -189,7 +210,7 @@ onMounted(load)
   gap: 12px;
 }
 .kpi {
-  min-width: 200px;
+  min-width: 180px;
   padding: 10px 16px;
   border: 1px solid var(--app-border);
   border-radius: 8px;

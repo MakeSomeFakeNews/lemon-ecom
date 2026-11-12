@@ -16,14 +16,14 @@
 
     <a-card :bordered="false" class="page-card table-card">
       <TableToolbar :exporter="exportAll" v-model:size="size" v-model:checked="checked" v-model:show-search="showSearch" :columns="columns" @refresh="load">
-        <a-button v-perm="'ecom:ali1688Offer:edit'" :disabled="!selectedKeys.length" @click="ack(selectedKeys)">
-          <template #icon><CheckOutlined /></template>{{ $t('ecomDev.offer.ack') }}
+        <a-button v-perm="'ecom:ali1688Offer:edit'" type="primary" @click="linkModal.open()">
+          <template #icon><LinkOutlined /></template>{{ $t('ecomDev.offer.link') }}
         </a-button>
         <a-button v-perm="'ecom:ali1688Offer:sync'" :loading="syncing" @click="sync(selectedKeys)">
           <template #icon><SyncOutlined /></template>{{ selectedKeys.length ? $t('ecomDev.offer.syncSelected') : $t('ecomDev.offer.syncAll') }}
         </a-button>
-        <a-button v-perm="'ecom:ali1688Offer:edit'" type="primary" @click="linkModal.open()">
-          <template #icon><LinkOutlined /></template>{{ $t('ecomDev.offer.link') }}
+        <a-button v-perm="'ecom:ali1688Offer:edit'" v-if="selectedKeys.length" @click="ack(selectedKeys)">
+          <template #icon><CheckOutlined /></template>{{ $t('ecomDev.offer.ack') }} ({{ selectedKeys.length }})
         </a-button>
       </TableToolbar>
 
@@ -120,14 +120,14 @@ const { t } = useI18n()
 const route = useRoute()
 
 const columns = [
-  { title: t('ecomDev.offer.material'), key: 'material', width: 240, exportValue: (r) => `${r.materialCode} ${r.materialName}` },
-  { title: t('ecomDev.offer.offer'), key: 'offer', width: 300, exportValue: (r) => `${r.offerId} ${r.title || ''}` },
-  { title: t('ecomDev.offer.seller'), key: 'seller', width: 200, exportValue: (r) => r.sellerName || r.sellerLoginId },
+  { title: t('ecomDev.offer.material'), key: 'material', width: 220, exportValue: (r) => `${r.materialCode} ${r.materialName}` },
+  { title: t('ecomDev.offer.offer'), key: 'offer', width: 260, exportValue: (r) => `${r.offerId} ${r.title || ''}` },
+  { title: t('ecomDev.offer.seller'), key: 'seller', width: 180, exportValue: (r) => r.sellerName || r.sellerLoginId },
   { title: t('ecomDev.offer.price'), key: 'price', dataIndex: 'price', width: 130, align: 'right' },
   { title: t('ecomDev.offer.moq'), key: 'moq', dataIndex: 'minOrderQty', width: 90, align: 'right' },
   { title: t('ecomDev.offer.stock'), key: 'stock', dataIndex: 'stock', width: 90, align: 'right' },
   { title: t('ecomDev.offer.qtyRatio'), key: 'qtyRatio', dataIndex: 'qtyRatio', width: 80, align: 'right' },
-  { title: t('ecomDev.offer.syncTime'), key: 'sync', dataIndex: 'syncTime', width: 170 },
+  { title: t('ecomDev.offer.syncTime'), key: 'sync', dataIndex: 'syncTime', width: 160 },
   actionColumn(4)
 ]
 const { checked, visibleColumns, scrollX } = useColumns(columns, 'ecom-ali1688-offer')

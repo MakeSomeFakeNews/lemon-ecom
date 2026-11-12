@@ -1,20 +1,22 @@
 <template>
-  <div class="toolbar">
-    <a-input v-model:value="keyword" allow-clear :placeholder="$t('ecomAds.campaign.keywordPh')" class="kw" @press-enter="load" />
-    <a-button @click="load"><template #icon><SearchOutlined /></template>{{ $t('common.action.query') }}</a-button>
-    <span class="spacer" />
-    <a-button v-perm="'ecom:ad:import'" @click="importRef.open(params.storeId)">
-      <template #icon><ImportOutlined /></template>{{ $t('ecomAds.campaign.import') }}
-    </a-button>
+  <TableToolbar v-model:size="size" v-model:checked="checked" :columns="columns" @refresh="load">
+    <a-input v-model:value="keyword" allow-clear :placeholder="$t('ecomAds.campaign.keywordPh')" class="kw" @press-enter="load">
+      <template #prefix><SearchOutlined class="sub-text" /></template>
+    </a-input>
+    <a-select v-model:value="adType" allow-clear :placeholder="$t('ecomUiOps.ad.allTypes')" :options="toOptions(dict.ecom_ad_type)" class="filter" />
+    <a-select v-model:value="status" allow-clear :placeholder="$t('ecomUiOps.ad.allStatus')" :options="toOptions(dict.ecom_ad_status)" class="filter" />
     <a-button v-perm="'ecom:ad:edit'" type="primary" @click="formRef.openCreate({ storeId: params.storeId })">
       <template #icon><PlusOutlined /></template>{{ $t('ecomAds.campaign.add') }}
     </a-button>
-  </div>
+    <a-button v-perm="'ecom:ad:import'" @click="importRef.open(params.storeId)">
+      <template #icon><ImportOutlined /></template>{{ $t('ecomAds.campaign.import') }}
+    </a-button>
+  </TableToolbar>
   <a-table
     row-key="id"
-    size="middle"
-    :columns="columns"
-    :data-source="rows"
+    :size="size"
+    :columns="visibleColumns"
+    :data-source="filtered"
     :loading="loading"
     :pagination="pagination"
     :scroll="{ x: scrollX }"
@@ -22,7 +24,7 @@
   >
     <template #bodyCell="{ column, record }">
       <template v-if="column.key === 'name'">
-        <a @click="detailRef.open(record)">{{ record.name }}</a>
+        <a class="name-link" :title="record.name" @click="detailRef.open(record)">{{ record.name }}</a>
         <div class="sub-text">{{ record.storeName }}</div>
       </template>
       <template v-else-if="column.key === 'adType'"><DictTag type="ecom_ad_type" :value="record.adType" /></template>
@@ -32,6 +34,9 @@
       <template v-else-if="column.key === 'action'">
         <TableActions :actions="rowActions(record)" />
       </template>
+    </template>
+    <template #expandedRowRender="{ record }">
+      <AdHierarchyTable :level="EcomAdLevel.AD_GROUP" :parent-id="record.id" :params="params" :metric-keys="metricKeys" />
     </template>
   </a-table>
 
@@ -46,12 +51,15 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { ImportOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons-vue'
 import DictTag from '@/components/DictTag.vue'
+import TableToolbar from '@/components/TableToolbar.vue'
 import TableActions from '@/components/common/TableActions.vue'
 import { actionColumn } from '@/components/common/tableActions'
 import { applyPageChange, localPagination } from '@/components/ecom/ecomReport'
 import { adsHierarchy, changeAdStatus, changeBudget, deleteCampaigns } from '@/api/ecom/ads'
 import { useAction } from '@/composables/useAction'
-import { sumWidth } from '@/composables/useColumns'
+import { useColumns } from '@/composables/useColumns'
+import { useDict } from '@/composables/useDict'
+import { toOptions } from '@/utils/dict'
 import { EcomAdLevel, EcomAdStatus } from '@/constants/enums'
 import { money } from '@/utils/number'
 import { t } from '@/locales'
@@ -62,6 +70,7 @@ import ValueModal from './ValueModal.vue'
 import AdReportImport from './AdReportImport.vue'
 import AdCampaignDetail from './AdCampaignDetail.vue'
 import ScheduleEditor from './ScheduleEditor.vue'
+import AdHierarchyTable from './AdHierarchyTable.vue'
 
 /**
  * 活动页签：活动级层级报表（GET /ecom/ads/hierarchy?level=CAMPAIGN，含环比），点名称进入活动详情（广告组 → 投放）；
@@ -73,6 +82,10 @@ const keyword = ref('')
 const rows = ref([])
 const loading = ref(false)
 const pagination = reactive(localPagination(20))
+const dict = useDict('ecom_ad_type', 'ecom_ad_status')
+const adType = ref()
+const status = ref()
+const size = ref('middle')
 const columns = [
   { title: t('ecomAds.common.campaign'), key: 'name', width: 240, fixed: 'left' },
   { title: t('ecomAds.campaign.adType'), key: 'adType', width: 120 },
@@ -81,7 +94,12 @@ const columns = [
   ...metricColumns(),
   actionColumn(4)
 ]
-const scrollX = computed(() => sumWidth(columns))
+// 列设置（含指标列）记在本浏览器；展开的广告组 / 投放跟随显示的指标列
+const { checked, visibleColumns, scrollX } = useColumns(columns, 'ecom-ad-campaigns')
+const metricKeys = computed(() => checked.value)
+/** 类型、状态在前端筛选（层级报表一次返回全部活动） */
+const filtered = computed(() => rows.value.filter((r) => (!adType.value || r.adType === adType.value) && (!status.value || r.status === status.value)))
+watch([adType, status], () => (pagination.current = 1))
 
 let seq = 0
 async function load() {
@@ -136,18 +154,17 @@ const rowActions = (r) => [
 </script>
 
 <style scoped>
-.toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-}
 .kw {
   width: 240px;
 }
-.spacer {
-  flex: 1;
+.filter {
+  width: 140px;
+}
+.name-link {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .sub-text {
   color: var(--app-text-3);

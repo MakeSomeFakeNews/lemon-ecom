@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomOrderLogMapper">
+
+    <select id="selectByOrderId" resultType="com.lemon.erp.modules.ecom.entity.EcomOrderLog">
+        SELECT l.*, u.nickname AS create_by_name
+        FROM ecom_order_log l
+        LEFT JOIN sys_user u ON u.id = l.create_by
+        WHERE l.order_id = #{orderId}
+        ORDER BY l.create_time DESC, l.id DESC
+    </select>
+
+    <insert id="insertBatch">
+        INSERT INTO ecom_order_log (order_id, action, content, create_by, create_time, update_time)
+        VALUES
+        <foreach collection="logs" item="l" separator=",">
+            (#{l.orderId}, #{l.action}, #{l.content}, #{l.createBy}, COALESCE(#{l.createTime}, CURRENT_TIMESTAMP), COALESCE(#{l.createTime}, CURRENT_TIMESTAMP))
+        </foreach>
+    </insert>
+
+</mapper>

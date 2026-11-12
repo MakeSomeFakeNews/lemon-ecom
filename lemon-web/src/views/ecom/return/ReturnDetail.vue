@@ -9,10 +9,16 @@
 
     <a-spin :spinning="loading">
       <template v-if="detail">
+        <a-steps :current="stepCurrent" :status="detail.status === EcomReturnStatus.CLOSED ? 'error' : undefined" size="small" class="steps">
+          <a-step v-for="s in steps" :key="s.key" :title="s.title" :description="s.time" />
+        </a-steps>
         <a-descriptions :column="{ xs: 1, sm: 2, lg: 3 }" size="small" class="block">
           <a-descriptions-item :label="$t('ecomOrder.common.docNo')">{{ detail.docNo }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOrder.common.store')">{{ detail.storeName || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOrder.common.platformOrderNo')">{{ detail.platformOrderNo }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomOrder.common.platformOrderNo')">
+            <a v-if="detail.orderId" @click="router.push({ path: '/ecom/order', query: { id: detail.orderId } })">{{ detail.platformOrderNo }}</a>
+            <span v-else>{{ detail.platformOrderNo }}</span>
+          </a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOrder.return.buyer')">{{ detail.buyerName || '-' }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOrder.return.reason')">
             <DictTag v-if="detail.reason" type="ecom_return_reason" :value="detail.reason" />
@@ -20,7 +26,7 @@
           </a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOrder.return.refundAmount')">
             <b>{{ fcMoney(detail.currency, detail.refundAmount) }}</b>
-            <span v-if="detail.exchangeRate != null" class="sub-text"> @{{ Number(detail.exchangeRate) }}</span>
+            <span v-if="detail.exchangeRate != null" class="sub-text rate">{{ $t('ecomOrder.order.exchangeRate') }} {{ Number(detail.exchangeRate) }}</span>
           </a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOrder.return.warehouse')">{{ detail.warehouseName || '-' }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOrder.return.tradeDoc')">{{ detail.tradeDocNos || detail.tradeDocNo || '-' }}</a-descriptions-item>
@@ -61,7 +67,9 @@ import { DeleteOutlined, ImportOutlined, PayCircleOutlined, StopOutlined } from 
 import SubPage from '@/components/SubPage.vue'
 import DictTag from '@/components/DictTag.vue'
 import { closeEcomReturn, deleteEcomReturn, getEcomReturn, refundEcomReturn } from '@/api/ecom/return'
+import { useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
+import { EcomReturnStatus, ReturnType } from '@/constants/enums'
 import { qty } from '@/utils/number'
 import { fcMoney } from '../order/order'
 import { canClose, canDelete, canReceive, canRefund } from './return'
@@ -73,6 +81,7 @@ import { canClose, canDelete, canReceive, canRefund } from './return'
 const emit = defineEmits(['changed', 'receive'])
 const { t } = useI18n()
 const userStore = useUserStore()
+const router = useRouter()
 const can = (perm) => userStore.hasPerm(perm)
 
 const itemColumns = [
@@ -83,6 +92,23 @@ const itemColumns = [
   { title: t('ecomOrder.return.lineRefund'), key: 'refundAmount', width: 140, align: 'right' },
   { title: t('ecomOrd.returnPkg.package'), dataIndex: 'packageNo', width: 170 }
 ]
+
+/** 处理进度：退货退款 = 登记 → 退货入库 → 退款；仅退款 = 登记 → 退款；已关闭时当前步骤标红 */
+const steps = computed(() => {
+  const d = detail.value
+  if (!d) return []
+  const list = [{ key: 'create', title: t('ecomOrdUi.ret.stepCreate'), time: d.createTime }]
+  if (d.returnType === ReturnType.RETURN_REFUND) list.push({ key: 'receive', title: t('ecomOrdUi.ret.stepReceive'), time: d.tradeDocNo || '' })
+  list.push({ key: 'refund', title: t('ecomOrdUi.ret.stepRefund'), time: d.refundTime || '' })
+  return list
+})
+const stepCurrent = computed(() => {
+  const d = detail.value
+  if (!d) return 0
+  if (d.status === EcomReturnStatus.REFUNDED) return steps.value.length
+  if (d.status === EcomReturnStatus.RECEIVED) return 2
+  return d.status === EcomReturnStatus.CLOSED ? 0 : 1
+})
 
 const open = ref(false)
 const loading = ref(false)
@@ -167,6 +193,13 @@ defineExpose({ open: show, reload })
 </script>
 
 <style scoped>
+.steps {
+  max-width: 720px;
+  margin-bottom: 20px;
+}
+.rate {
+  margin-left: 6px;
+}
 .block {
   margin-bottom: 16px;
 }

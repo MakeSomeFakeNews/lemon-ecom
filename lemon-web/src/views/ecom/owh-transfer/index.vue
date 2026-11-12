@@ -6,7 +6,7 @@
           <a-input v-model:value="query.keyword" :placeholder="$t('ecomOwh.tr.keywordPh')" allow-clear @press-enter="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomOwh.tr.warehouse')" name="warehouseId">
-          <WarehouseSelect v-model:value="query.warehouseId" :placeholder="$t('common.placeholder.all')" />
+          <WarehouseSelect v-model:value="query.warehouseId" :placeholder="$t('common.placeholder.all')" @change="search" />
         </a-form-item>
       </SearchForm>
     </a-card>
@@ -14,16 +14,21 @@
     <a-card :bordered="false" class="page-card table-card">
       <a-tabs v-model:active-key="tab" size="small" class="status-tabs" @change="onTab">
         <a-tab-pane v-for="tb in TABS" :key="tb.key">
-          <template #tab>{{ tb.label }}<span v-if="tb.key !== 'all'" class="tab-count">{{ counts[tb.key] || 0 }}</span></template>
+          <template #tab>{{ tb.label }}<span class="tab-count">{{ tb.key === 'all' ? allCount : counts[tb.key] || 0 }}</span></template>
         </a-tab-pane>
       </a-tabs>
       <TableToolbar :exporter="exportAll" v-model:size="size" v-model:checked="checked" v-model:show-search="showSearch" :columns="columns" @refresh="reload">
         <a-button v-perm="'ecom:owhTransfer:add'" type="primary" @click="formRef.openCreate()">
           <template #icon><PlusOutlined /></template>{{ $t('ecomOwh.tr.add') }}
         </a-button>
-        <a-button v-perm="'ecom:owhTransfer:sync'" :disabled="!selectedKeys.length" :loading="syncing" @click="syncIds(selectedKeys)">
-          <template #icon><SyncOutlined /></template>{{ $t('ecomOwh.tr.sync') }}
-        </a-button>
+        <template v-if="selectedKeys.length">
+          <a-button v-perm="'ecom:owhTransfer:sync'" :loading="syncing" @click="syncIds(selectedKeys)">
+            <template #icon><SyncOutlined /></template>{{ $t('ecomOwh.tr.sync') }}
+          </a-button>
+          <span class="selected-tip">
+            {{ $t('common.table.selected', { n: selectedKeys.length }) }} <a @click="selectedKeys = []">{{ $t('common.action.clear') }}</a>
+          </span>
+        </template>
       </TableToolbar>
       <a-table
         row-key="id"
@@ -41,7 +46,7 @@
             <a @click="detailRef.open(record.id)">{{ record.transferNo }}</a>
           </template>
           <template v-else-if="column.key === 'route'">
-            <div>{{ record.fromWarehouseName }} → {{ record.toWarehouseName }}</div>
+            <div class="nowrap" :title="`${record.fromWarehouseName} → ${record.toWarehouseName}`">{{ record.fromWarehouseName }} → {{ record.toWarehouseName }}</div>
             <div class="sub-text">{{ record.fromOwhCode || $t('ecomOwh.tr.local') }} → {{ record.toOwhCode || $t('ecomOwh.tr.local') }}</div>
           </template>
           <template v-else-if="column.key === 'totalQty'">{{ qty(record.totalQty) }}</template>
@@ -110,19 +115,19 @@ const { t } = useI18n()
 const dict = useDict('ecom_owh_transfer_status')
 const STATUS_TABS = [OwhTransferStatus.DRAFT, OwhTransferStatus.OUT_PUSHED, OwhTransferStatus.IN_TRANSIT, OwhTransferStatus.RECEIVED, OwhTransferStatus.CANCELLED]
 const TABS = computed(() => [
-  ...STATUS_TABS.map((s) => ({ key: s, label: findDict(dict.ecom_owh_transfer_status, s)?.label || s })),
-  { key: 'all', label: t('common.status.all') }
+  { key: 'all', label: t('common.status.all') },
+  ...STATUS_TABS.map((s) => ({ key: s, label: findDict(dict.ecom_owh_transfer_status, s)?.label || s }))
 ])
 
 const columns = [
   { title: t('ecomOwh.tr.transferNo'), key: 'transferNo', dataIndex: 'transferNo', width: 170 },
-  { title: t('ecomOwh.tr.route'), key: 'route', width: 260, exportValue: (r) => `${r.fromWarehouseName} -> ${r.toWarehouseName}` },
+  { title: t('ecomOwh.tr.route'), key: 'route', width: 340, ellipsis: true, exportValue: (r) => `${r.fromWarehouseName} -> ${r.toWarehouseName}` },
   { title: t('ecomOwh.tr.qty'), key: 'totalQty', dataIndex: 'totalQty', width: 80, align: 'right' },
   { title: t('ecomOwh.tr.status'), key: 'status', dataIndex: 'status', width: 120, dict: 'ecom_owh_transfer_status' },
-  { title: t('ecomOwh.tr.owhOutNo'), dataIndex: 'owhOutNo', width: 150 },
+  { title: t('ecomOwh.tr.owhOutNo'), dataIndex: 'owhOutNo', width: 150, ellipsis: true },
   { title: t('ecomOwh.tr.transferDoc'), dataIndex: 'transferDocNo', width: 150 },
-  { title: t('ecomOwh.tr.inbound'), key: 'inbound', width: 150, exportValue: (r) => r.inboundNo || '' },
-  { title: t('ecomOwh.tr.trackingNo'), dataIndex: 'trackingNo', width: 150 },
+  { title: t('ecomOwh.tr.inbound'), key: 'inbound', width: 170, exportValue: (r) => r.inboundNo || '' },
+  { title: t('ecomOwh.tr.trackingNo'), dataIndex: 'trackingNo', width: 170, ellipsis: true },
   { title: t('ecomOwh.tr.shipTime'), dataIndex: 'shipTime', width: 160 },
   { title: t('ecomOwh.tr.receiveTime'), dataIndex: 'receiveTime', width: 160 },
   actionColumn(3)
@@ -137,6 +142,7 @@ const { list, loading, size, pagination, selectedKeys, rowSelection, load, searc
   params: (q) => ({ ...q, status: tab.value === 'all' ? undefined : tab.value })
 })
 const counts = ref({})
+const allCount = computed(() => STATUS_TABS.reduce((n, s) => n + Number(counts.value[s] || 0), 0))
 async function loadCounts() {
   counts.value = (await owhTransferStatusCounts({ ...query })) || {}
 }
@@ -211,6 +217,15 @@ const rowActions = (record) => [
 </script>
 
 <style scoped>
+.selected-tip {
+  align-self: center;
+  color: var(--app-text-3);
+}
+.nowrap {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 .sub-text {
   color: var(--app-text-3);
   font-size: 12px;

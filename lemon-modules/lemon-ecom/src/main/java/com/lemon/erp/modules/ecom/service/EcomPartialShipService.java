@@ -17,6 +17,7 @@ import com.lemon.erp.modules.ecom.mapper.EcomOrderItemMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomOrderMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomPackageItemMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomPackageMapper;
+import com.lemon.erp.modules.ecom.model.EcomOrderLogAction;
 import com.lemon.erp.modules.ecom.model.EcomOrderType;
 import com.lemon.erp.modules.ecom.model.EcomPackageStatus;
 import com.lemon.erp.modules.ecom.model.SyncType;
@@ -59,6 +60,7 @@ public class EcomPartialShipService {
     private final EcomStoreService storeService;
     private final ConnectorRegistry registry;
     private final EcomSyncService syncService;
+    private final EcomOrderLogService orderLogService;
 
     /**
      * 多包裹订单的一个包裹已发货
@@ -146,10 +148,12 @@ public class EcomPartialShipService {
                     pkg.getTrackingNo(), r == null || r.message() == null ? "" : r.message());
             mark(packageId, 1, msg);
             syncService.writeLog(store.getId(), SyncType.SHIP_CONFIRM, trigger, start, true, 1, 0, 1, msg);
+            orderLogService.log(orderId, EcomOrderLogAction.SHIP_CONFIRM, msg);
         } catch (RuntimeException ex) {
             String msg = order.getPlatformOrderNo() + " / " + pkg.getPackageNo() + ": " + ex.getMessage();
             mark(packageId, 0, msg);
             syncService.writeLog(store.getId(), SyncType.SHIP_CONFIRM, trigger, start, false, 1, 0, 0, msg);
+            orderLogService.log(orderId, EcomOrderLogAction.SHIP_CONFIRM, EcomOrderLogService.text("ecom.log.shipConfirmFailed", msg));
             if (strict) {
                 throw ex;
             }

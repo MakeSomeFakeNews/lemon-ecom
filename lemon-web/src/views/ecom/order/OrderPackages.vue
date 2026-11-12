@@ -1,5 +1,5 @@
 <template>
-  <a-table row-key="id" size="small" :columns="columns" :data-source="packages" :pagination="false" :scroll="{ x: 1000 }" :locale="{ emptyText: $t('ecomOrder.ops.noPackages') }">
+  <a-table row-key="id" size="small" :columns="columns" :data-source="packages" :pagination="false" :scroll="{ x: 1380 }" :locale="{ emptyText: $t('ecomOrder.ops.noPackages') }">
     <template #bodyCell="{ column, record }">
       <template v-if="column.key === 'packageNo'">
         <a @click="router.push({ path: '/ecom/package', query: { keyword: record.packageNo } })">{{ record.packageNo }}</a>

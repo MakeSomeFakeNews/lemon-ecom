@@ -5,7 +5,7 @@
       <a-input-number v-model:value="days" :min="1" :max="365" :precision="0" class="days" />
       {{ $t('ecomAnalytics.product.slowDaysSuffix') }}
     </span>
-    <StoreSelect v-model:value="storeId" allow-clear :placeholder="$t('ecomAnalytics.common.allStores')" class="filter" />
+    <StoreSelect v-model:value="storeId" allow-clear :placeholder="$t('ecomAnalytics.common.allStores')" class="filter" @update:value="load" />
     <a-input v-model:value="keyword" allow-clear :placeholder="$t('ecomAnalytics.common.materialKeywordPh')" class="filter" @press-enter="load" />
     <a-button type="primary" :loading="loading" @click="load">
       <template #icon><SearchOutlined /></template>{{ $t('common.action.query') }}

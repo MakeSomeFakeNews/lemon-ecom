@@ -21,8 +21,26 @@ const tab = ref('rates')
 </script>
 
 <style scoped>
+/* 标签页在上，下面的税率表 / VAT 汇总占满剩余高度（表头固定、表格内滚动） */
+.tax-page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.tax-page > .page-card + .page-card {
+  margin-top: 0;
+}
+.tax-page > :last-child {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+.tabs-card {
+  flex: none;
+}
 .tabs-card :deep(.ant-card-body) {
-  padding-bottom: 0;
+  padding: 4px 24px 0;
 }
 .tabs-card :deep(.ant-tabs-nav) {
   margin-bottom: 0;

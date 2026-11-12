@@ -5,9 +5,6 @@
         <a-form-item :label="$t('ecomOrder.common.store')" name="storeId">
           <StoreSelect v-model:value="query.storeId" :placeholder="$t('common.placeholder.all')" />
         </a-form-item>
-        <a-form-item :label="$t('common.field.status')" name="status">
-          <a-select v-model:value="query.status" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_inbound_status)" />
-        </a-form-item>
         <a-form-item :label="$t('common.field.keyword')" name="keyword">
           <a-input v-model:value="query.keyword" :placeholder="$t('ecomOrder.inbound.keywordPh')" allow-clear @press-enter="search" />
         </a-form-item>
@@ -15,6 +12,14 @@
     </a-card>
 
     <a-card :bordered="false" class="page-card table-card">
+      <a-tabs v-model:active-key="query.status" class="status-tabs" @change="search">
+        <a-tab-pane key="">
+          <template #tab>{{ $t('ecomOrder.inbound.allStatus') }}<span class="tab-count">{{ allCount }}</span></template>
+        </a-tab-pane>
+        <a-tab-pane v-for="s in dict.ecom_inbound_status" :key="s.value">
+          <template #tab>{{ s.label }}<span class="tab-count">{{ counts[s.value] || 0 }}</span></template>
+        </a-tab-pane>
+      </a-tabs>
       <TableToolbar :exporter="exportAll" v-model:size="size" v-model:checked="checked" v-model:show-search="showSearch" :columns="columns" @refresh="load">
         <a-button v-perm="'ecom:inbound:add'" type="primary" @click="form.openCreate()">
           <template #icon><PlusOutlined /></template>{{ $t('ecomOrder.inbound.addTitle') }}
@@ -36,8 +41,12 @@
             <a @click="openDetail(record)">{{ record.docNo }}</a>
           </template>
           <template v-else-if="column.key === 'trackingNo'">
-            <div>{{ record.trackingNo || '-' }}</div>
-            <div v-if="record.carrier" class="sub-text">{{ record.carrier }}</div>
+            <div class="ellipsis" :title="record.trackingNo">{{ record.trackingNo || '-' }}</div>
+            <div v-if="record.carrier" class="sub-text ellipsis">{{ record.carrier }}</div>
+          </template>
+          <template v-else-if="column.key === 'etaDate'">
+            <div>{{ record.etaDate || '-' }}</div>
+            <div v-if="etaHint(record)" :class="['sub-text', { danger: etaHint(record).overdue }]">{{ etaHint(record).text }}</div>
           </template>
           <template v-else-if="column.key === 'totalQty'">{{ qty(record.totalQty) }}</template>
           <template v-else-if="column.key === 'cost'">
@@ -61,9 +70,10 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import dayjs from 'dayjs'
 import { message } from 'ant-design-vue'
 import { DollarOutlined, ImportOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import SearchForm from '@/components/SearchForm.vue'
@@ -75,13 +85,13 @@ import TableActions from '@/components/common/TableActions.vue'
 import { actionColumn } from '@/components/common/tableActions'
 import InboundForm from './InboundForm.vue'
 import InboundDetail from './InboundDetail.vue'
-import { cancelEcomInbound, deleteEcomInbound, pageEcomInbound, receiveEcomInbound, submitEcomInbound } from '@/api/ecom/inbound'
+import { cancelEcomInbound, deleteEcomInbound, ecomInboundStatusCounts, pageEcomInbound, receiveEcomInbound, submitEcomInbound } from '@/api/ecom/inbound'
 import { useAction } from '@/composables/useAction'
 import { useColumns } from '@/composables/useColumns'
 import { useDict } from '@/composables/useDict'
 import { useRouteOpen } from '@/composables/useRouteOpen'
 import { useTable } from '@/composables/useTable'
-import { toOptions } from '@/utils/dict'
+import { InboundStatus } from '@/constants/enums'
 import { money, qty } from '@/utils/number'
 import { baseMoney } from '../order/order'
 import { canCancel, canDelete, canEditCosts, canReceive, isDraft, totalCost } from './inbound'
@@ -94,26 +104,27 @@ const { t } = useI18n()
 const dict = useDict('ecom_inbound_status')
 
 const columns = [
-  { title: t('ecomOrder.common.docNo'), key: 'docNo', dataIndex: 'docNo', width: 170 },
-  { title: t('ecomOrder.common.store'), dataIndex: 'storeName', width: 150 },
-  { title: t('ecomOrder.inbound.shipmentId'), dataIndex: 'shipmentId', width: 150 },
-  { title: t('ecomOrder.inbound.fromWarehouse'), dataIndex: 'fromWarehouseName', width: 140 },
-  { title: t('ecomOrder.inbound.toWarehouse'), dataIndex: 'toWarehouseName', width: 150 },
-  { title: t('ecomOrder.common.channel'), dataIndex: 'channelName', width: 140 },
+  { title: t('ecomOrder.common.docNo'), key: 'docNo', dataIndex: 'docNo', width: 170, fixed: 'left' },
+  { title: t('ecomOrder.common.store'), dataIndex: 'storeName', width: 140, ellipsis: true },
+  { title: t('common.field.status'), key: 'status', dataIndex: 'status', width: 96, dict: 'ecom_inbound_status' },
+  { title: t('ecomOrder.inbound.shipmentId'), dataIndex: 'shipmentId', width: 150, ellipsis: true },
+  { title: t('ecomOrder.inbound.fromWarehouse'), dataIndex: 'fromWarehouseName', width: 140, ellipsis: true },
+  { title: t('ecomOrder.inbound.toWarehouse'), dataIndex: 'toWarehouseName', width: 160, ellipsis: true },
+  { title: t('ecomOrder.common.channel'), dataIndex: 'channelName', width: 140, ellipsis: true },
   {
     title: t('ecomOrder.common.trackingNo'),
     key: 'trackingNo',
-    width: 170,
+    width: 180,
     exportColumns: [
       { title: t('ecomOrder.common.carrier'), dataIndex: 'carrier' },
       { title: t('ecomOrder.common.trackingNo'), dataIndex: 'trackingNo' }
     ]
   },
-  { title: t('ecomOrder.inbound.shipDate'), dataIndex: 'shipDate', width: 120 },
-  { title: t('ecomOrder.inbound.etaDate'), dataIndex: 'etaDate', width: 120 },
-  { title: t('ecomOrder.inbound.receiveDate'), dataIndex: 'receiveDate', width: 120 },
-  { title: t('ecomOrder.inbound.boxCount'), dataIndex: 'boxCount', width: 80, align: 'right' },
-  { title: t('ecomOrder.inbound.totalQty'), key: 'totalQty', dataIndex: 'totalQty', width: 110, align: 'right' },
+  { title: t('ecomOrder.inbound.shipDate'), dataIndex: 'shipDate', width: 110 },
+  { title: t('ecomOrder.inbound.etaDate'), key: 'etaDate', dataIndex: 'etaDate', width: 120 },
+  { title: t('ecomOrder.inbound.receiveDate'), dataIndex: 'receiveDate', width: 110 },
+  { title: t('ecomOrder.inbound.boxCount'), dataIndex: 'boxCount', width: 70, align: 'right' },
+  { title: t('ecomOrder.inbound.totalQty'), key: 'totalQty', dataIndex: 'totalQty', width: 100, align: 'right' },
   {
     title: t('ecomOrder.inbound.totalCost'),
     key: 'cost',
@@ -126,9 +137,8 @@ const columns = [
       { title: t('ecomOrder.inbound.totalCost'), exportValue: totalCost }
     ]
   },
-  { title: t('common.field.status'), key: 'status', dataIndex: 'status', width: 100, dict: 'ecom_inbound_status' },
   { title: t('ecomOrder.inbound.transferDoc'), dataIndex: 'transferDocNo', width: 170 },
-  { title: t('ecomOrder.common.createBy'), dataIndex: 'createByName', width: 120 },
+  { title: t('ecomOrder.common.createBy'), dataIndex: 'createByName', width: 110, ellipsis: true },
   { title: t('common.field.createTime'), dataIndex: 'createTime', width: 170 },
   // 查看、编辑、提交发运 / 签收（按状态互斥）、删除 / 更多
   actionColumn(4, [t('common.action.view')])
@@ -136,13 +146,28 @@ const columns = [
 const { checked, visibleColumns, scrollX } = useColumns(columns, 'ecom-inbound')
 const showSearch = ref(true)
 
-const emptyQuery = () => ({ storeId: undefined, status: undefined, keyword: undefined })
+const emptyQuery = () => ({ storeId: undefined, status: '', keyword: undefined })
 const query = reactive(emptyQuery())
 // 从看板、首页待办跳转过来时带上状态（?status=SHIPPED）
 const route = useRoute()
 if (route.query.status) query.status = String(route.query.status)
 if (route.query.keyword) query.keyword = String(route.query.keyword)
-const { list, loading, size, pagination, load, search, onTableChange, exportAll } = useTable(pageEcomInbound, query)
+const counts = ref({})
+const allCount = computed(() => Object.values(counts.value).reduce((n, v) => n + Number(v || 0), 0))
+/** 标签页计数：条件与列表相同、不含状态，列表每次加载时一起刷新 */
+const fetchPage = (p) => {
+  ecomInboundStatusCounts({ storeId: query.storeId || undefined, keyword: query.keyword || undefined }).then((c) => (counts.value = c || {})).catch(() => {})
+  return pageEcomInbound(p)
+}
+const { list, loading, size, pagination, load, search, onTableChange, exportAll } = useTable(fetchPage, query)
+
+/** 已发运未签收：按预计到达提示剩余 / 超期天数 */
+function etaHint(r) {
+  if (r.status !== InboundStatus.SHIPPED || !r.etaDate) return null
+  const left = dayjs(r.etaDate).startOf('day').diff(dayjs().startOf('day'), 'day')
+  if (left < 0) return { overdue: true, text: t('ecomOrder.inbound.overdueHint', { n: -left }) }
+  return r.shipDate ? { overdue: false, text: t('ecomOrder.inbound.transitHint', { n: dayjs().startOf('day').diff(dayjs(r.shipDate), 'day') }) } : null
+}
 
 function resetQuery() {
   Object.assign(query, emptyQuery())
@@ -213,9 +238,26 @@ const rowActions = (record) => [
 </script>
 
 <style scoped>
+.tab-count {
+  margin-left: 4px;
+  color: var(--app-text-3);
+  font-size: 12px;
+}
+.status-tabs :deep(.ant-tabs-nav) {
+  margin-bottom: 8px;
+}
 .sub-text {
   color: var(--app-text-3);
   font-size: 12px;
+}
+.ellipsis {
+  max-width: 164px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.danger {
+  color: var(--status-critical);
 }
 .nowrap {
   white-space: nowrap;

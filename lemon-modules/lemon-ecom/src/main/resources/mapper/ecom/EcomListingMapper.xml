@@ -39,6 +39,16 @@
         ORDER BY l.store_id, l.seller_sku
     </select>
 
+    <select id="selectSales" resultType="com.lemon.erp.modules.ecom.entity.EcomListing">
+        SELECT l.id, SUM(oi.qty) AS sales30
+        FROM ecom_listing l
+        JOIN ecom_order o ON o.store_id = l.store_id AND o.order_time &gt;= #{since} AND o.status NOT IN ('PENDING', 'CANCELLED')
+        JOIN ecom_order_item oi ON oi.order_id = o.id AND oi.seller_sku = l.seller_sku
+        WHERE l.id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        GROUP BY l.id
+    </select>
+
     <select id="selectDetail" resultType="com.lemon.erp.modules.ecom.entity.EcomListing">
         SELECT <include refid="columns"/>
         <include refid="joins"/>

@@ -76,6 +76,7 @@ Growth.props = ['value', 'small']
 }
 .kpi {
   padding: 16px;
+  margin-top: 0 !important;
   background: var(--app-card);
   position: relative;
   overflow: hidden;

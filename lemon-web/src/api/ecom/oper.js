@@ -11,6 +11,8 @@ export const monitorFetchPlatforms = () => request.get('/ecom/oper/monitor/platf
 export const getMonitor = (id) => request.get(`/ecom/oper/monitor/${id}`)
 /** 趋势：{ snapshots（升序）, alerts }，days 默认 60 */
 export const monitorTrend = (id, days = 60) => request.get(`/ecom/oper/monitor/${id}/trend`, { params: { days } })
+/** 列表迷你趋势：一次取多个监控最近 days 天的排名 / 评分 [{ monitorId, dates, rankMain, rankSub, rating, reviewCount }] */
+export const monitorTrends = (ids, days = 30) => request.get('/ecom/oper/monitor/trends', { params: { ids: [].concat(ids).join(','), days } })
 export const addMonitor = (data) => request.post('/ecom/oper/monitor', data)
 export const updateMonitor = (id, data) => request.put(`/ecom/oper/monitor/${id}`, data)
 export const changeMonitorStatus = (id, status) => request.put(`/ecom/oper/monitor/${id}/status`, null, { params: { status } })

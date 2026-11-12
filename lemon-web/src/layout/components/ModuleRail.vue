@@ -21,7 +21,6 @@ import AppLogo from '@/components/AppLogo.vue'
 import MenuIcon from '@/components/MenuIcon.vue'
 import { isZh, t } from '@/locales'
 import { HOME_PATH, useModuleNav } from '../useModuleNav'
-import { shortModuleTitle } from '../menuItems'
 
 /** 双栏布局的最左一列：首页和各模块的图标、名称，点击进入模块（回到该模块上次访问的页面） */
 const route = useRoute()
@@ -30,7 +29,7 @@ const zh = isZh()
 
 const items = computed(() => [
   { key: HOME_PATH, title: t('route.dashboard'), short: t('route.dashboard'), icon: 'HomeOutlined' },
-  ...modules.value.map((m) => ({ key: m.key, title: m.title, short: shortModuleTitle(m.title), icon: m.icon }))
+  ...modules.value.map((m) => ({ key: m.key, title: m.title, short: m.title, icon: m.icon }))
 ])
 const activeKey = computed(() => activeModule.value?.key || (route.path === HOME_PATH ? HOME_PATH : null))
 </script>

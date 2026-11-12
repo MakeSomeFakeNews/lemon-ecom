@@ -4,6 +4,8 @@ const ids = (v) => [].concat(v).join(',')
 
 /** 发货计划 /ecom/shipment-plan：分页条件 storeId、status（ShipmentPlanStatus）、keyword（计划号 / 平台 SKU） */
 export const pageShipmentPlan = (params) => request.get('/ecom/shipment-plan', { params })
+/** 各状态的计划数（状态标签页）：{ 状态: 数量 }，条件 storeId、keyword */
+export const shipmentPlanStatusCounts = (params) => request.get('/ecom/shipment-plan/status-counts', { params })
 /** 详情含 items（shippedQty 为已生成货件的件数）、inbounds（生成的头程货件） */
 export const getShipmentPlan = (id) => request.get(`/ecom/shipment-plan/${id}`)
 /** 新增草稿：{ storeId, fromWarehouseId, toWarehouseId, planDate, remark, items: [{ listingId, qty, remark }] } */

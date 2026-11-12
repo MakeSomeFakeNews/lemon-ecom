@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import com.lemon.erp.modules.ecom.fba.dto.FbaRequests;
 import com.lemon.erp.modules.ecom.fba.entity.EcomFbaRemoval;
 import com.lemon.erp.modules.ecom.fba.model.AmzReportType;
@@ -48,6 +49,14 @@ public class EcomFbaRemovalController {
                                               @RequestParam(required = false) Long storeId, @RequestParam(required = false) FbaRemovalType removalType,
                                               @RequestParam(required = false) FbaRemovalStatus status, @RequestParam(required = false) String keyword) {
         return R.ok(removalService.page(current, size, storeId, removalType, status, keyword));
+    }
+
+    /** 各状态的移除订单数（状态标签页）：{ 状态: 数量 }，条件与列表相同、不含状态 */
+    @GetMapping("/status-counts")
+    @PreAuthorize("@ss.hasPerm('ecom:fbaRemoval:list')")
+    public R<Map<String, Long>> statusCounts(@RequestParam(required = false) Long storeId, @RequestParam(required = false) FbaRemovalType removalType,
+                                             @RequestParam(required = false) String keyword) {
+        return R.ok(removalService.statusCounts(storeId, removalType, keyword));
     }
 
     @GetMapping("/{id}")

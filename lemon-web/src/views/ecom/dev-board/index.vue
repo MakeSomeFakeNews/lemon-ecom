@@ -1,17 +1,22 @@
 <template>
   <div class="board-page">
     <a-card :bordered="false" class="page-card toolbar">
-      <a-space wrap>
+      <div class="toolbar-row">
+        <a-button v-perm="'ecom:devProject:add'" type="primary" @click="formRef.openCreate()"><template #icon><PlusOutlined /></template>{{ $t('ecomDev.project.add') }}</a-button>
+        <a-button @click="router.push('/ecom/dev-project')"><template #icon><UnorderedListOutlined /></template>{{ $t('ecomDev.board.list') }}</a-button>
+        <a-tooltip :title="$t('ecomDev.board.hint')" placement="bottomLeft">
+          <QuestionCircleOutlined class="hint-icon" />
+        </a-tooltip>
+        <span class="spacer" />
         <a-input-search v-model:value="query.keyword" :placeholder="$t('ecomDev.project.keywordPh')" allow-clear class="search" @search="load" />
         <a-select v-model:value="query.platform" :placeholder="$t('ecomDev.project.platform')" allow-clear class="sel" :options="toOptions(dict.ecom_platform)" @change="load" />
         <a-select v-model:value="query.source" :placeholder="$t('ecomDev.project.source')" allow-clear class="sel" :options="toOptions(dict.ecom_dev_source)" @change="load" />
         <div class="sel-user"><UserSelect v-model:value="query.ownerId" :placeholder="$t('ecomDev.project.owner')" @update:value="load" /></div>
         <a-checkbox v-model:checked="showClosed">{{ $t('ecomDev.board.showClosed') }}</a-checkbox>
-        <a-button @click="load"><template #icon><ReloadOutlined /></template>{{ $t('common.action.refresh') }}</a-button>
-        <a-button @click="router.push('/ecom/dev-project')"><template #icon><UnorderedListOutlined /></template>{{ $t('ecomDev.board.list') }}</a-button>
-        <a-button v-perm="'ecom:devProject:add'" type="primary" @click="formRef.openCreate()"><template #icon><PlusOutlined /></template>{{ $t('ecomDev.project.add') }}</a-button>
-      </a-space>
-      <div class="hint">{{ $t('ecomDev.board.hint') }}</div>
+        <a-tooltip :title="$t('common.action.refresh')">
+          <a-button @click="load"><template #icon><ReloadOutlined /></template></a-button>
+        </a-tooltip>
+      </div>
     </a-card>
 
     <a-spin :spinning="loading" wrapper-class-name="board-spin">
@@ -28,6 +33,9 @@
           <div class="col-head">
             <DictTag type="ecom_dev_status" :value="col.status" />
             <span class="count">{{ col.count }}</span>
+            <a-tooltip v-if="avgMargin(col) != null" :title="$t('ecomDev.board.avgMargin')">
+              <span :class="['col-metric', 'margin', marginClass(avgMargin(col))]">{{ $t('ecomDev.board.margin', { v: avgMargin(col) }) }}</span>
+            </a-tooltip>
           </div>
           <div class="cards">
             <div
@@ -45,6 +53,7 @@
                 <div class="card-info">
                   <div class="name" :title="p.name">{{ p.name }}</div>
                   <div class="sub-text">{{ p.docNo }}</div>
+                  <div v-if="p.categoryName" class="sub-text ellipsis">{{ p.categoryName }}</div>
                 </div>
               </div>
               <div class="card-meta">
@@ -52,15 +61,29 @@
                 <span v-if="p.marketplace" class="mkt">{{ p.marketplace }}</span>
                 <span v-if="p.targetPrice != null" class="price">{{ p.currency }} {{ money(p.targetPrice) }}</span>
               </div>
+              <div class="card-kpis">
+                <div class="kpi">
+                  <div class="kpi-label">{{ $t('ecomDev.board.kpiMargin') }}</div>
+                  <div v-if="p.estMargin != null" :class="['kpi-value', 'margin', marginClass(p.estMargin)]">{{ Number(p.estMargin) }}%</div>
+                  <div v-else class="kpi-value sub-text">-</div>
+                </div>
+                <div class="kpi">
+                  <div class="kpi-label">{{ $t('ecomDev.board.kpiSales') }}</div>
+                  <div class="kpi-value">{{ p.estMonthlySales ?? '-' }}</div>
+                </div>
+                <div class="kpi">
+                  <div class="kpi-label">{{ $t('ecomDev.board.kpiSamples') }}</div>
+                  <div class="kpi-value">{{ p.sampleCount ? `${p.passedSampleCount}/${p.sampleCount}` : '-' }}</div>
+                </div>
+              </div>
               <div class="card-foot">
-                <span v-if="p.estMargin != null" :class="['margin', marginClass(p.estMargin)]">{{ $t('ecomDev.board.margin', { v: Number(p.estMargin) }) }}</span>
-                <span v-if="p.sampleCount" class="sub-text"><ExperimentOutlined /> {{ p.passedSampleCount }}/{{ p.sampleCount }}</span>
                 <span class="owner sub-text"><UserOutlined /> {{ p.ownerName || '-' }}</span>
+                <span class="sub-text">{{ (p.createTime || '').slice(0, 10) }}</span>
               </div>
               <div v-if="p.flowInstanceId && p.status === DevProjectStatus.PENDING_APPROVAL" class="flow-tag">{{ $t('ecomDev.project.inFlow') }}</div>
             </div>
             <div v-if="col.count > col.items.length" class="more sub-text">{{ $t('ecomDev.board.more', { n: col.count - col.items.length }) }}</div>
-            <a-empty v-if="!col.items.length" :image="simpleImage" :description="false" class="col-empty" />
+            <a-empty v-if="!col.items.length" :image="simpleImage" :description="$t('ecomDev.board.emptyColumn')" class="col-empty" />
           </div>
         </div>
       </div>
@@ -77,7 +100,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Empty, message } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
-import { ExperimentOutlined, PictureOutlined, PlusOutlined, ReloadOutlined, UnorderedListOutlined, UserOutlined } from '@ant-design/icons-vue'
+import { PictureOutlined, PlusOutlined, QuestionCircleOutlined, ReloadOutlined, UnorderedListOutlined, UserOutlined } from '@ant-design/icons-vue'
 import DictTag from '@/components/DictTag.vue'
 import UserSelect from '@/components/user/UserSelect.vue'
 import ProjectForm from '../dev-project/ProjectForm.vue'
@@ -114,6 +137,11 @@ const remarkModal = ref()
 const CLOSED = [DevProjectStatus.ABANDONED]
 const visibleColumns = computed(() => columns.value.filter((c) => showClosed.value || !CLOSED.includes(c.status)))
 const canDrag = computed(() => userStore.hasPerm('ecom:devProject:edit'))
+/** 列中已试算项目的平均利润率（当前加载的卡片） */
+function avgMargin(col) {
+  const ms = col.items.filter((p) => p.estMargin != null).map((p) => Number(p.estMargin))
+  return ms.length ? Math.round((ms.reduce((a, b) => a + b, 0) / ms.length) * 10) / 10 : null
+}
 
 async function load() {
   loading.value = true
@@ -192,19 +220,27 @@ function onDrop(to) {
 .toolbar :deep(.ant-card-body) {
   padding: 12px 16px;
 }
+.toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.spacer {
+  flex: 1;
+}
+.hint-icon {
+  color: var(--app-text-3);
+  cursor: help;
+}
 .search {
-  width: 240px;
+  width: 220px;
 }
 .sel {
-  width: 150px;
+  width: 130px;
 }
 .sel-user {
-  width: 180px;
-}
-.hint {
-  margin-top: 6px;
-  color: var(--app-text-3);
-  font-size: 12px;
+  width: 160px;
 }
 .board-spin {
   flex: 1;
@@ -221,10 +257,11 @@ function onDrop(to) {
   padding-bottom: 8px;
 }
 .column {
-  flex: 0 0 260px;
+  flex: 1 0 248px;
+  max-width: 320px;
   display: flex;
   flex-direction: column;
-  background: var(--app-fill, #f5f5f5);
+  background: rgba(0, 0, 0, 0.035);
   border-radius: 8px;
   border: 2px solid transparent;
   min-height: 300px;
@@ -242,13 +279,18 @@ function onDrop(to) {
 }
 .col-head {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 6px;
   padding: 10px 12px 6px;
   font-weight: 600;
 }
 .count {
   color: var(--app-text-3);
+}
+.col-metric {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 400;
 }
 .cards {
   flex: 1;
@@ -260,46 +302,61 @@ function onDrop(to) {
 }
 .card {
   position: relative;
-  background: var(--app-bg-container, #fff);
+  background: var(--app-card);
+  border: 1px solid var(--app-border);
   border-radius: 6px;
-  padding: 8px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  padding: 10px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   cursor: pointer;
+  transition: box-shadow 0.15s, border-color 0.15s;
 }
 .card:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  border-color: #91caff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+.card[draggable='true'] {
+  cursor: grab;
 }
 .card-top {
   display: flex;
-  gap: 8px;
+  gap: 10px;
 }
 .thumb {
-  width: 44px;
-  height: 44px;
+  width: 56px;
+  height: 56px;
   border-radius: 4px;
   object-fit: cover;
   flex: none;
+  border: 1px solid var(--app-border);
 }
 .thumb.empty {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--app-fill, #f5f5f5);
+  background: var(--app-hover);
   color: var(--app-text-3);
+  font-size: 18px;
 }
 .card-info {
   min-width: 0;
+  flex: 1;
 }
 .name {
   font-weight: 500;
+  line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .card-meta {
-  margin-top: 6px;
+  margin-top: 8px;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -310,17 +367,38 @@ function onDrop(to) {
 }
 .price {
   margin-left: auto;
+  font-weight: 600;
+}
+.card-kpis {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 6px 0;
+  border-top: 1px dashed var(--app-border);
+  border-bottom: 1px dashed var(--app-border);
+}
+.kpi {
+  text-align: center;
+  min-width: 0;
+}
+.kpi-label {
+  color: var(--app-text-3);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kpi-value {
   font-weight: 500;
+  font-size: 13px;
 }
 .card-foot {
   margin-top: 6px;
   display: flex;
-  gap: 8px;
+  justify-content: space-between;
   align-items: center;
   font-size: 12px;
-}
-.owner {
-  margin-left: auto;
 }
 .flow-tag {
   position: absolute;
@@ -350,6 +428,9 @@ function onDrop(to) {
 }
 </style>
 <style>
+html[data-theme='dark'] .board .column {
+  background: rgba(255, 255, 255, 0.04);
+}
 html[data-theme='dark'] .board .column.over.allowed {
   background: #111a2c;
 }

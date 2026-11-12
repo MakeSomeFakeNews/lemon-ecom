@@ -5,9 +5,10 @@
         <a-form-item :label="$t('common.field.keyword')" name="keyword">
           <a-input v-model:value="query.keyword" :placeholder="$t('ecomOwh.outbound.keywordPh')" allow-clear @press-enter="search" />
         </a-form-item>
-        <OwhFilters :model="query" />
+        <OwhFilters :model="query" field="account" @change="search" />
+        <OwhFilters :model="query" field="warehouse" @change="search" />
         <a-form-item :label="$t('ecomOwh.common.store')" name="storeId">
-          <StoreSelect v-model:value="query.storeId" :placeholder="$t('common.placeholder.all')" />
+          <StoreSelect v-model:value="query.storeId" :placeholder="$t('common.placeholder.all')" @change="search" />
         </a-form-item>
       </SearchForm>
     </a-card>
@@ -16,23 +17,26 @@
       <a-tabs v-model:active-key="tab" size="small" class="status-tabs" @change="onTab">
         <a-tab-pane v-for="tb in TABS" :key="tb.key">
           <template #tab>
-            {{ tb.label }}<span v-if="tb.key !== 'all'" class="tab-count">{{ counts[tb.key] || 0 }}</span>
+            {{ tb.label }}<span class="tab-count">{{ tb.key === 'all' ? allCount : counts[tb.key] || 0 }}</span>
           </template>
         </a-tab-pane>
       </a-tabs>
       <TableToolbar :exporter="exportAll" v-model:size="size" v-model:checked="checked" v-model:show-search="showSearch" :columns="columns" @refresh="reload">
-        <a-button v-if="tab === PENDING" v-perm="'ecom:owhOutbound:push'" type="primary" :disabled="!selectedKeys.length" @click="pushSelected">
-          <template #icon><CloudUploadOutlined /></template>{{ $t('ecomOwh.outbound.push') }}
-        </a-button>
-        <a-button v-if="tab === OwhOutboundStatus.FAILED" v-perm="'ecom:owhOutbound:push'" type="primary" :disabled="!selectedKeys.length" @click="repushSelected">
-          <template #icon><RedoOutlined /></template>{{ $t('ecomOwh.outbound.repush') }}
-        </a-button>
-        <a-button v-if="tab !== PENDING" v-perm="'ecom:owhOutbound:sync'" :disabled="!selectedKeys.length" :loading="syncing" @click="syncIds(selectedKeys)">
-          <template #icon><SyncOutlined /></template>{{ $t('ecomOwh.outbound.sync') }}
-        </a-button>
-        <span v-if="selectedKeys.length" class="selected-tip">
-          {{ $t('common.table.selected', { n: selectedKeys.length }) }} <a @click="selectedKeys = []">{{ $t('common.action.clear') }}</a>
-        </span>
+        <template v-if="selectedKeys.length">
+          <a-button v-if="tab === PENDING" v-perm="'ecom:owhOutbound:push'" type="primary" @click="pushSelected">
+            <template #icon><CloudUploadOutlined /></template>{{ $t('ecomOwh.outbound.push') }}
+          </a-button>
+          <a-button v-if="tab === OwhOutboundStatus.FAILED" v-perm="'ecom:owhOutbound:push'" type="primary" @click="repushSelected">
+            <template #icon><RedoOutlined /></template>{{ $t('ecomOwh.outbound.repush') }}
+          </a-button>
+          <a-button v-if="tab !== PENDING" v-perm="'ecom:owhOutbound:sync'" :loading="syncing" @click="syncIds(selectedKeys)">
+            <template #icon><SyncOutlined /></template>{{ $t('ecomOwh.outbound.sync') }}
+          </a-button>
+          <span class="selected-tip">
+            {{ $t('common.table.selected', { n: selectedKeys.length }) }} <a @click="selectedKeys = []">{{ $t('common.action.clear') }}</a>
+          </span>
+        </template>
+        <span v-else-if="tab === PENDING && list.length" class="selected-tip">{{ $t('ecomOwh.misc.batchHint') }}</span>
       </TableToolbar>
 
       <a-table
@@ -141,11 +145,11 @@ const pendingColumns = [
   { title: t('ecomOwh.outbound.packageNo'), key: 'packageNo', dataIndex: 'packageNo', width: 170 },
   { title: t('ecomOwh.common.store'), dataIndex: 'storeName', width: 140, ellipsis: true },
   { title: t('ecomOwh.outbound.orderNos'), dataIndex: 'orderNos', width: 180, ellipsis: true },
-  { title: t('ecomOwh.outbound.receiver'), key: 'receiver', width: 140, exportValue: (r) => `${r.shipName || ''} ${r.shipCountry || ''}` },
-  { title: t('ecomOwh.common.warehouse'), dataIndex: 'warehouseName', width: 140, ellipsis: true },
+  { title: t('ecomOwh.outbound.receiver'), key: 'receiver', width: 150, ellipsis: true, exportValue: (r) => `${r.shipName || ''} ${r.shipCountry || ''}` },
+  { title: t('ecomOwh.common.warehouse'), dataIndex: 'warehouseName', width: 170, ellipsis: true },
   { title: t('ecomOwh.outbound.channel'), dataIndex: 'channelName', width: 140, ellipsis: true },
   { title: t('ecomOwh.outbound.totalQty'), key: 'totalQty', dataIndex: 'totalQty', width: 80, align: 'right' },
-  { title: t('ecomOwh.outbound.pushResult'), key: 'pendingError', width: 110 },
+  { title: t('ecomOwh.outbound.pushResult'), key: 'pendingError', width: 130 },
   { title: t('ecomOwh.outbound.createTime'), dataIndex: 'createTime', width: 160 },
   actionColumn(1, [t('ecomOwh.outbound.push')])
 ]
@@ -154,20 +158,21 @@ const outboundColumns = [
   { title: t('ecomOwh.outbound.packageNo'), key: 'packageNo', dataIndex: 'packageNo', width: 160 },
   { title: t('ecomOwh.outbound.orderNos'), dataIndex: 'orderNos', width: 170, ellipsis: true },
   { title: t('ecomOwh.common.store'), dataIndex: 'storeName', width: 130, ellipsis: true },
-  { title: t('ecomOwh.common.warehouse'), key: 'warehouse', width: 170, exportValue: (r) => `${r.warehouseName} ${r.owhCode || ''}` },
+  { title: t('ecomOwh.common.warehouse'), key: 'warehouse', width: 190, ellipsis: true, exportValue: (r) => `${r.warehouseName} ${r.owhCode || ''}` },
   { title: t('ecomOwh.outbound.product'), key: 'product', width: 150, exportValue: (r) => r.productCode },
-  { title: t('ecomOwh.outbound.owhOrderNo'), dataIndex: 'owhOrderNo', width: 160 },
+  { title: t('ecomOwh.outbound.owhOrderNo'), dataIndex: 'owhOrderNo', width: 160, ellipsis: true },
   { title: t('ecomOwh.outbound.status'), key: 'status', dataIndex: 'status', width: 110, dict: 'ecom_owh_outbound_status' },
   {
     title: t('ecomOwh.outbound.trackingNo'),
     key: 'tracking',
-    width: 170,
+    width: 190,
+    ellipsis: true,
     exportColumns: [
       { title: t('ecomOwh.outbound.carrier'), dataIndex: 'carrierName' },
       { title: t('ecomOwh.outbound.trackingNo'), dataIndex: 'trackingNo' }
     ]
   },
-  { title: t('ecomOwh.outbound.feeBase'), key: 'feeBase', dataIndex: 'feeBase', width: 100, align: 'right' },
+  { title: t('ecomOwh.outbound.feeBase'), key: 'feeBase', dataIndex: 'feeBase', width: 110, align: 'right' },
   { title: t('ecomOwh.outbound.pushTime'), dataIndex: 'pushTime', width: 160 },
   { title: t('ecomOwh.outbound.shipTime'), dataIndex: 'shipTime', width: 160 },
   actionColumn(3)
@@ -192,6 +197,7 @@ const { list, loading, size, pagination, selectedKeys, rowSelection, load, searc
 })
 
 const counts = ref({})
+const allCount = computed(() => STATUS_TABS.reduce((n, s) => n + Number(counts.value[s] || 0), 0))
 async function loadCounts() {
   counts.value = (await owhOutboundStatusCounts({ ...query })) || {}
 }
@@ -267,6 +273,7 @@ const rowActions = (record) => [
   font-size: 12px;
 }
 .selected-tip {
+  align-self: center;
   color: var(--app-text-3);
 }
 .status-tabs {

@@ -13,11 +13,11 @@
 
     <a-card :bordered="false" class="page-card table-card">
       <TableToolbar :exporter="exportAll" v-model:size="size" v-model:checked="checked" v-model:show-search="showSearch" :columns="columns" @refresh="load">
-        <a-button v-perm="'ecom:replenish:list'" @click="router.push('/ecom/replenish')">
-          <template #icon><AlertOutlined /></template>{{ $t('ecomPurchase.plan.fromReplenish') }}
-        </a-button>
         <a-button v-perm="'ecom:purchasePlan:add'" type="primary" @click="form.openCreate()">
           <template #icon><PlusOutlined /></template>{{ $t('ecomPurchase.plan.add') }}
+        </a-button>
+        <a-button v-perm="'ecom:replenish:list'" @click="router.push('/ecom/replenish')">
+          <template #icon><AlertOutlined /></template>{{ $t('ecomPurchase.plan.fromReplenish') }}
         </a-button>
       </TableToolbar>
 
@@ -92,6 +92,7 @@ const dict = useDict('ecom_purchase_plan_status')
 
 const columns = [
   { title: t('ecomPurchase.plan.docNo'), key: 'docNo', dataIndex: 'docNo', width: 170 },
+  { title: t('common.field.status'), key: 'status', dataIndex: 'status', width: 100, dict: 'ecom_purchase_plan_status' },
   { title: t('ecomPurchase.plan.planDate'), dataIndex: 'planDate', width: 110 },
   { title: t('ecomPurchase.plan.warehouse'), dataIndex: 'warehouseName', width: 140 },
   { title: t('ecomPurchase.plan.itemCount'), dataIndex: 'itemCount', width: 80, align: 'right' },
@@ -99,10 +100,9 @@ const columns = [
   { title: t('ecomPurchase.plan.orderedQty'), key: 'orderedQty', dataIndex: 'orderedQty', width: 110, align: 'right' },
   { title: t('ecomPurchase.plan.arrivedQty'), key: 'arrivedQty', dataIndex: 'arrivedQty', width: 110, align: 'right' },
   { title: t('ecomPurchase.plan.progress'), key: 'progress', width: 150, exportValue: (r) => `${progressOf(r)}%` },
-  { title: t('common.field.status'), key: 'status', dataIndex: 'status', width: 100, dict: 'ecom_purchase_plan_status' },
-  { title: t('common.field.remark'), dataIndex: 'remark', width: 180, ellipsis: true },
   { title: t('ecomPurchase.plan.createBy'), dataIndex: 'createByName', width: 110 },
   { title: t('common.field.createTime'), dataIndex: 'createTime', width: 170 },
+  { title: t('common.field.remark'), dataIndex: 'remark', width: 180, ellipsis: true },
   // 查看、编辑 / 生成采购订单、审核 / 删除 / 更多
   actionColumn(4, [t('common.action.view')])
 ]

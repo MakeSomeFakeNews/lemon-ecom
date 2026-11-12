@@ -6,10 +6,10 @@
           <a-input v-model:value="query.keyword" :placeholder="$t('ecomOwh.account.keywordPh')" allow-clear @press-enter="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomOwh.common.provider')" name="provider">
-          <a-select v-model:value="query.provider" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_owh_provider)" />
+          <a-select v-model:value="query.provider" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_owh_provider)" @change="search" />
         </a-form-item>
         <a-form-item :label="$t('common.field.status')" name="status">
-          <a-select v-model:value="query.status" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.sys_common_status, true)" />
+          <a-select v-model:value="query.status" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.sys_common_status, true)" @change="search" />
         </a-form-item>
       </SearchForm>
     </a-card>

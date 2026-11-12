@@ -138,9 +138,10 @@ async function submitAssign() {
   margin-bottom: 4px;
 }
 .stores {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 6px 12px;
+  width: 100%;
   max-height: 320px;
   overflow: auto;
 }

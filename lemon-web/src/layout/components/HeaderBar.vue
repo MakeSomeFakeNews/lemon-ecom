@@ -119,7 +119,7 @@ import { useUserStore } from '@/store/user'
 import { buildBreadcrumbIndex } from '@/utils/menu'
 import { LayoutMode } from '@/utils/uiSettings'
 import { useModuleNav } from '../useModuleNav'
-import { homeItem, menuIcon, shortModuleTitle } from '../menuItems'
+import { homeItem, menuIcon } from '../menuItems'
 
 defineProps({
   collapsed: Boolean,
@@ -141,7 +141,7 @@ const userStore = useUserStore()
 const { modules, activeModule, openModule } = useModuleNav()
 const moduleItems = computed(() => [
   homeItem(),
-  ...modules.value.map((m) => ({ key: m.key, label: shortModuleTitle(m.title), icon: menuIcon(m.icon) }))
+  ...modules.value.map((m) => ({ key: m.key, label: m.title, icon: menuIcon(m.icon) }))
 ])
 
 const breadcrumbIndex = computed(() => buildBreadcrumbIndex(userStore.menus))

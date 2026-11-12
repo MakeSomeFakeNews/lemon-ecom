@@ -1,6 +1,7 @@
 <template>
   <FormDrawer :drawer="drawer" :create-title="$t('ecomPublish.template.add')" :edit-title="$t('ecomPublish.template.edit')" width="min(860px, 100vw)">
     <a-form ref="formRef" :model="form" :rules="rules" layout="vertical">
+      <a-divider orientation="left" orientation-margin="0" class="first-divider">{{ $t('ecomPublish.item.secBasic') }}</a-divider>
       <a-row :gutter="16">
         <a-col :xs="24" :sm="12">
           <a-form-item :label="$t('ecomPublish.template.name')" name="name"><a-input v-model:value="form.name" :maxlength="64" /></a-form-item>
@@ -10,6 +11,18 @@
             <a-select v-model:value="form.platform" :options="toOptions(dict.ecom_platform)" @change="onPlatform" />
           </a-form-item>
         </a-col>
+        <a-col :xs="24" :sm="6">
+          <a-form-item :label="$t('common.field.status')" name="status">
+            <a-switch v-model:checked="form.status" :checked-value="STATUS_ENABLED" :un-checked-value="STATUS_DISABLED" />
+          </a-form-item>
+        </a-col>
+        <a-col :xs="24" :sm="18">
+          <a-form-item :label="$t('common.field.remark')" name="remark"><a-input v-model:value="form.remark" :maxlength="255" /></a-form-item>
+        </a-col>
+      </a-row>
+
+      <a-divider orientation="left" orientation-margin="0">{{ $t('ecomPublish.item.categoryAttrs') }}</a-divider>
+      <a-row :gutter="16">
         <a-col :span="24">
           <a-form-item :label="$t('ecomPublish.template.lookupStore')" :extra="$t('ecomPublish.template.lookupStoreExtra')">
             <StoreSelect v-model:value="lookupStoreId" :platform="form.platform" :disabled="!form.platform" @update:value="loadCaps" />
@@ -25,6 +38,10 @@
             <AttributesEditor v-model:value="form.attributes" :store-id="lookupStoreId" :category-id="form.categoryId" :remote="hasCap('ATTRIBUTES')" />
           </a-form-item>
         </a-col>
+      </a-row>
+
+      <a-divider orientation="left" orientation-margin="0">{{ $t('ecomPublish.template.defaults') }}</a-divider>
+      <a-row :gutter="16">
         <a-col :xs="24" :sm="8">
           <a-form-item :label="$t('ecomPublish.item.brand')" name="brand"><a-input v-model:value="form.brand" :maxlength="64" /></a-form-item>
         </a-col>
@@ -53,14 +70,6 @@
           <a-form-item :label="$t('ecomPublish.item.extra')" :extra="$t('ecomPublish.item.extraTip')">
             <KeyValueEditor v-model:value="form.extra" />
           </a-form-item>
-        </a-col>
-        <a-col :xs="24" :sm="8">
-          <a-form-item :label="$t('common.field.status')" name="status">
-            <a-switch v-model:checked="form.status" :checked-value="STATUS_ENABLED" :un-checked-value="STATUS_DISABLED" />
-          </a-form-item>
-        </a-col>
-        <a-col :xs="24" :sm="16">
-          <a-form-item :label="$t('common.field.remark')" name="remark"><a-input v-model:value="form.remark" :maxlength="255" /></a-form-item>
         </a-col>
       </a-row>
     </a-form>
@@ -146,5 +155,8 @@ defineExpose({
 <style scoped>
 .full {
   width: 100%;
+}
+.first-divider {
+  margin-top: 0;
 }
 </style>

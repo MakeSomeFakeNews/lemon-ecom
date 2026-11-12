@@ -1,5 +1,5 @@
 <template>
-  <FormDrawer :drawer="drawer" :create-title="$t('ecomOwh.tr.add')" :edit-title="$t('ecomOwh.tr.edit')" width="min(880px, 100vw)">
+  <FormDrawer :drawer="drawer" :create-title="$t('ecomOwh.tr.add')" :edit-title="$t('ecomOwh.tr.edit')" page>
     <a-form ref="formRef" :model="form" :rules="rules" layout="vertical">
       <a-row :gutter="16">
         <a-col :xs="24" :sm="12">

@@ -30,7 +30,7 @@
         </template>
         <template v-else-if="column.key === 'suggestQty'">{{ qty(record.suggestQty) }}</template>
         <template v-else-if="column.key === 'qty'">
-          <a-input-number v-model:value="record.qty" :min="0" :precision="4" class="full" :addon-after="record.unit || undefined" />
+          <a-input-number v-model:value="record.qty" :min="0" class="full" :addon-after="record.unit || undefined" />
         </template>
         <template v-else-if="column.key === 'supplier'">
           <span v-if="record.supplierName">{{ record.supplierName }}</span>

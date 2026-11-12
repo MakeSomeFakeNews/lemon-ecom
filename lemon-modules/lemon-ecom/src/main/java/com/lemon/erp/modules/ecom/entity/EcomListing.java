@@ -113,6 +113,9 @@ public class EcomListing extends BaseEntity {
     @Size(max = 50, message = "{ecom.valid.catalog.bundleTooManyItems}")
     @TableField(exist = false)
     private List<EcomBundleItem> bundleItems;
+    /** 近 30 天销量（平台 SKU 件数，不含待付款、已取消的订单；只在列表返回） */
+    @TableField(exist = false)
+    private BigDecimal sales30;
 
     /** 最近一次回传给平台的可售数量（渠道同步中心只回传和上次不同的） */
     @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)

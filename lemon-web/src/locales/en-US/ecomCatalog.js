@@ -74,6 +74,7 @@ export default {
     pairedOnly: 'Only items with pairings',
     suggestion: 'Suggestion',
     noSuggestion: 'No suggestion',
+    allPaired: 'All platform SKUs are paired with items',
     material: 'Item',
     pickMaterial: 'Select item',
     qty: 'Quantity',
@@ -95,6 +96,17 @@ export default {
   },
   plan: {
     title: 'Shipment Plan',
+    allStatus: 'All',
+    basicInfo: 'Basic Info',
+    shipProgress: 'Shipment progress',
+    pickStoreFirst: 'Select a store first, then add its SKUs',
+    flow: {
+      draft: 'Draft',
+      confirmed: 'Confirmed',
+      generated: 'Shipments created',
+      planDate: 'Ship by {date}',
+      inboundCount: '{n} shipment(s) created'
+    },
     addTitle: 'New Shipment Plan',
     editTitle: 'Edit Shipment Plan {no}',
     detailTitle: 'Shipment Plan {no}',
@@ -163,6 +175,13 @@ export default {
     boxedQty: 'Packed',
     summary: '{n} boxes:',
     printPackingList: 'Print Packing List',
-    printCartonLabels: 'Print Carton Labels'
+    printCartonLabels: 'Print Carton Labels',
+    packedProgress: 'Packing progress',
+    hintShort: 'Check packed quantities per SKU; print packing list, carton and FNSKU labels',
+    totalWeight: 'Total weight',
+    totalVolume: 'Total volume',
+    size: 'Carton size',
+    content: 'SKUs in carton',
+    empty: 'Not packed yet. Click "Pack" to enter each carton\'s size, weight and quantities'
   }
 }

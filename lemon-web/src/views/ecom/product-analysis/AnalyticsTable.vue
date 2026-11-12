@@ -15,7 +15,7 @@
         <template v-if="column.kind === 'money'">
           <span :class="{ neg: nz(record[column.key]) < 0 }">{{ money(record[column.key]) }}</span>
         </template>
-        <template v-else-if="column.kind === 'qty'">{{ record[column.key] == null ? '-' : qty(record[column.key]) }}</template>
+        <template v-else-if="column.kind === 'qty'">{{ record[column.key] == null ? '-' : qty(record[column.key], column.digits) }}</template>
         <template v-else-if="column.kind === 'int'">{{ record[column.key] == null ? '-' : num(record[column.key]) }}</template>
         <template v-else-if="column.kind === 'days'">{{ record[column.key] == null ? '-' : qty(record[column.key], 1) }}</template>
         <template v-else-if="column.kind === 'percent'">{{ percent(record[column.key], 2) }}</template>

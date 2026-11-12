@@ -58,8 +58,9 @@
               <template v-else-if="column.key === 'warehouse'">
                 <WarehouseNames :name="record.warehouseName" :names="record.warehouseNames" />
               </template>
+              <template v-else-if="column.key === 'createTime'">{{ record.createTime ? String(record.createTime).slice(0, 16) : '' }}</template>
               <template v-else-if="column.key === 'partner'">
-                <div>{{ record.partnerName }}</div>
+                <div class="cell-ellipsis" :title="record.partnerName">{{ record.partnerName }}</div>
                 <div class="sub-text">{{ record.partnerCode }}</div>
               </template>
               <template v-else-if="column.key === 'totalQty'">{{ formatQty(record.totalQty) }}</template>
@@ -137,21 +138,21 @@ const orderConf = ORDER_KINDS[conf.orderKind]
 
 // 导出（exportValue）：往来单位为「编码 名称」，金额、数量为原始数值，见 useTable
 const columns = [
-  { title: t('scm.trade.docNo'), key: 'docNo', width: 170 },
+  { title: t('scm.trade.docNo'), key: 'docNo', width: 140 },
   {
     title: t('scm.trade.orderNo'),
     key: 'orderNo',
-    width: 170,
+    width: 140,
     exportValue: (r) => (r.orderSource === OrderSource.DIRECT ? t('scm.trade.direct') : r.orderNo || '')
   },
-  { title: orderConf.partnerLabel, key: 'partner', width: 200, exportValue: (r) => [r.partnerCode, r.partnerName].filter(Boolean).join(' ') },
-  { title: t('scm.trade.warehouse'), key: 'warehouse', width: 130, exportValue: warehouseText },
-  { title: t('scm.trade.bizDate'), dataIndex: 'bizDate', width: 120 },
-  { title: t('common.field.quantity'), key: 'totalQty', width: 100, align: 'right' },
+  { title: orderConf.partnerLabel, key: 'partner', width: 160, exportValue: (r) => [r.partnerCode, r.partnerName].filter(Boolean).join(' ') },
+  { title: t('scm.trade.warehouse'), key: 'warehouse', width: 120, exportValue: warehouseText },
+  { title: t('scm.trade.bizDate'), dataIndex: 'bizDate', width: 100 },
+  { title: t('common.field.quantity'), key: 'totalQty', width: 80, align: 'right' },
   {
     title: t('scm.trade.totalAmount'),
     key: 'totalAmount',
-    width: 140,
+    width: 130,
     align: 'right',
     exportColumns: [
       { title: t('scm.trade.totalAmount'), dataIndex: 'totalAmount' },
@@ -159,9 +160,10 @@ const columns = [
       { title: t('scm.freight.label'), exportValue: (r) => (Number(r.freight) ? Number(r.freight) : '') }
     ]
   },
-  { title: t('scm.trade.wmsDocNo'), dataIndex: 'wmsDocNo', width: 170 },
-  { title: t('scm.trade.createBy'), dataIndex: 'createByName', width: 120 },
-  { title: t('common.field.createTime'), dataIndex: 'createTime', width: 170 },
+  { title: t('scm.trade.wmsDocNo'), dataIndex: 'wmsDocNo', width: 140 },
+  { title: t('scm.trade.createBy'), dataIndex: 'createByName', width: 90, ellipsis: true },
+  // 创建时间不写宽度：占剩余宽度（显示到分钟），1600 宽时全部列不用横向滚动
+  { title: t('common.field.createTime'), key: 'createTime', dataIndex: 'createTime' },
   actionColumn(1, [t('common.action.view')])
 ]
 const { checked, visibleColumns, scrollX } = useColumns(columns, `scm-${props.kind}`)
@@ -226,6 +228,11 @@ function openDetail(record) {
 </script>
 
 <style scoped>
+.cell-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .no-tab-bar :deep(> .ant-tabs-nav) {
   display: none;
 }

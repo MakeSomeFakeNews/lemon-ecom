@@ -1,8 +1,8 @@
 <template>
-  <a-card :bordered="false" class="page-card">
+  <a-card :bordered="false" class="page-card table-card">
     <div class="filters">
-      <a-range-picker v-model:value="range" value-format="YYYY-MM-DD" :allow-clear="false" :presets="presets" />
-      <StoreSelect v-model:value="storeId" :placeholder="$t('ecomReport.common.allStores')" class="filter" />
+      <a-range-picker v-model:value="range" value-format="YYYY-MM-DD" :allow-clear="false" :presets="presets" @change="load" />
+      <StoreSelect v-model:value="storeId" :placeholder="$t('ecomReport.common.allStores')" class="filter" @update:value="load" />
       <a-button type="primary" :loading="loading" @click="load">
         <template #icon><SearchOutlined /></template>{{ $t('common.action.query') }}
       </a-button>
@@ -18,7 +18,7 @@
       :data-source="rows"
       :loading="loading"
       :pagination="pagination"
-      :scroll="{ x: scrollX }"
+      :scroll="{ x: scrollX, y: '100%' }"
       @change="(p) => applyPageChange(pagination, p)"
     >
       <template #bodyCell="{ column, record }">
@@ -79,7 +79,7 @@ const pagination = reactive(localPagination(20))
 const fc = (key, title) => ({ title, key, dataIndex: key, kind: 'fc', width: 140, align: 'right' })
 const base = (key, title) => ({ title, key, dataIndex: key, kind: 'money', width: 130, align: 'right' })
 const columns = [
-  { title: t('ecomProfit.tax.country'), key: 'country', dataIndex: 'country', width: 90 },
+  { title: t('ecomProfit.tax.country'), key: 'country', dataIndex: 'country', width: 90, fixed: 'left' },
   { title: t('ecomProfit.col.month'), key: 'month', dataIndex: 'month', width: 90 },
   { title: t('ecomProfit.tax.taxType'), key: 'taxType', dataIndex: 'taxType', width: 150, dict: 'ecom_tax_type' },
   {
@@ -98,7 +98,7 @@ const columns = [
   base('withheldBase', t('ecomProfit.tax.withheldBase')),
   base('duty', t('ecomProfit.tax.duty')),
   base('importVat', t('ecomProfit.tax.importVat')),
-  base('payable', t('ecomProfit.tax.payable'))
+  { ...base('payable', t('ecomProfit.tax.payable')), fixed: 'right' }
 ]
 const scrollX = sumWidth(columns)
 const total = computed(() => sumFields(rows.value, [...columns.filter((c) => c.kind === 'money').map((c) => c.key), 'orders']))

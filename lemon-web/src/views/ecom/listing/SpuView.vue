@@ -6,7 +6,7 @@
     :data-source="rows"
     :loading="loading"
     :pagination="pagination"
-    :scroll="{ x: 1100, y: '100%' }"
+    :scroll="{ x: sumWidth(columns) + 48, y: '100%' }"
     :expandable="{ expandedRowKeys: expanded, onExpand, rowExpandable: (r) => !!r.parentItemId }"
     @change="onTableChange"
   >
@@ -22,7 +22,7 @@
           <template v-else-if="column.key === 'price'">{{ v.price != null ? `${v.currency || ''} ${price(v.price)}` : '-' }}</template>
           <template v-else-if="column.key === 'status'"><DictTag type="ecom_listing_status" :value="v.status" /></template>
           <template v-else-if="column.key === 'action'">
-            <a v-if="userStore.hasPerm('ecom:listing:edit')" @click="emit('edit', v)">{{ $t('common.action.edit') }}</a>
+            <TableActions :actions="[{ type: 'edit', perm: 'ecom:listing:edit', onClick: () => emit('edit', v) }]" />
           </template>
         </template>
       </a-table>
@@ -33,8 +33,16 @@
         <div v-if="record.platform" class="sub-text"><DictTag type="ecom_platform" :value="record.platform" /></div>
       </template>
       <template v-else-if="column.key === 'spu'">
-        <div class="cell-ellipsis" :title="record.title">{{ record.title || '-' }}</div>
-        <div class="sub-text">{{ record.parentItemId || $t('ecomCatalog.spu.noParent') }}</div>
+        <div class="product">
+          <a-image v-if="record.imageUrl" :src="record.imageUrl" :width="48" :height="48" class="thumb" />
+          <div v-else class="thumb empty"><PictureOutlined /></div>
+          <div class="product-text">
+            <a-tooltip :title="record.title" placement="topLeft" :mouse-enter-delay="0.4">
+              <div class="title-clamp">{{ record.title || '-' }}</div>
+            </a-tooltip>
+            <div class="sub-text">{{ record.parentItemId || $t('ecomCatalog.spu.noParent') }}</div>
+          </div>
+        </div>
       </template>
       <template v-else-if="column.key === 'variants'">
         {{ record.variantCount }}
@@ -47,10 +55,7 @@
         <span v-else>-</span>
       </template>
       <template v-else-if="column.key === 'action'">
-        <template v-if="userStore.hasPerm('ecom:listing:edit')">
-          <a v-if="record.parentItemId" @click="emit('mapStyle', record)">{{ $t('ecomCatalog.style.title') }}</a>
-          <a v-else @click="emit('edit', { id: record.listingId })">{{ $t('common.action.edit') }}</a>
-        </template>
+        <TableActions :actions="groupActions(record)" />
       </template>
     </template>
   </a-table>
@@ -59,10 +64,13 @@
 <script setup>
 import { reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { ApartmentOutlined, PictureOutlined } from '@ant-design/icons-vue'
 import DictTag from '@/components/DictTag.vue'
+import TableActions from '@/components/common/TableActions.vue'
+import { actionColumn } from '@/components/common/tableActions'
+import { sumWidth } from '@/composables/useColumns'
 import { pageListing, spuListing } from '@/api/ecom/listing'
 import { useTable } from '@/composables/useTable'
-import { useUserStore } from '@/store/user'
 import { ListingComposeType } from '@/constants/enums'
 import { price, qty } from '@/utils/number'
 import { bundleText } from './listing'
@@ -74,14 +82,13 @@ import { bundleText } from './listing'
 defineProps({ size: { type: String, default: 'middle' } })
 const emit = defineEmits(['edit', 'mapStyle'])
 const { t } = useI18n()
-const userStore = useUserStore()
 
 const columns = [
+  { title: t('ecomCatalog.spu.spu'), key: 'spu', width: 360, fixed: 'left' },
   { title: t('ecom.common.store'), key: 'store', width: 170 },
-  { title: t('ecomCatalog.spu.spu'), key: 'spu', width: 320 },
   { title: t('ecomCatalog.spu.variants'), key: 'variants', width: 150 },
   { title: t('ecom.listing.price'), key: 'price', width: 160, align: 'right' },
-  { title: t('common.action.operation'), key: 'action', width: 140, fixed: 'right' }
+  actionColumn(1, [t('ecomCatalog.style.title'), t('common.action.edit')])
 ]
 const variantColumns = [
   { title: t('ecom.common.sellerSku'), dataIndex: 'sellerSku', width: 160 },
@@ -90,8 +97,13 @@ const variantColumns = [
   { title: t('ecom.common.material'), key: 'material', width: 260 },
   { title: t('ecom.listing.price'), key: 'price', width: 110, align: 'right' },
   { title: t('common.field.status'), key: 'status', width: 90 },
-  { title: t('common.action.operation'), key: 'action', width: 80 }
+  actionColumn(1, [], { fixed: undefined })
 ]
+
+const groupActions = (g) =>
+  g.parentItemId
+    ? [{ key: 'style', label: t('ecomCatalog.style.title'), icon: ApartmentOutlined, perm: 'ecom:listing:edit', onClick: () => emit('mapStyle', g) }]
+    : [{ type: 'edit', perm: 'ecom:listing:edit', onClick: () => emit('edit', { id: g.listingId }) }]
 
 const query = reactive({ storeId: undefined, keyword: undefined, mapped: undefined })
 const keyOf = (g) => `${g.storeId}|${g.parentItemId ?? `#${g.listingId}`}`
@@ -123,10 +135,43 @@ defineExpose({ load })
   color: var(--app-text-3);
   font-size: 12px;
 }
-.cell-ellipsis {
+.product {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.product-text {
+  flex: 1;
+  min-width: 0;
+}
+.product :deep(.ant-image) {
+  flex: none;
+}
+.product :deep(.thumb),
+.thumb {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid var(--app-border);
+}
+.thumb.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--app-text-3);
+  background: var(--app-bg);
+}
+.title-clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.4;
+  word-break: break-word;
 }
 .ml {
   margin-left: 6px;

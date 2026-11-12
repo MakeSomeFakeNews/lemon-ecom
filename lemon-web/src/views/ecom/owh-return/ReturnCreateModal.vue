@@ -19,7 +19,8 @@
         </template>
       </template>
     </a-table>
-    <a-row :gutter="16" class="extra">
+    <a-form layout="vertical" class="extra">
+      <a-row :gutter="16">
       <a-col :xs="24" :sm="8">
         <a-form-item :label="$t('ecomOwh.ret.carrier')"><a-input v-model:value="form.carrier" :maxlength="64" /></a-form-item>
       </a-col>
@@ -29,7 +30,8 @@
       <a-col :xs="24" :sm="8">
         <a-form-item :label="$t('common.field.remark')"><a-input v-model:value="form.remark" :maxlength="255" /></a-form-item>
       </a-col>
-    </a-row>
+      </a-row>
+    </a-form>
   </a-modal>
 </template>
 

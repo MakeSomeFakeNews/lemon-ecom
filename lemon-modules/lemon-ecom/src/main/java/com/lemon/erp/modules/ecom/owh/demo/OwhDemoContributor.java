@@ -207,6 +207,8 @@ public class OwhDemoContributor implements DemoContributor {
         transferInbound(ctx, local, uk, picked, 38, OwhInboundStatus.RECEIVED, 0.999);
         transferInbound(ctx, local, uk, picked, 7, OwhInboundStatus.PUSHED, 0);
         transferInbound(ctx, local, uk, picked, 2, OwhInboundStatus.DRAFT, 0);
+        // 一批刚调出、还没建入库单的在途调拨：「新建入库单」可选的来源单据
+        transferInbound(ctx, local, us, picked, 1, null, 0);
         shipmentInbounds(ctx, us);
 
         // 出库：审单规则指定海外仓 → 订单自动审核生成包裹 → 推送 / 发货
@@ -219,7 +221,8 @@ public class OwhDemoContributor implements DemoContributor {
         outbounds(ctx, uk, ukPackages, shipped, pushed);
 
         // 退件与海外仓调拨
-        returns(ctx, us, shipped, OwhReturnStatus.RECEIVED, OwhReturnStatus.PUSHED);
+        // 美国仓第三张只生成待处理的退货单（退回海外仓），不建退件单：「新建退件单」可选的来源单据
+        returns(ctx, us, shipped, OwhReturnStatus.RECEIVED, OwhReturnStatus.PUSHED, null);
         returns(ctx, uk, shipped, OwhReturnStatus.RECEIVED, OwhReturnStatus.DRAFT);
         transfers(ctx, local, us, uk, picked);
 
@@ -290,7 +293,7 @@ public class OwhDemoContributor implements DemoContributor {
 
     // ---------------------------------------------------------------- 入库
 
-    /** 国内仓 → 海外仓的在途调拨（daysAgo 天前调出），生成入库单并按 status 写入服务商状态；收货中按 ratio 部分收货 */
+    /** 国内仓 → 海外仓的在途调拨（daysAgo 天前调出），生成入库单并按 status 写入服务商状态；收货中按 ratio 部分收货；status 为空时只调出、不建入库单 */
     private void transferInbound(DemoContext ctx, Long local, Owh o, List<Long> materials, int daysAgo, OwhInboundStatus status, double ratio) {
         if (materials.isEmpty()) {
             return;
@@ -311,6 +314,9 @@ public class OwhDemoContributor implements DemoContributor {
             }
             WmsStockDoc doc = stockDocService.createConfirmed(StockBizType.TRANSFER, new StockDocRequest(null, local, o.mapping().getWarehouseId(), date,
                     "补货发往" + o.account().getName() + "海外仓", items, true, null), "OWH-DEMO"); // i18n-ignore 演示数据存库
+            if (status == null) {
+                return;
+            }
             Long id = inboundService.createFrom(new InboundCreateRequest(OwhInboundSource.TRANSFER, doc.getId()), false);
             if (status == OwhInboundStatus.DRAFT) {
                 return;
@@ -593,7 +599,7 @@ public class OwhDemoContributor implements DemoContributor {
                 .eq(EcomOwhAccount::getId, o.account().getId()));
     }
 
-    /** 已发货出库单的订单生成退货退款（退回海外仓）与海外仓退件单，按 states 依次为已收货（含不良品）/ 已推送 / 草稿 */
+    /** 已发货出库单的订单生成退货退款（退回海外仓）与海外仓退件单，按 states 依次为已收货（含不良品）/ 已推送 / 草稿；状态为空时只生成待处理的退货单 */
     private void returns(DemoContext ctx, Owh o, List<Long> shipped, OwhReturnStatus... states) {
         List<EcomOwhOutbound> obs = outboundMapper.selectList(Wrappers.<EcomOwhOutbound>lambdaQuery().eq(EcomOwhOutbound::getAccountId, o.account().getId())
                 .eq(EcomOwhOutbound::getStatus, OwhOutboundStatus.SHIPPED).orderByAsc(EcomOwhOutbound::getId));
@@ -609,6 +615,9 @@ public class OwhDemoContributor implements DemoContributor {
                 Long erId = ecomReturnService.create(new ReturnRequest(orderId, ReturnType.RETURN_REFUND, target == OwhReturnStatus.RECEIVED ? "QUALITY" : "WRONG_ITEM",
                         null, o.mapping().getWarehouseId(), "买家退货寄回海外仓", // i18n-ignore 演示数据存库
                         List.of(new ReturnRequest.Item(oi.getId(), oi.getQty(), oi.getAmount() == null ? BigDecimal.TEN : oi.getAmount()))));
+                if (target == null) {
+                    return;
+                }
                 Long id = owhReturnService.create(new ReturnCreateRequest(erId, "USPS", "9205" + (100000000000L + ctx.between(0, 899999999)), null));
                 if (target == OwhReturnStatus.DRAFT) {
                     return;

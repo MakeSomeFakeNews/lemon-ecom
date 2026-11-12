@@ -2,60 +2,32 @@
   <div class="table-page">
     <a-card v-show="showSearch" :bordered="false" class="page-card">
       <SearchForm :model="query" @search="search" @reset="resetQuery">
-        <OwhFilters :model="query" />
         <a-form-item :label="$t('common.field.keyword')" name="keyword">
           <a-input v-model:value="query.keyword" :placeholder="$t('ecomOwh.stock.keywordPh')" allow-clear @press-enter="search" />
         </a-form-item>
+        <OwhFilters :model="query" field="account" @change="search" />
+        <OwhFilters :model="query" field="warehouse" @change="search" />
         <a-form-item :label="$t('ecomOwh.stock.diffOnly')" name="diffOnly">
           <a-switch v-model:checked="query.diffOnly" @change="search" />
         </a-form-item>
       </SearchForm>
     </a-card>
 
-    <a-card :bordered="false" class="page-card summary-card">
-      <div class="summary">
-        <div class="stat">
-          <div class="stat-label">{{ $t('ecomOwh.stock.skuCount') }}</div>
-          <div class="stat-value">{{ num(summary.skuCount) }}</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">{{ $t('ecomOwh.stock.diffCount') }}</div>
-          <div class="stat-value" :class="{ warn: Number(summary.diffCount) > 0 }">{{ num(summary.diffCount) }}</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">{{ $t('ecomOwh.stock.available') }}</div>
-          <div class="stat-value">{{ qty(summary.available) }}</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">{{ $t('ecomOwh.stock.transit') }}</div>
-          <div class="stat-value">{{ qty(summary.transit) }}</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">{{ $t('ecomOwh.stock.locked') }}</div>
-          <div class="stat-value">{{ qty(summary.locked) }}</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">{{ $t('ecomOwh.stock.erpQty') }}</div>
-          <div class="stat-value">{{ qty(summary.erpQty) }}</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">{{ $t('ecomOwh.stock.syncTime') }}</div>
-          <div class="stat-time">{{ summary.syncTime || '-' }}</div>
-        </div>
-      </div>
-    </a-card>
+    <OwhStatBar :items="stats" />
 
     <a-card :bordered="false" class="page-card table-card">
       <TableToolbar :exporter="exportAll" v-model:size="size" v-model:checked="checked" v-model:show-search="showSearch" :columns="columns" @refresh="reload">
         <a-button v-perm="'ecom:owhStock:sync'" type="primary" :loading="syncing" @click="sync">
           <template #icon><SyncOutlined /></template>{{ query.accountId ? $t('ecomOwh.stock.syncAccount') : $t('ecomOwh.stock.syncAll') }}
         </a-button>
-        <a-button v-perm="'ecom:owhStock:adjust'" :disabled="!selectedKeys.length" @click="openAdjust">
-          <template #icon><DiffOutlined /></template>{{ $t('ecomOwh.stock.adjust') }}
-        </a-button>
+        <template v-if="selectedKeys.length">
+          <a-button v-perm="'ecom:owhStock:adjust'" @click="openAdjust">
+            <template #icon><DiffOutlined /></template>{{ $t('ecomOwh.stock.adjust') }}
+          </a-button>
         <span v-if="selectedKeys.length" class="selected-tip">
-          {{ $t('common.table.selected', { n: selectedKeys.length }) }} <a @click="selectedKeys = []">{{ $t('common.action.clear') }}</a>
-        </span>
+            {{ $t('common.table.selected', { n: selectedKeys.length }) }} <a @click="selectedKeys = []">{{ $t('common.action.clear') }}</a>
+          </span>
+        </template>
       </TableToolbar>
 
       <a-table
@@ -99,7 +71,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { Modal } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
 import dayjs from 'dayjs'
@@ -108,6 +80,7 @@ import SearchForm from '@/components/SearchForm.vue'
 import TableToolbar from '@/components/TableToolbar.vue'
 import QtyDiff from '@/components/wms/QtyDiff.vue'
 import OwhFilters from './OwhFilters.vue'
+import OwhStatBar from '@/components/ecom/owh/OwhStatBar.vue'
 import { adjustOwhStock, owhStockSummary, pageOwhStock, syncOwhStock } from '@/api/ecom/owh'
 import { useColumns } from '@/composables/useColumns'
 import { useTable } from '@/composables/useTable'
@@ -142,6 +115,25 @@ const summary = ref({})
 async function loadSummary() {
   summary.value = (await owhStockSummary({ accountId: query.accountId, warehouseId: query.warehouseId })) || {}
 }
+const stats = computed(() => {
+  const s = summary.value
+  return [
+    { key: 'sku', label: t('ecomOwh.stock.skuCount'), value: num(s.skuCount) },
+    {
+      key: 'diff',
+      label: t('ecomOwh.stock.diffCount'),
+      value: num(s.diffCount),
+      tone: Number(s.diffCount) > 0 ? 'danger' : undefined,
+      active: query.diffOnly,
+      onClick: () => ((query.diffOnly = !query.diffOnly), search())
+    },
+    { key: 'available', label: t('ecomOwh.stock.available'), value: qty(s.available) },
+    { key: 'transit', label: t('ecomOwh.stock.transit'), value: qty(s.transit) },
+    { key: 'locked', label: t('ecomOwh.stock.locked'), value: qty(s.locked) },
+    { key: 'erp', label: t('ecomOwh.stock.erpQty'), value: qty(s.erpQty) },
+    { key: 'time', label: t('ecomOwh.stock.syncTime'), value: s.syncTime || '-', small: true }
+  ]
+})
 function reload() {
   load()
   loadSummary()
@@ -192,33 +184,12 @@ async function doAdjust() {
 </script>
 
 <style scoped>
-.summary-card :deep(.ant-card-body) {
-  padding: 12px 16px;
-}
-.summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 32px;
-}
-.stat-label {
-  color: var(--app-text-3);
-  font-size: 12px;
-}
-.stat-value {
-  font-size: 20px;
-  font-weight: 500;
-}
-.stat-value.warn {
-  color: var(--ant-color-error, #ff4d4f);
-}
-.stat-time {
-  margin-top: 6px;
-}
 .sub-text {
   color: var(--app-text-3);
   font-size: 12px;
 }
 .selected-tip {
+  align-self: center;
   color: var(--app-text-3);
 }
 </style>

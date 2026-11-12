@@ -15,19 +15,34 @@
     <!-- 今日 / 昨日 / 本月关键指标（环比、同比） -->
     <KpiPanel :periods="kpi" />
 
-    <!-- 本月利润（扣除广告与费用分摊）与费用构成 -->
-    <div class="stats">
-      <div v-for="c in METRICS" :key="c.key" class="page-card stat">
-        <div class="stat-label">{{ $t(`ecomReport.dashboard.${c.key}`) }}</div>
-        <div class="stat-value" :class="{ neg: c.money && nz(overview[c.key]) < 0 }" :title="c.money ? money(overview[c.key]) : undefined">
-          <template v-if="c.money"><span class="stat-unit">¥</span>{{ shortMoney(overview[c.key]) }}</template>
-          <template v-else>{{ num(overview[c.key]) }}<span class="stat-unit suffix">{{ $t('ecomReport.dashboard.orderUnit') }}</span></template>
-        </div>
-      </div>
-    </div>
-
-    <!-- 待处理事项：各功能注册的待办，点击到对应页面 -->
-    <TodoPanel :items="todos" :loaded="todosLoaded" />
+    <!-- 本月经营（利润扣除广告与费用分摊，各项占销售额）与待办 / 预警 -->
+    <a-row :gutter="[16, 16]" class="eq-row">
+      <a-col :xs="24" :xl="9">
+        <a-card :bordered="false" class="page-card month-card" :title="$t('ecomDat.dash.monthTitle')">
+          <template #extra>
+            <span class="sub-text">{{ $t('ecomReport.dashboard.monthSales') }}
+              <b class="month-sales">¥{{ shortMoney(overview.monthSales) }}</b></span>
+          </template>
+          <div class="month-grid">
+            <div v-for="c in METRICS" :key="c.key" class="month-item">
+              <div class="stat-label">{{ $t(`ecomReport.dashboard.${c.key}`) }}</div>
+              <div class="stat-value" :class="{ neg: nz(overview[c.key]) < 0 }" :title="money(overview[c.key])">
+                <span class="stat-unit">¥</span>{{ shortMoney(overview[c.key]) }}
+              </div>
+              <div class="ratio">
+                <span class="sub-text">{{ $t(`ecomDat.dash.ratio.${c.key}`) }}</span>
+                <span class="ratio-value" :class="c.tone(shareOf(c.key))">{{ percent(shareOf(c.key)) }}</span>
+              </div>
+              <div class="ratio-bar"><span :class="c.tone(shareOf(c.key))" :style="{ width: `${Math.min(100, Math.abs(nz(shareOf(c.key))))}%` }" /></div>
+            </div>
+          </div>
+        </a-card>
+      </a-col>
+      <a-col :xs="24" :xl="15">
+        <!-- 待处理事项：各功能注册的待办，点击到对应页面 -->
+        <TodoPanel :items="todos" :loaded="todosLoaded" />
+      </a-col>
+    </a-row>
 
     <a-row :gutter="[16, 16]">
       <a-col :xs="24" :xl="10">
@@ -35,7 +50,8 @@
       </a-col>
       <a-col :xs="24" :xl="14">
         <a-card :bordered="false" class="page-card" :title="$t('ecomReport.dashboard.trend')">
-          <EChart :option="trendOption" height="328px" />
+          <EChart v-if="hasTrend" :option="trendOption" height="328px" />
+          <a-empty v-else :image="simpleImage" :description="$t('ecomDat.dash.noData')" class="empty" />
         </a-card>
       </a-col>
     </a-row>
@@ -67,15 +83,16 @@ import dayjs from 'dayjs'
 import { Empty } from 'ant-design-vue'
 import { ReloadOutlined } from '@ant-design/icons-vue'
 import EChart from '@/components/charts/EChart.vue'
-import { shortMoney } from '@/components/charts/charts'
+import { percent, shortMoney } from '@/components/charts/charts'
 import StoreSelect from '@/components/ecom/StoreSelect.vue'
 import { rangeParams, rangePresets, thisMonth, yuan } from '@/components/ecom/ecomReport'
 import { reportCountry, reportFees, reportOverview, reportTrend } from '@/api/ecom/report'
 import { dashboardHourly, dashboardKpi, dashboardTodos } from '@/api/ecom/dashboard'
 import { useDict } from '@/composables/useDict'
 import { useUserStore } from '@/store/user'
+import { useAppStore } from '@/store/app'
 import { findDict } from '@/utils/dict'
-import { money, num, nz } from '@/utils/number'
+import { money, nz } from '@/utils/number'
 import { SettlementItemType } from '@/constants/enums'
 import { t } from '@/locales'
 import KpiPanel from './KpiPanel.vue'
@@ -91,17 +108,22 @@ import DemoDataBanner from '@/components/ecom/DemoDataBanner.vue'
  * 排行 / 国家 / 费用构成需要利润分析权限（ecom:report:list），没有权限时不显示
  */
 const canReport = useUserStore().hasPerm('ecom:report:list')
+const app = useAppStore()
 const dict = useDict('ecom_settlement_item_type')
 const simpleImage = Empty.PRESENTED_IMAGE_SIMPLE
 const presets = rangePresets()
 
 /** 本月金额指标卡（与 EcomReports.Overview 的字段一致；利润扣除广告花费和费用分摊，与利润分析的订单口径一致） */
+const goodHigh = (v) => (v == null ? '' : nz(v) < 0 ? 'bad' : nz(v) < 10 ? 'warn' : 'good')
+const badHigh = (limit) => (v) => (v == null ? '' : nz(v) > limit ? 'warn' : 'normal')
 const METRICS = [
-  { key: 'monthProfit', money: true },
-  { key: 'monthRefund', money: true },
-  { key: 'monthFees', money: true },
-  { key: 'monthCost', money: true }
+  { key: 'monthProfit', tone: goodHigh },
+  { key: 'monthRefund', tone: badHigh(5) },
+  { key: 'monthFees', tone: badHigh(30) },
+  { key: 'monthCost', tone: badHigh(50) }
 ]
+/** 占本月销售额的百分比（利润为利润率） */
+const shareOf = (key) => (nz(overview.value.monthSales) ? (nz(overview.value[key]) / nz(overview.value.monthSales)) * 100 : null)
 
 const storeId = ref()
 const range = ref(thisMonth())
@@ -110,6 +132,7 @@ const overview = ref({})
 /** 看板没有数据（本月与今天都没有订单）：显示生成演示数据入口 */
 const noData = computed(() => overview.value.monthOrders === 0 && !overview.value.todayOrders)
 const trendRows = ref([])
+const hasTrend = computed(() => trendRows.value.some((r) => nz(r.orders) || nz(r.sales)))
 const countryRows = ref([])
 const feeRows = ref([])
 const kpi = ref([])
@@ -139,26 +162,44 @@ const countryOption = computed(() => {
   const top = [...countryRows.value].sort((a, b) => nz(b.sales) - nz(a.sales)).slice(0, 10).reverse()
   return {
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, ...moneyTip },
-    grid: { left: 8, right: 24, top: 8, bottom: 8, containLabel: true },
+    grid: { left: 8, right: 56, top: 8, bottom: 8, containLabel: true },
     xAxis: { type: 'value' },
     yAxis: { type: 'category', data: top.map((r) => r.country || '-') },
-    series: [{ name: t('ecomReport.common.sales'), type: 'bar', barMaxWidth: 18, data: top.map((r) => nz(r.sales)) }]
+    series: [
+      {
+        name: t('ecomReport.common.sales'),
+        type: 'bar',
+        barMaxWidth: 16,
+        itemStyle: { borderRadius: [0, 4, 4, 0] },
+        label: { show: true, position: 'right', fontSize: 11, formatter: (p) => shortMoney(Math.round(p.value)), color: app.dark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.65)', textBorderWidth: 0 },
+        data: top.map((r) => nz(r.sales))
+      }
+    ]
   }
 })
 
 const typeLabel = (v) => findDict(dict.ecom_settlement_item_type, v)?.label || v
-const feeOption = computed(() => ({
-  tooltip: { trigger: 'item', ...moneyTip },
-  legend: { type: 'scroll', orient: 'vertical', right: 0, top: 'middle' },
-  series: [
-    {
-      type: 'pie',
-      radius: ['40%', '70%'],
-      center: ['35%', '50%'],
-      data: feeRows.value.map((r) => ({ name: typeLabel(r.itemType), value: Math.abs(nz(r.amount)) }))
-    }
-  ]
-}))
+const feeOption = computed(() => {
+  const data = feeRows.value
+    .map((r) => ({ name: typeLabel(r.itemType), value: Math.abs(nz(r.amount)) }))
+    .sort((a, b) => b.value - a.value)
+  const sum = data.reduce((a, b) => a + b.value, 0) || 1
+  const share = Object.fromEntries(data.map((d) => [d.name, (d.value / sum) * 100]))
+  return {
+    tooltip: { trigger: 'item', formatter: (p) => `${p.marker}${p.name}<br/>${yuan(p.value)} (${p.percent}%)` },
+    legend: { type: 'scroll', orient: 'vertical', right: 8, top: 'middle', icon: 'circle', itemWidth: 8, formatter: (n) => `${n}  ${percent(share[n])}` },
+    series: [
+      {
+        type: 'pie',
+        radius: ['48%', '72%'],
+        center: ['30%', '50%'],
+        label: { show: false },
+        itemStyle: { borderRadius: 4, borderColor: 'transparent', borderWidth: 2 },
+        data
+      }
+    ]
+  }
+})
 
 async function loadOverview() {
   overview.value = (await reportOverview()) || {}
@@ -241,14 +282,61 @@ onMounted(loadAll)
   color: var(--app-text-3);
   font-size: 12px;
 }
-.stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: 16px;
+.eq-row > .ant-col > .ant-card {
+  height: 100%;
 }
-.stat {
-  padding: 14px 16px;
-  background: var(--app-card);
+.month-sales {
+  margin-left: 4px;
+  color: var(--app-text);
+}
+.month-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 24px;
+}
+.month-item {
+  min-width: 0;
+}
+.ratio {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+.ratio-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--app-text-2);
+}
+.ratio-value.good {
+  color: #389e0d;
+}
+.ratio-value.warn {
+  color: #d46b08;
+}
+.ratio-value.bad {
+  color: var(--status-critical, #cf1322);
+}
+.ratio-bar {
+  height: 4px;
+  margin-top: 4px;
+  border-radius: 2px;
+  background: var(--app-hover);
+  overflow: hidden;
+}
+.ratio-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--app-primary);
+}
+.ratio-bar span.good {
+  background: #52c41a;
+}
+.ratio-bar span.warn {
+  background: #fa8c16;
+}
+.ratio-bar span.bad {
+  background: #ff4d4f;
 }
 .stat-label {
   font-size: 13px;
@@ -265,9 +353,6 @@ onMounted(loadAll)
   font-size: 13px;
   font-weight: 400;
   color: var(--app-text-3);
-}
-.stat-unit.suffix {
-  margin-left: 4px;
 }
 .neg {
   color: var(--status-critical, #cf1322);

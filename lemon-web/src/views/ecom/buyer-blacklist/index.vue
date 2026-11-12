@@ -6,10 +6,10 @@
           <a-input v-model:value="query.keyword" :placeholder="$t('ecomOrd.blacklist.keywordPh')" allow-clear @press-enter="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomOrd.blacklist.matchType')" name="matchType">
-          <a-select v-model:value="query.matchType" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_blacklist_type)" />
+          <a-select v-model:value="query.matchType" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_blacklist_type)" @change="search" />
         </a-form-item>
         <a-form-item :label="$t('common.field.status')" name="status">
-          <a-select v-model:value="query.status" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.sys_common_status, true)" />
+          <a-select v-model:value="query.status" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.sys_common_status, true)" @change="search" />
         </a-form-item>
       </SearchForm>
     </a-card>

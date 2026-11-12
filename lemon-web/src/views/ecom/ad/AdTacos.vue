@@ -23,6 +23,9 @@
         <a-tag v-if="record.tacos != null" :color="tacosColor(record.tacos)">{{ fmt('percent', record.tacos) }}</a-tag>
         <span v-else>-</span>
       </template>
+      <template v-else-if="column.key === 'profit'">
+        <span :class="{ negative: Number(record.profit) < 0 }">{{ fmt('money', record.profit) }}</span>
+      </template>
       <template v-else-if="column.kind">{{ fmt(column.kind, record[column.key]) }}</template>
     </template>
   </a-table>
@@ -77,6 +80,9 @@ watch(() => props.params, load, { immediate: true })
 </script>
 
 <style scoped>
+.negative {
+  color: #cf1322;
+}
 .tip {
   margin-bottom: 12px;
 }

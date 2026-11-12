@@ -74,6 +74,7 @@ export default {
     pairedOnly: '只看已配对的物料',
     suggestion: '推荐',
     noSuggestion: '没有推荐',
+    allPaired: '所有平台 SKU 都已配对物料',
     material: '物料',
     pickMaterial: '选择物料',
     qty: '数量',
@@ -95,6 +96,17 @@ export default {
   },
   plan: {
     title: '发货计划',
+    allStatus: '全部',
+    basicInfo: '基本信息',
+    shipProgress: '货件生成进度',
+    pickStoreFirst: '先选择店铺，再添加该店铺的平台 SKU',
+    flow: {
+      draft: '创建草稿',
+      confirmed: '确认计划',
+      generated: '生成货件',
+      planDate: '计划发货 {date}',
+      inboundCount: '已生成 {n} 个货件'
+    },
     addTitle: '新增发货计划',
     editTitle: '修改发货计划 {no}',
     detailTitle: '发货计划 {no}',
@@ -163,6 +175,13 @@ export default {
     boxedQty: '已装箱',
     summary: '共 {n} 箱：',
     printPackingList: '打印装箱单',
-    printCartonLabels: '打印箱唛'
+    printCartonLabels: '打印箱唛',
+    packedProgress: '装箱进度',
+    hintShort: '按平台 SKU 核对装箱件数，打印装箱单、箱唛和 FNSKU 标签',
+    totalWeight: '总毛重',
+    totalVolume: '总体积',
+    size: '外箱尺寸',
+    content: '箱内 SKU',
+    empty: '尚未装箱，点击「装箱」录入每箱的尺寸、毛重和件数'
   }
 }

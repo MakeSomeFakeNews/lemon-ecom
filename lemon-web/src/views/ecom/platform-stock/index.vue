@@ -3,10 +3,10 @@
     <a-card v-show="showSearch" :bordered="false" class="page-card">
       <SearchForm :model="query" @search="search" @reset="resetQuery">
         <a-form-item :label="$t('ecom.common.store')" name="storeId">
-          <StoreSelect v-model:value="query.storeId" :placeholder="$t('ecom.common.allStores')" />
+          <StoreSelect v-model:value="query.storeId" :placeholder="$t('ecom.common.allStores')" @change="search" />
         </a-form-item>
         <a-form-item :label="$t('common.field.keyword')" name="keyword">
-          <a-input v-model:value="query.keyword" :placeholder="$t('ecom.platformStock.keywordPh')" allow-clear />
+          <a-input v-model:value="query.keyword" :placeholder="$t('ecom.platformStock.keywordPh')" allow-clear @press-enter="search" />
         </a-form-item>
         <a-form-item name="diffOnly">
           <a-checkbox v-model:checked="query.diffOnly" @change="search">{{ $t('ecom.platformStock.diffOnly') }}</a-checkbox>
@@ -97,26 +97,26 @@ const { t } = useI18n()
 const QTY_KEYS = ['fulfillableQty', 'inboundQty', 'reservedQty', 'unfulfillableQty']
 
 const columns = [
-  { title: t('ecom.common.store'), dataIndex: 'storeName', width: 170 },
-  { title: t('ecom.common.sellerSku'), dataIndex: 'sellerSku', width: 160 },
-  { title: t('ecom.common.platformItemId'), dataIndex: 'platformItemId', width: 140 },
+  { title: t('ecom.common.store'), dataIndex: 'storeName', width: 140, ellipsis: true, fixed: 'left' },
+  { title: t('ecom.common.sellerSku'), dataIndex: 'sellerSku', width: 150, ellipsis: true, fixed: 'left' },
+  { title: t('ecom.common.platformItemId'), dataIndex: 'platformItemId', width: 130 },
   {
     title: t('ecom.common.material'),
     key: 'material',
-    width: 220,
+    width: 210,
     exportColumns: [
       { title: t('ecom.listing.materialCode'), dataIndex: 'materialCode' },
       { title: t('ecom.listing.materialName'), dataIndex: 'materialName' }
     ]
   },
-  { title: t('ecom.common.packQty'), key: 'packQty', dataIndex: 'packQty', width: 90, align: 'right' },
-  { title: t('ecom.platformStock.fulfillable'), key: 'fulfillableQty', dataIndex: 'fulfillableQty', width: 100, align: 'right' },
-  { title: t('ecom.platformStock.inbound'), key: 'inboundQty', dataIndex: 'inboundQty', width: 100, align: 'right' },
-  { title: t('ecom.platformStock.reserved'), key: 'reservedQty', dataIndex: 'reservedQty', width: 90, align: 'right' },
-  { title: t('ecom.platformStock.unfulfillable'), key: 'unfulfillableQty', dataIndex: 'unfulfillableQty', width: 100, align: 'right' },
-  { title: t('ecom.platformStock.systemQty'), key: 'systemQty', dataIndex: 'systemQty', width: 110, align: 'right' },
-  { title: t('ecom.platformStock.diffQty'), key: 'diffQty', dataIndex: 'diffQty', width: 100, align: 'right' },
-  { title: t('ecom.platformStock.snapshotDate'), dataIndex: 'snapshotDate', width: 120 },
+  { title: t('ecom.common.packQty'), key: 'packQty', dataIndex: 'packQty', width: 80, align: 'right' },
+  { title: t('ecom.platformStock.fulfillable'), key: 'fulfillableQty', dataIndex: 'fulfillableQty', width: 90, align: 'right' },
+  { title: t('ecom.platformStock.systemQty'), key: 'systemQty', dataIndex: 'systemQty', width: 100, align: 'right' },
+  { title: t('ecom.platformStock.diffQty'), key: 'diffQty', dataIndex: 'diffQty', width: 90, align: 'right' },
+  { title: t('ecom.platformStock.inbound'), key: 'inboundQty', dataIndex: 'inboundQty', width: 90, align: 'right' },
+  { title: t('ecom.platformStock.reserved'), key: 'reservedQty', dataIndex: 'reservedQty', width: 80, align: 'right' },
+  { title: t('ecom.platformStock.unfulfillable'), key: 'unfulfillableQty', dataIndex: 'unfulfillableQty', width: 90, align: 'right' },
+  { title: t('ecom.platformStock.snapshotDate'), dataIndex: 'snapshotDate', width: 110 },
   actionColumn(1, [t('common.action.delete')])
 ]
 const { checked, visibleColumns, scrollX } = useColumns(columns, 'ecom-platform-stock')
@@ -154,6 +154,12 @@ const importSample = { storeCode: 'US01', sellerSku: 'SKU-0001', platformItemId:
 .sub-text {
   color: var(--app-text-3);
   font-size: 12px;
+}
+.ellipsis {
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .toolbar-tip {
   align-self: center;

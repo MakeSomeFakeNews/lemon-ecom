@@ -1,10 +1,28 @@
 <template>
   <SubPage :open="open" :title="detail ? $t('ecomCatalog.plan.detailTitle', { no: detail.planNo }) : $t('ecomCatalog.plan.title')" @close="open = false">
-    <template v-if="detail" #extra>
-      <DictTag type="ecom_shipment_plan_status" :value="detail.status" />
+    <template v-if="detail" #title>
+      <span class="title-no">{{ $t('ecomCatalog.plan.detailTitle', { no: detail.planNo }) }}</span>
+      <DictTag type="ecom_shipment_plan_status" :value="detail.status" class="title-tag" />
+    </template>
+    <template v-if="detail && actions.length" #extra>
+      <a-space wrap>
+        <a-button v-for="a in actions" :key="a.key" :type="a.primary ? 'primary' : 'default'" :danger="a.danger" @click="a.run">
+          <template #icon><component :is="a.icon" /></template>{{ a.label }}
+        </a-button>
+      </a-space>
     </template>
     <a-spin :spinning="loading">
-      <template v-if="detail">
+      <a-skeleton v-if="!detail" active :paragraph="{ rows: 8 }" />
+      <template v-else>
+        <div class="progress-card block">
+          <a-steps :current="flow.current" :status="flow.status" :items="flow.items" />
+          <div class="ship-progress">
+            <span class="sub-text">{{ $t('ecomCatalog.plan.shipProgress') }}</span>
+            <a-progress :percent="shipPercent" size="small" :status="shipPercent >= 100 ? 'success' : 'normal'" class="bar" />
+            <span class="nums">{{ qty(detail.shippedQty) }} / {{ qty(detail.totalQty) }}</span>
+          </div>
+        </div>
+        <div class="section-title">{{ $t('ecomCatalog.plan.basicInfo') }}</div>
         <a-descriptions :column="{ xs: 1, sm: 2, lg: 4 }" size="small" class="block">
           <a-descriptions-item :label="$t('ecomCatalog.plan.planNo')">{{ detail.planNo }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecom.common.store')">{{ detail.storeName || '-' }}</a-descriptions-item>
@@ -18,7 +36,7 @@
         </a-descriptions>
 
         <div class="section-title">{{ $t('ecomCatalog.plan.items') }}</div>
-        <a-table row-key="id" size="small" :columns="itemColumns" :data-source="detail.items || []" :pagination="false" :scroll="{ x: 900 }" class="block">
+        <a-table row-key="id" size="small" :columns="itemColumns" :data-source="detail.items || []" :pagination="false" :scroll="{ x: 900 }" class="block-lg">
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'sku'">
               <div>{{ record.sellerSku }}</div>
@@ -27,7 +45,9 @@
             <template v-else-if="column.key === 'composition'">{{ compositionText(record, $t('ecomCatalog.listing.bundle')) }}</template>
             <template v-else-if="column.key === 'qty'">{{ qty(record.qty) }}</template>
             <template v-else-if="column.key === 'shippedQty'">{{ qty(record.shippedQty) }}</template>
-            <template v-else-if="column.key === 'remaining'">{{ qty(remainingOf(record)) }}</template>
+            <template v-else-if="column.key === 'remaining'">
+              <span :class="{ warn: remainingOf(record) > 0 && !isDraft(detail) }">{{ qty(remainingOf(record)) }}</span>
+            </template>
           </template>
         </a-table>
 
@@ -46,13 +66,6 @@
       </template>
     </a-spin>
 
-    <template v-if="detail && actions.length" #footer>
-      <div class="drawer-footer">
-        <a-button v-for="a in actions" :key="a.key" :type="a.primary ? 'primary' : 'default'" :danger="a.danger" @click="a.run">
-          <template #icon><component :is="a.icon" /></template>{{ a.label }}
-        </a-button>
-      </div>
-    </template>
     <GenerateModal ref="generateRef" @success="onGenerated" />
   </SubPage>
 </template>
@@ -69,6 +82,7 @@ import { useAction } from '@/composables/useAction'
 import { useDict } from '@/composables/useDict'
 import { useUserStore } from '@/store/user'
 import { qty } from '@/utils/number'
+import { ShipmentPlanStatus } from '@/constants/enums'
 import { canCancel, canDelete, compositionText, isConfirmed, isDraft, noShipped, remainingOf } from './plan'
 
 /** 发货计划详情子页：确认、退回草稿、取消、删除、生成货件在本组件内完成（触发 changed），编辑交给页面（edit 事件）。ref 调用 open(id)、reload() */
@@ -96,6 +110,23 @@ const inboundColumns = [
 ]
 
 const open = ref(false)
+const shipPercent = computed(() => {
+  const total = Number(detail.value?.totalQty) || 0
+  return total ? Math.min(100, Math.round(((Number(detail.value.shippedQty) || 0) / total) * 100)) : 0
+})
+/** 流程：草稿 → 已确认 → 已生成货件；取消时在当前步骤显示错误 */
+const flow = computed(() => {
+  const d = detail.value
+  const s = d.status
+  const items = [
+    { title: t('ecomCatalog.plan.flow.draft'), description: d.createTime ? String(d.createTime).slice(0, 10) : '' },
+    { title: t('ecomCatalog.plan.flow.confirmed'), description: d.planDate ? t('ecomCatalog.plan.flow.planDate', { date: d.planDate }) : '' },
+    { title: t('ecomCatalog.plan.flow.generated'), description: (d.inbounds || []).length ? t('ecomCatalog.plan.flow.inboundCount', { n: d.inbounds.length }) : '' }
+  ]
+  if (s === ShipmentPlanStatus.CANCELLED) return { items, current: noShipped(d) ? 1 : 2, status: 'error' }
+  const current = { [ShipmentPlanStatus.DRAFT]: 0, [ShipmentPlanStatus.CONFIRMED]: 1, [ShipmentPlanStatus.GENERATED]: 2 }[s] ?? 0
+  return { items, current, status: s === ShipmentPlanStatus.GENERATED ? 'finish' : 'process' }
+})
 const loading = ref(false)
 const detail = ref()
 const generateRef = ref()
@@ -156,12 +187,48 @@ defineExpose({ open: show, reload })
 .block {
   margin-bottom: 16px;
 }
-.section-title {
-  margin: 12px 0 8px;
+.block-lg {
+  margin-bottom: 20px;
+}
+.title-no {
   font-weight: 600;
+}
+.title-tag {
+  margin-left: 8px;
+  vertical-align: 1px;
+}
+.progress-card {
+  padding: 16px 24px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--app-border);
+}
+.ship-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+.ship-progress .bar {
+  flex: 1;
+  margin: 0;
+}
+.nums {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.section-title {
+  margin: 4px 0 10px;
+  padding-left: 8px;
+  border-left: 3px solid var(--app-primary);
+  font-weight: 600;
+  line-height: 1.2;
 }
 .sub-text {
   color: var(--app-text-3);
   font-size: 12px;
+  white-space: nowrap;
+}
+.warn {
+  color: var(--ant-color-warning, #faad14);
 }
 </style>

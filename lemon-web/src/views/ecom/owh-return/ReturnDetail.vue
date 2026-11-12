@@ -1,12 +1,18 @@
 <template>
   <SubPage :open="open" :title="detail ? $t('ecomOwh.ret.detailTitle', { no: detail.returnNo }) : ''" @close="open = false">
-    <template v-if="detail" #extra>
+    <template v-if="detail" #title>
+      <span class="doc-title">{{ $t('ecomOwh.ret.detailTitle', { no: detail.returnNo }) }}</span>
       <DictTag type="ecom_owh_return_status" :value="detail.status" />
       <a-tag v-if="detail.erpReceived === 1" color="green" :bordered="false">{{ $t('ecomOwh.ret.erpReceived') }}</a-tag>
     </template>
+    <template v-if="detail && actions.length" #extra>
+      <OwhDocActions :actions="actions" />
+    </template>
     <a-spin :spinning="loading">
       <template v-if="detail">
+        <OwhFlowSteps :flow="returnFlow(detail)" />
         <a-alert v-if="detail.errorMsg" type="warning" show-icon class="block" :message="$t('ecomOwh.common.errorMsg')" :description="detail.errorMsg" />
+        <div class="section-title">{{ $t('ecomOwh.section.basic') }}</div>
         <a-descriptions :column="{ xs: 1, sm: 2, lg: 3 }" size="small" class="block">
           <a-descriptions-item :label="$t('ecomOwh.ret.ecomReturnNo')">
             <a @click="router.push({ path: '/ecom/return', query: { keyword: detail.ecomReturnNo } })">{{ detail.ecomReturnNo }}</a>
@@ -19,7 +25,10 @@
           <a-descriptions-item :label="$t('ecomOwh.ret.carrier')">{{ detail.carrier || '-' }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOwh.ret.trackingNo')">{{ detail.trackingNo || '-' }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOwh.ret.owhStatus')">{{ detail.owhStatus || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOwh.ret.result')">{{ $t('ecomOwh.ret.resultText', { good: qty(detail.goodQty), bad: qty(detail.badQty), total: qty(detail.totalQty) }) }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomOwh.ret.result')">
+            <span class="good">{{ qty(detail.goodQty) }}</span><span class="slash">/</span><span :class="{ bad: Number(detail.badQty) > 0 }">{{ qty(detail.badQty) }}</span><span class="slash">/</span>{{ qty(detail.totalQty) }}
+            <span class="sub-text">（{{ $t('ecomOwh.ret.resultCol') }}）</span>
+          </a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOwh.ret.defectDoc')">{{ detail.defectDocNo || '-' }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOwh.ret.receiveTime')">{{ detail.receiveTime || '-' }}</a-descriptions-item>
           <a-descriptions-item v-if="detail.remark" :label="$t('common.field.remark')" :span="3">{{ detail.remark }}</a-descriptions-item>
@@ -37,11 +46,6 @@
         <OwhDiffList :source-type="OwhDiffSource.RETURN" :source-id="detail.id" :refresh-key="detail.updateTime" />
       </template>
     </a-spin>
-    <template v-if="detail && actions.length" #footer>
-      <div class="drawer-footer">
-        <a-button v-for="a in actions" :key="a.key" :type="a.primary ? 'primary' : 'default'" :danger="a.danger" @click="a.run">{{ a.label }}</a-button>
-      </div>
-    </template>
   </SubPage>
 </template>
 
@@ -51,12 +55,15 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import SubPage from '@/components/SubPage.vue'
 import DictTag from '@/components/DictTag.vue'
+import OwhDocActions from '@/components/ecom/owh/OwhDocActions.vue'
+import OwhFlowSteps from '@/components/ecom/owh/OwhFlowSteps.vue'
+import { CloseCircleOutlined, CloudUploadOutlined, StopOutlined, SyncOutlined } from '@ant-design/icons-vue'
 import { getOwhReturn } from '@/api/ecom/owh'
 import OwhDiffList from '@/components/ecom/owh/OwhDiffList.vue'
 import { OwhDiffSource } from '@/constants/enums'
 import { useUserStore } from '@/store/user'
 import { qty } from '@/utils/number'
-import { canSyncReturn, isReturnDraft, isReturnPushed, useOwhCaps } from '../owh-outbound/owh'
+import { canSyncReturn, isReturnDraft, isReturnPushed, returnFlow, useOwhCaps } from '../owh-outbound/owh'
 
 /** 海外仓退件单详情：ERP 退货单、服务商单号、退件运单、质检结果（良品 / 不良品）与不良品处理单。open(id)、reload() */
 const emit = defineEmits(['push', 'sync', 'cancel', 'void'])
@@ -97,14 +104,14 @@ const reload = () => (open.value && currentId ? load(currentId) : undefined)
 const actions = computed(() => {
   const d = detail.value
   const out = []
-  if (isReturnDraft(d) && userStore.hasPerm('ecom:owhReturn:cancel')) out.push({ key: 'cancel', label: t('ecomOwh.ret.cancel'), danger: true, run: () => emit('cancel', d) })
+  if (isReturnDraft(d) && userStore.hasPerm('ecom:owhReturn:cancel')) out.push({ key: 'cancel', label: t('ecomOwh.ret.cancel'), icon: CloseCircleOutlined, danger: true, run: () => emit('cancel', d) })
   if (isReturnPushed(d) && userStore.hasPerm('ecom:owhReturn:cancel')) {
     out.push(hasCap(d.provider, 'CANCEL_RETURN')
-      ? { key: 'cancel', label: t('ecomOwh.ret.cancelPushed'), danger: true, run: () => emit('cancel', d) }
-      : { key: 'void', label: t('ecomOwh.common.markVoided'), danger: true, run: () => emit('void', d) })
+      ? { key: 'cancel', label: t('ecomOwh.ret.cancelPushed'), icon: CloseCircleOutlined, danger: true, run: () => emit('cancel', d) }
+      : { key: 'void', label: t('ecomOwh.common.markVoided'), icon: StopOutlined, danger: true, run: () => emit('void', d) })
   }
-  if (isReturnDraft(d) && userStore.hasPerm('ecom:owhReturn:push')) out.push({ key: 'push', label: t('ecomOwh.ret.push'), primary: true, run: () => emit('push', d) })
-  if (canSyncReturn(d) && userStore.hasPerm('ecom:owhReturn:sync')) out.push({ key: 'sync', label: t('ecomOwh.ret.sync'), primary: true, run: () => emit('sync', d) })
+  if (isReturnDraft(d) && userStore.hasPerm('ecom:owhReturn:push')) out.push({ key: 'push', label: t('ecomOwh.ret.push'), icon: CloudUploadOutlined, primary: true, run: () => emit('push', d) })
+  if (canSyncReturn(d) && userStore.hasPerm('ecom:owhReturn:sync')) out.push({ key: 'sync', label: t('ecomOwh.ret.sync'), icon: SyncOutlined, primary: true, run: () => emit('sync', d) })
   return out
 })
 
@@ -117,15 +124,23 @@ defineExpose({ open: show, reload })
 }
 .section-title {
   margin: 8px 0 12px;
-  font-weight: 500;
+  font-weight: 600;
+}
+.doc-title {
+  margin-right: 8px;
+}
+.good {
+  color: #389e0d;
+}
+.bad {
+  color: var(--status-critical);
+}
+.slash {
+  margin: 0 4px;
+  color: var(--app-text-3);
 }
 .sub-text {
   color: var(--app-text-3);
   font-size: 12px;
-}
-.drawer-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
 }
 </style>

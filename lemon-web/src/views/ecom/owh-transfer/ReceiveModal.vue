@@ -18,9 +18,11 @@
         </template>
       </template>
     </a-table>
-    <a-form-item v-if="hasDiff" :label="$t('ecomOwh.diff.reason')" class="reason">
-      <a-input v-model:value="reason" :maxlength="255" :placeholder="$t('ecomOwh.tr.reasonPh')" />
-    </a-form-item>
+    <a-form v-if="hasDiff" layout="vertical" class="reason">
+      <a-form-item :label="$t('ecomOwh.diff.reason')">
+        <a-input v-model:value="reason" :maxlength="255" :placeholder="$t('ecomOwh.tr.reasonPh')" />
+      </a-form-item>
+    </a-form>
   </a-modal>
 </template>
 

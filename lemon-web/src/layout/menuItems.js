@@ -1,6 +1,6 @@
 import { h } from 'vue'
 import MenuIcon from '@/components/MenuIcon.vue'
-import { isZh, t } from '@/locales'
+import { t } from '@/locales'
 import { joinPath } from '@/utils/path'
 import { MenuType } from '@/constants/enums'
 import { HOME_PATH } from './useModuleNav'
@@ -31,9 +31,6 @@ export function toMenuItems(menus, { parentPath = '', depth = 0, groups = 'group
 }
 
 export const homeItem = () => ({ key: HOME_PATH, label: t('route.dashboard'), icon: menuIcon('HomeOutlined') })
-
-/** 顶部空间有限，中文模块名去掉「管理」后缀（「供应链管理」显示为「供应链」） */
-export const shortModuleTitle = (title) => (isZh() ? title.replace(/(.{2,})管理$/, '$1') : title) // i18n-ignore 中文模块名去掉「管理」后缀
 
 /** items 中包含 key 的各级父项 key（用于展开当前页面所在的模块和分组） */
 export function parentKeys(items, key, parents = []) {

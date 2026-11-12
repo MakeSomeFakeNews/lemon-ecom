@@ -45,6 +45,9 @@
           <template v-else-if="column.key === 'period'">{{ record.periodStart }} ~ {{ record.periodEnd }}</template>
           <template v-else-if="column.key === 'exchangeRate'">{{ qty(record.exchangeRate, 6) }}</template>
           <template v-else-if="column.key === 'status'"><DictTag type="ecom_settlement_status" :value="record.status" /></template>
+          <template v-else-if="column.key === 'netBase'">
+            <span :class="{ neg: nz(record.netBase) < 0 }" class="strong">¥{{ money(record.netBase) }}</span>
+          </template>
           <template v-else-if="column.money">
             <span :class="{ neg: nz(record[column.key]) < 0, strong: column.strong }">{{ money(record[column.key]) }}</span>
           </template>
@@ -109,7 +112,11 @@ const columns = [
       { title: t('ecomReport.settlement.periodEnd'), dataIndex: 'periodEnd' }
     ]
   },
-  { title: t('ecomReport.common.currency'), key: 'currency', dataIndex: 'currency', width: 80 },
+  { title: t('common.field.status'), key: 'status', dataIndex: 'status', width: 90, dict: 'ecom_settlement_status' },
+  { title: t('ecomReport.common.currency'), key: 'currency', dataIndex: 'currency', width: 70 },
+  // 净额在前（最关心），各项收入 / 费用在后
+  m('netAmount', { width: 130, strong: true }),
+  m('netBase', { width: 140, strong: true }),
   m('salesAmount'),
   m('refundAmount'),
   m('commissionFee'),
@@ -118,10 +125,7 @@ const columns = [
   m('adFee', { width: 110 }),
   m('otherFee', { width: 110 }),
   m('adjustment', { width: 110 }),
-  m('netAmount', { width: 130, strong: true }),
   { title: t('ecomReport.settlement.exchangeRate'), key: 'exchangeRate', dataIndex: 'exchangeRate', width: 100, align: 'right' },
-  m('netBase', { width: 140, strong: true }),
-  { title: t('common.field.status'), key: 'status', dataIndex: 'status', width: 90, dict: 'ecom_settlement_status' },
   { title: t('ecomReport.settlement.itemCount'), key: 'itemCount', dataIndex: 'itemCount', width: 90, align: 'right' },
   // 查看、确认、删除（已确认的只有查看）
   actionColumn(3, [t('common.action.view')])

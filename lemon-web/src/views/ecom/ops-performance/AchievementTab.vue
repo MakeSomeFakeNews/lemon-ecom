@@ -12,8 +12,16 @@
         <a-col v-for="c in cards" :key="c.key" :xs="24" :md="8">
           <div class="card">
             <div class="label">{{ c.label }}</div>
-            <div class="value">{{ c.actual }} <span class="sub-text">/ {{ c.target }}</span></div>
-            <a-progress :percent="Math.min(100, Number(c.rate) || 0)" :status="progressStatus(c.rate)" :format="() => pct(c.rate)" />
+            <div class="value-line">
+              <div class="value">{{ c.actual }} <span class="sub-text">/ {{ c.target }}</span></div>
+              <span :class="['rate', rateClass(c.rate)]">{{ pct(c.rate) }}</span>
+            </div>
+            <div class="bar">
+              <a-progress :percent="Math.min(100, Number(c.rate) || 0)" :status="progressStatus(c.rate)" :show-info="false" />
+              <a-tooltip v-if="data.timeProgress != null" :title="`${$t('ecomOper.target.timeProgress')} ${pct(data.timeProgress)}`">
+                <span class="time-mark" :style="{ left: Math.min(100, Number(data.timeProgress) || 0) + '%' }" />
+              </a-tooltip>
+            </div>
           </div>
         </a-col>
       </a-row>
@@ -65,6 +73,8 @@ const rows = computed(() => data.value.rows || [])
 
 const pct = (v) => (v == null ? '-' : `${Number(v).toFixed(1)}%`)
 const progressStatus = (rate) => (rate == null ? 'normal' : Number(rate) >= 100 ? 'success' : Number(rate) < Number(data.value.timeProgress || 0) ? 'exception' : 'active')
+
+const rateClass = (rate) => (rate == null ? '' : Number(rate) >= 100 ? 'ok' : Number(rate) < Number(data.value.timeProgress || 0) ? 'warn' : '')
 
 /** 单元格：实际 / 目标 与达成率（低于时间进度标橙） */
 const Metric = (props) => h('div', [
@@ -132,7 +142,7 @@ onMounted(load)
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 .cards {
   margin-bottom: 12px;
@@ -146,9 +156,33 @@ onMounted(load)
   color: var(--app-text-3);
   font-size: 12px;
 }
+.value-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
 .value {
   font-size: 20px;
   font-weight: 600;
+}
+.rate {
+  font-weight: 600;
+}
+.bar {
+  position: relative;
+}
+.bar :deep(.ant-progress) {
+  margin: 4px 0 0;
+}
+.time-mark {
+  position: absolute;
+  top: 6px;
+  width: 2px;
+  height: 12px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--app-text-2, #595959);
 }
 .chart {
   margin-bottom: 12px;

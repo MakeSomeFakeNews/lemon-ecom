@@ -18,7 +18,9 @@
         <a-button v-perm="'ecom:publishTemplate:add'" type="primary" @click="formRef.openCreate()">
           <template #icon><PlusOutlined /></template>{{ $t('ecomPublish.template.add') }}
         </a-button>
-        <span class="sub-text">{{ $t('ecomPublish.template.tip') }}</span>
+        <a-tooltip :title="$t('ecomPublish.template.tip')">
+          <QuestionCircleOutlined class="tip-icon" />
+        </a-tooltip>
       </TableToolbar>
       <a-table row-key="id" :size="size" :columns="visibleColumns" :data-source="list" :loading="loading" :pagination="pagination"
                :scroll="{ x: scrollX, y: '100%' }" @change="onTableChange">
@@ -26,11 +28,14 @@
           <template v-if="column.key === 'name'"><a @click="formRef.openEdit(record)">{{ record.name }}</a></template>
           <template v-else-if="column.key === 'platform'"><DictTag type="ecom_platform" :value="record.platform" /></template>
           <template v-else-if="column.key === 'category'">
-            <div>{{ record.categoryName || '-' }}</div>
-            <div v-if="record.categoryId" class="sub-text">{{ record.categoryId }}</div>
+            <a-tooltip :title="record.categoryName" placement="topLeft">
+              <div class="cell-ellipsis">{{ record.categoryName || '-' }}</div>
+            </a-tooltip>
+            <div v-if="record.categoryId" class="sub-text cell-ellipsis" :title="record.categoryId">{{ record.categoryId }}</div>
           </template>
-          <template v-else-if="column.key === 'attributes'">
-            <span class="sub-text">{{ Object.keys(record.attributes || {}).length }}</span>
+          <template v-else-if="column.key === 'attributes'">{{ Object.keys(record.attributes || {}).length }}</template>
+          <template v-else-if="column.key === 'shippingTemplate' || column.key === 'returnPolicy' || column.key === 'priceTemplateName'">
+            <span :title="record[column.key] || undefined">{{ record[column.key] || '-' }}</span>
           </template>
           <template v-else-if="column.key === 'fulfillment'"><DictTag type="ecom_fulfillment" :value="record.fulfillment" /></template>
           <template v-else-if="column.key === 'status'"><DictTag type="sys_common_status" :value="record.status" /></template>
@@ -45,7 +50,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { PlusOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, QuestionCircleOutlined } from '@ant-design/icons-vue'
 import DictTag from '@/components/DictTag.vue'
 import SearchForm from '@/components/SearchForm.vue'
 import TableToolbar from '@/components/TableToolbar.vue'
@@ -63,15 +68,15 @@ import PublishTemplateForm from './PublishTemplateForm.vue'
 const { t } = useI18n()
 const dict = useDict('ecom_platform', 'ecom_fulfillment', 'sys_common_status')
 const columns = [
-  { title: t('ecomPublish.template.name'), key: 'name', dataIndex: 'name', width: 200 },
-  { title: t('ecomPublish.common.platform'), key: 'platform', dataIndex: 'platform', width: 120, dict: 'ecom_platform' },
-  { title: t('ecomPublish.item.category'), key: 'category', dataIndex: 'categoryName', width: 240 },
-  { title: t('ecomPublish.template.attrCount'), key: 'attributes', width: 90, align: 'right' },
-  { title: t('ecomPublish.item.shippingTemplate'), dataIndex: 'shippingTemplate', width: 140 },
-  { title: t('ecomPublish.item.returnPolicy'), dataIndex: 'returnPolicy', width: 130 },
-  { title: t('ecomPublish.item.fulfillment'), key: 'fulfillment', dataIndex: 'fulfillment', width: 110, dict: 'ecom_fulfillment' },
-  { title: t('ecomPublish.item.priceTemplate'), dataIndex: 'priceTemplateName', width: 160 },
+  { title: t('ecomPublish.template.name'), key: 'name', dataIndex: 'name', width: 200, ellipsis: true },
+  { title: t('ecomPublish.common.platform'), key: 'platform', dataIndex: 'platform', width: 110, dict: 'ecom_platform' },
   { title: t('common.field.status'), key: 'status', dataIndex: 'status', width: 80, dict: 'sys_common_status' },
+  { title: t('ecomPublish.item.category'), key: 'category', dataIndex: 'categoryName', width: 260 },
+  { title: t('ecomPublish.template.attrCount'), key: 'attributes', width: 80, align: 'right' },
+  { title: t('ecomPublish.item.fulfillment'), key: 'fulfillment', dataIndex: 'fulfillment', width: 110, dict: 'ecom_fulfillment' },
+  { title: t('ecomPublish.item.priceTemplate'), key: 'priceTemplateName', dataIndex: 'priceTemplateName', width: 170, ellipsis: true },
+  { title: t('ecomPublish.item.shippingTemplate'), key: 'shippingTemplate', dataIndex: 'shippingTemplate', width: 140, ellipsis: true },
+  { title: t('ecomPublish.item.returnPolicy'), key: 'returnPolicy', dataIndex: 'returnPolicy', width: 130, ellipsis: true },
   actionColumn(2)
 ]
 const { checked, visibleColumns, scrollX } = useColumns(columns, 'ecom-publish-template')
@@ -94,6 +99,16 @@ const rowActions = (r) => [
 </script>
 
 <style scoped>
+.tip-icon {
+  align-self: center;
+  color: var(--app-text-3);
+  cursor: help;
+}
+.cell-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .sub-text {
   color: var(--app-text-3);
   font-size: 12px;

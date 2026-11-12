@@ -24,6 +24,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 
@@ -109,6 +110,7 @@ public class EcomAdAnalysisService {
         h.setYoyBegin(r.yoy().begin());
         h.setYoyEnd(r.yoy().end());
         String kw = level == EcomAdLevel.CAMPAIGN || keyword == null ? null : keyword.trim().toLowerCase();
+        Map<String, Optional<BigDecimal>> rates = new HashMap<>();
         for (AdsViews.RuleEntity e : entities) {
             if (kw != null && !kw.isEmpty() && (e.getName() == null || !e.getName().toLowerCase().contains(kw))) {
                 continue;
@@ -130,11 +132,17 @@ public class EcomAdAnalysisService {
             row.setBidOrBudget(level == EcomAdLevel.CAMPAIGN ? e.getBudget() : e.getBid());
             row.setBaseBid(e.getBaseBid());
             row.add(cur.get(e.getId())).fill();
+            BigDecimal baseRate = rates.computeIfAbsent(String.valueOf(e.getCurrency()), c -> Optional.ofNullable(baseRateOrNull(e.getCurrency(), r.end()))).orElse(null);
+            if (baseRate != null) {
+                row.setBaseSpend(Decimals.money(Decimals.nz(row.getSpend()).multiply(baseRate)));
+                row.setBaseSales(Decimals.money(Decimals.nz(row.getSales()).multiply(baseRate)));
+            }
             row.setPrev(new AdsViews.Metrics().add(prev.get(e.getId())).fill());
             row.setYoy(new AdsViews.Metrics().add(yoy.get(e.getId())).fill());
             h.getRows().add(row);
         }
-        h.getRows().sort(Comparator.comparing((AdsViews.HierarchyRow x) -> x.getSpend()).reversed());
+        // 按本位币花费排序（不同币种可比），没有汇率的按原币
+        h.getRows().sort(Comparator.comparing((AdsViews.HierarchyRow x) -> x.getBaseSpend() != null ? x.getBaseSpend() : Decimals.nz(x.getSpend())).reversed());
         return h;
     }
 
@@ -293,6 +301,11 @@ public class EcomAdAnalysisService {
     }
 
     // ---------------------------------------------------------------- 工具
+
+    /** 折本位币的汇率，没有维护时为空（层级报表只用于排序和参考，不因缺汇率报错） */
+    private BigDecimal baseRateOrNull(String currency, LocalDate date) {
+        return currency == null || currency.isBlank() ? BigDecimal.ONE : rateProvider.rate(currency, date);
+    }
 
     /** 店铺币种折本位币的汇率（之前月份也没有维护时报错） */
     BigDecimal rate(String currency, LocalDate date) {

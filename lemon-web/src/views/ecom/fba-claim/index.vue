@@ -10,42 +10,55 @@
           <a-button v-perm="'ecom:fbaClaim:add'" type="primary" @click="detect(storeId)">
             <template #icon><ThunderboltOutlined /></template>{{ $t('ecomFba.claim.detect') }}
           </a-button>
-          <a-tooltip :title="storeId ? '' : $t('ecomFba.common.pickStoreFirst')">
-            <a-button v-perm="'ecom:fbaClaim:sync'" :disabled="!storeId" @click="sync(storeId)">
-              <template #icon><CloudSyncOutlined /></template>{{ $t('ecomFba.claim.sync') }}
-            </a-button>
-          </a-tooltip>
-          <a-button v-perm="'ecom:fbaClaim:sync'" @click="uploadRef.open(storeId, AmzReportType.LEDGER_DETAIL)">
-            <template #icon><UploadOutlined /></template>{{ $t('ecomFba.common.uploadReport') }}
-          </a-button>
-          <a-button v-perm="'ecom:fbaClaim:edit'" @click="match(storeId)">
-            <template #icon><LinkOutlined /></template>{{ $t('ecomFba.claim.match') }}
-          </a-button>
+          <a-dropdown v-perm="'ecom:fbaClaim:sync'">
+            <a-button><template #icon><CloudSyncOutlined /></template>{{ $t('ecomFba.claim.dataOps') }} <DownOutlined /></a-button>
+            <template #overlay>
+              <a-menu @click="onDataMenu">
+                <a-menu-item key="sync" :disabled="!storeId" :title="storeId ? '' : $t('ecomFba.common.pickStoreFirst')">
+                  <CloudSyncOutlined /> {{ $t('ecomFba.claim.sync') }}
+                </a-menu-item>
+                <a-menu-item key="upload"><UploadOutlined /> {{ $t('ecomFba.common.uploadReport') }}</a-menu-item>
+                <a-menu-item v-if="can('ecom:fbaClaim:edit')" key="match"><LinkOutlined /> {{ $t('ecomFba.claim.match') }}</a-menu-item>
+              </a-menu>
+            </template>
+          </a-dropdown>
         </a-space>
       </div>
-      <div class="cards">
-        <div class="stat ok">
-          <div class="label">{{ $t('ecomFba.claim.summaryClaimable') }}</div>
-          <div class="value">{{ money(summary.claimableBase) }}</div>
+      <a-spin :spinning="summaryLoading">
+        <div class="kpis">
+          <div class="kpi ok">
+            <div class="kpi-label"><SafetyCertificateOutlined /> {{ $t('ecomFba.claim.summaryClaimable') }}</div>
+            <div class="kpi-value">¥{{ money(summary.claimableBase ?? 0) }}</div>
+            <div class="kpi-sub">{{ $t('ecomFba.claim.openCount', { p: statusCount(FbaClaimStatus.PENDING), s: statusCount(FbaClaimStatus.SUBMITTED) }) }}</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label"><CheckCircleOutlined /> {{ $t('ecomFba.claim.summaryPaid') }}</div>
+            <div class="kpi-value">¥{{ money(summary.paidBase ?? 0) }}</div>
+            <div class="kpi-sub">{{ $t('ecomFba.claim.paidCount', { n: statusCount(FbaClaimStatus.PAID), r: statusCount(FbaClaimStatus.REJECTED) }) }}</div>
+          </div>
+          <div class="kpi warn clickable" :class="{ hot: summary.expiringSoon > 0 }" @click="filterExpiring(nearest.count30 && !summary.expiringSoon ? 30 : 7)">
+            <div class="kpi-label"><ClockCircleOutlined /> {{ $t('ecomFba.claim.deadlineCard') }}</div>
+            <div class="kpi-value">
+              {{ summary.expiringSoon || 0 }}<span class="kpi-unit">{{ $t('ecomFba.claim.within7') }}</span>
+              <span class="kpi-second">{{ nearest.count30 }}<span class="kpi-unit">{{ $t('ecomFba.claim.within30') }}</span></span>
+            </div>
+            <div class="kpi-sub">
+              <template v-if="nearest.deadline">{{ $t('ecomFba.claim.nearest', { date: nearest.deadline, n: nearest.daysLeft }) }}</template>
+              <template v-else>{{ $t('ecomFba.claim.noExpiring') }}</template>
+            </div>
+          </div>
+          <div class="kpi wide">
+            <div class="kpi-label"><PieChartOutlined /> {{ $t('ecomFba.claim.summaryByType') }}</div>
+            <div class="types">
+              <div v-for="r in byType" :key="r.claimType" class="type-row">
+                <DictTag type="ecom_fba_claim_type" :value="r.claimType" />
+                <span class="type-num">{{ r.cnt }} · ¥{{ money(r.amountBase) }}</span>
+              </div>
+              <span v-if="!byType.length" class="sub-text">-</span>
+            </div>
+          </div>
         </div>
-        <div class="stat">
-          <div class="label">{{ $t('ecomFba.claim.summaryPaid') }}</div>
-          <div class="value">{{ money(summary.paidBase) }}</div>
-        </div>
-        <div class="stat warn">
-          <div class="label">{{ $t('ecomFba.claim.summaryExpiring') }}</div>
-          <div class="value">{{ summary.expiringSoon || 0 }}</div>
-        </div>
-        <div class="stat wide">
-          <div class="label">{{ $t('ecomFba.claim.summaryByType') }}</div>
-          <a-space wrap class="types">
-            <span v-for="r in summary.byType || []" :key="r.claimType">
-              <DictTag type="ecom_fba_claim_type" :value="r.claimType" /> {{ r.cnt }} · {{ money(r.amountBase) }}
-            </span>
-            <span v-if="!(summary.byType || []).length" class="sub-text">-</span>
-          </a-space>
-        </div>
-      </div>
+      </a-spin>
       <a-alert v-if="summary.missingRates?.length" type="warning" show-icon class="alert" :message="$t('ecomFba.common.missingRates', { list: summary.missingRates.join(', ') })" />
     </a-card>
 
@@ -67,8 +80,10 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
-import { CloudSyncOutlined, LinkOutlined, ThunderboltOutlined, UploadOutlined } from '@ant-design/icons-vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
+import {
+  CheckCircleOutlined, ClockCircleOutlined, CloudSyncOutlined, DownOutlined, LinkOutlined, PieChartOutlined, SafetyCertificateOutlined, ThunderboltOutlined, UploadOutlined
+} from '@ant-design/icons-vue'
 import DictTag from '@/components/DictTag.vue'
 import StoreSelect from '@/components/ecom/StoreSelect.vue'
 import AmzReportUploadModal from '@/components/ecom/AmzReportUploadModal.vue'
@@ -76,10 +91,11 @@ import ClaimList from './ClaimList.vue'
 import LedgerList from './LedgerList.vue'
 import ReimbursementList from './ReimbursementList.vue'
 import ReceiptList from './ReceiptList.vue'
-import { claimSummary, detectClaims, matchReimbursements, syncClaims } from '@/api/ecom/fba'
+import { claimSummary, detectClaims, matchReimbursements, pageClaim, syncClaims } from '@/api/ecom/fba'
 import { useAction } from '@/composables/useAction'
 import { money } from '@/utils/number'
-import { AmzReportType, EcomPlatform } from '@/constants/enums'
+import { AmzReportType, EcomPlatform, FbaClaimStatus } from '@/constants/enums'
+import { useCan } from '../fba-health/fba'
 import { t } from '@/locales'
 
 /**
@@ -92,8 +108,37 @@ const listRef = ref()
 const reimbRef = ref()
 const uploadRef = ref()
 
+const can = useCan()
+const summaryLoading = ref(false)
+/** 30 天内到期（未处理）的条数与最近的截止日期：清单按未处理优先、截止日期升序，取第一条 */
+const nearest = ref({ count30: 0 })
+const byType = computed(() => summary.value.byType || [])
+const statusCount = (s) => (summary.value.byStatus || []).find((x) => x.status === s)?.cnt || 0
+
 async function loadSummary() {
-  summary.value = (await claimSummary({ storeId: storeId.value || undefined })) || {}
+  summaryLoading.value = true
+  try {
+    const params = { storeId: storeId.value || undefined }
+    const [sum, near] = await Promise.all([claimSummary(params), pageClaim({ ...params, expiringDays: 30, current: 1, size: 1 })])
+    summary.value = sum || {}
+    const first = near?.records?.[0]
+    nearest.value = { count30: near?.total || 0, deadline: first?.deadline, daysLeft: first?.daysLeft }
+  } finally {
+    summaryLoading.value = false
+  }
+}
+
+/** 点击「临近截止」卡：切到索赔清单并筛选 n 天内到期 */
+async function filterExpiring(days) {
+  tab.value = 'claims'
+  await nextTick()
+  listRef.value?.filterExpiring(days)
+}
+
+function onDataMenu({ key }) {
+  if (key === 'sync') sync(storeId.value)
+  else if (key === 'upload') uploadRef.value.open(storeId.value, AmzReportType.LEDGER_DETAIL)
+  else match(storeId.value)
 }
 onMounted(loadSummary)
 
@@ -126,36 +171,104 @@ const match = useAction((id) => matchReimbursements(id || undefined), {
 .store {
   width: 240px;
 }
-.cards {
+.kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.6fr);
   gap: 12px;
 }
-.stat {
-  padding: 10px 12px;
+@media (max-width: 1200px) {
+  .kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .kpis {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.kpi {
+  padding: 12px 16px;
   border-radius: 8px;
-  background: var(--app-fill, #fafafa);
+  border: 1px solid var(--app-border);
+  border-left: 3px solid var(--app-primary);
 }
-.stat.wide {
-  grid-column: span 2;
+.kpi.ok {
+  border-left-color: #52c41a;
 }
-.stat .label {
+.kpi.warn {
+  border-left-color: var(--status-warning);
+}
+.kpi.hot {
+  border-left-color: var(--status-critical);
+  background: rgba(245, 34, 45, 0.04);
+}
+.kpi.clickable {
+  cursor: pointer;
+  transition: box-shadow 0.2s;
+}
+.kpi.clickable:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+.kpi-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--app-text-2);
+  font-size: 13px;
+}
+.kpi-value {
+  margin-top: 4px;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+}
+.kpi.ok .kpi-value {
+  color: #389e0d;
+}
+.kpi.warn .kpi-value {
+  color: #d46b08;
+}
+.kpi.hot .kpi-value {
+  color: #cf1322;
+}
+.kpi-unit {
+  margin-left: 4px;
+  font-size: 12px;
+  font-weight: normal;
+  color: var(--app-text-3);
+}
+.kpi-second {
+  margin-left: 16px;
+  font-size: 18px;
+}
+.kpi-sub {
+  margin-top: 2px;
   color: var(--app-text-3);
   font-size: 12px;
 }
-.stat .value {
-  font-size: 20px;
-  font-weight: 600;
-  margin-top: 2px;
-}
-.stat.ok .value {
-  color: #389e0d;
-}
-.stat.warn .value {
-  color: #d46b08;
-}
 .types {
-  margin-top: 6px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 6px 16px;
+  margin-top: 8px;
+}
+.type-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.type-row :deep(.ant-tag) {
+  margin: 0;
+  min-width: 76px;
+  text-align: center;
+}
+.type-num {
+  flex: 1;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--app-text-2);
 }
 .sub-text {
   color: var(--app-text-3);
@@ -166,11 +279,6 @@ const match = useAction((id) => matchReimbursements(id || undefined), {
 .claim-tabs :deep(.ant-tabs-nav) {
   margin-bottom: 8px;
 }
-@media (max-width: 480px) {
-  .stat.wide {
-    grid-column: auto;
-  }
-}
 </style>
 
 <style>
@@ -180,7 +288,13 @@ const match = useAction((id) => matchReimbursements(id || undefined), {
   display: flex;
   flex-direction: column;
 }
-html[data-theme='dark'] .ecom-fba-claim .stat {
-  background: rgba(255, 255, 255, 0.04);
+html[data-theme='dark'] .ecom-fba-claim .kpi.hot {
+  background: rgba(245, 34, 45, 0.08);
+}
+html[data-theme='dark'] .ecom-fba-claim .kpi.ok .kpi-value {
+  color: #6abe39;
+}
+html[data-theme='dark'] .ecom-fba-claim .kpi.warn .kpi-value {
+  color: #f0a64b;
 }
 </style>

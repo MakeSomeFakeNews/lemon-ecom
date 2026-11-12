@@ -37,7 +37,8 @@ export default {
     submitted: '已提交 {n} 条，后台发布中，稍后刷新查看结果',
     offlineConfirm: '确定下架选中的 {n} 条刊登？将经平台接口下架，在线商品改为下架',
     offlined: '已下架 {n} 条',
-    deleteConfirm: '确定删除选中的 {n} 条记录？'
+    deleteConfirm: '确定删除选中的 {n} 条记录？',
+    publicUrlShort: '未配置外网地址'
   },
   create: {
     title: '新建刊登',
@@ -82,7 +83,6 @@ export default {
     editTitle: '编辑刊登',
     viewTitle: '查看刊登',
     lastError: '上次发布失败（平台返回）',
-    content: '刊登内容',
     title: '标题',
     bullets: '五点描述 / 卖点',
     addBullet: '添加一条',
@@ -93,7 +93,6 @@ export default {
     exemptionNote: '豁免说明',
     exemptionNotePh: '品牌备案 / GTIN 豁免编号等',
     images: '图片',
-    variants: '变体与价格',
     priceTemplate: '价格模板',
     fillSuggested: '填入建议价',
     quote: '试算利润',
@@ -121,7 +120,16 @@ export default {
     returnPolicy: '退货政策',
     handlingDays: '备货天数',
     extra: '其他平台参数',
-    extraTip: '如 eBay 的 paymentPolicyId、merchantLocationKey，TikTok 的 warehouseId、brandId，虾皮的 brandId、weight，Shopify 的 locationId'
+    extraTip: '如 eBay 的 paymentPolicyId、merchantLocationKey，TikTok 的 warehouseId、brandId，虾皮的 brandId、weight，Shopify 的 locationId',
+    masterContent: '主内容 / 增加店铺',
+    storesN: '刊登店铺（{n}）',
+    readonlyTip: '当前状态不可修改；草稿、发布失败、已下架的记录可以编辑',
+    secBasic: '基本信息',
+    secVariants: '变体价格库存',
+    publishTemplateExtra: '选择后带入类目、属性、物流与政策等默认值',
+    saveAndPublish: '保存并发布',
+    switchConfirm: '当前店铺的修改尚未保存，切换后将丢失。',
+    variantSummary: '共 {n} 个变体，库存合计 {qty}'
   },
   image: {
     publicUrlMissing: '没有配置后端外网地址，系统内上传的图片平台无法访问，发布会失败',
@@ -155,7 +163,7 @@ export default {
     requiredOnly: '只看必填',
     custom: '其他属性',
     addCustom: '添加属性',
-    tip: '属性键按平台要求填写（亚马逊为属性名，虾皮 / TikTok 为属性 ID）；多个值用英文逗号分隔，以 [ 或 { 开头的值按 JSON 提交'
+    tip: "属性键按平台要求填写（亚马逊为属性名，虾皮 / TikTok 为属性 ID）；多个值用英文逗号分隔，以 [ 或 {'{'} 开头的值按 JSON 提交"
   },
   kv: {
     key: '键',
@@ -174,7 +182,8 @@ export default {
     tip: '按平台保存常用属性、运费模板、退货政策等默认值，新建刊登时选择后带入',
     attrCount: '属性数',
     lookupStore: '查询用店铺',
-    lookupStoreExtra: '选择一个该平台的店铺，经平台接口选择类目、加载属性（只用于查询，不保存）'
+    lookupStoreExtra: '选择一个该平台的店铺，经平台接口选择类目、加载属性（只用于查询，不保存）',
+    defaults: '默认值（物流、政策与价格）'
   },
   price: {
     add: '新建价格模板',
@@ -205,7 +214,9 @@ export default {
     rate: '汇率',
     suggested: '建议售价',
     fees: '平台费用',
-    profit: '利润（利润率）'
+    profit: '利润（利润率）',
+    formulaLabel: '定价公式',
+    params: '定价参数'
   },
   change: {
     keywordPh: '平台 SKU / 标题',

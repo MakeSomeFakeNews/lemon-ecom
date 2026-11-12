@@ -32,6 +32,7 @@ import com.lemon.erp.modules.ecom.mapper.EcomOrderMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomPackageItemMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomPackageMapper;
 import com.lemon.erp.modules.ecom.model.EcomLocalStatus;
+import com.lemon.erp.modules.ecom.model.EcomOrderLogAction;
 import com.lemon.erp.modules.ecom.model.EcomOrderStatus;
 import com.lemon.erp.modules.ecom.model.EcomPackageStatus;
 import com.lemon.erp.modules.wms.service.DocNoService;
@@ -112,6 +113,7 @@ public class EcomPackageService {
     private final TransactionTemplate transactionTemplate;
     private final ApplicationEventPublisher eventPublisher;
     private final com.lemon.erp.modules.ecom.owh.service.OwhPackageGuard owhGuard;
+    private final EcomOrderLogService logService;
 
     // ---------------------------------------------------------------- 查询
 
@@ -575,6 +577,8 @@ public class EcomPackageService {
                     .set(EcomPackage::getErrorMsg, error == null ? null : abbreviate(error))
                     .eq(EcomPackage::getId, id));
             orders.forEach(o -> recomputeOrder(o.getId()));
+            logService.log(orderIds(orders), EcomOrderLogAction.LABEL, EcomOrderLogService.text("ecom.log.label", p.getPackageNo(), carrierName,
+                    Objects.toString(wb.trackingNo(), "-")));
         });
         return error == null ? null : Messages.get("ecom.text.ops.labelFetchFailed", error);
     }
@@ -621,6 +625,8 @@ public class EcomPackageService {
                 .set(EcomPackage::getStatus, EcomPackageStatus.LABELED).set(EcomPackage::getErrorMsg, null)
                 .eq(EcomPackage::getId, id));
         orders.forEach(o -> recomputeOrder(o.getId()));
+        logService.log(orderIds(orders), EcomOrderLogAction.LABEL, EcomOrderLogService.text("ecom.log.labelManual", p.getPackageNo(), req.carrier().trim(),
+                req.trackingNo().trim()));
     }
 
     /**
@@ -737,6 +743,8 @@ public class EcomPackageService {
         for (EcomPackage p : list) {
             packageMapper.update(Wrappers.<EcomPackage>lambdaUpdate().set(EcomPackage::getPrintCount, (p.getPrintCount() == null ? 0 : p.getPrintCount()) + 1)
                     .eq(EcomPackage::getId, p.getId()));
+            logService.log(packageOrderIds(p.getId()), EcomOrderLogAction.PRINT, EcomOrderLogService.text("ecom.log.print", p.getPackageNo(),
+                    (p.getPrintCount() == null ? 0 : p.getPrintCount()) + 1));
         }
         return merged;
     }
@@ -938,6 +946,8 @@ public class EcomPackageService {
         }
         packageMapper.update(Wrappers.<EcomPackage>lambdaUpdate().set(EcomPackage::getStatus, EcomPackageStatus.SHIPPED).set(EcomPackage::getShipTime, time)
                 .set(EcomPackage::getShippingCost, freight).set(EcomPackage::getErrorMsg, null).eq(EcomPackage::getId, id));
+        logService.log(orderIds(orders), EcomOrderLogAction.SHIP, EcomOrderLogService.text("ecom.log.packageShipped", p.getPackageNo(),
+                Objects.toString(p.getCarrierName(), "-"), p.getTrackingNo()));
         for (EcomOrder o : orders) {
             EcomLocalStatus st = recomputeOrder(o.getId());
             EcomOrder fresh = orderMapper.selectById(o.getId());
@@ -949,6 +959,15 @@ public class EcomPackageService {
                 eventPublisher.publishEvent(new EcomOrderService.OrderShippedEvent(o.getId()));
             }
         }
+    }
+
+    private static List<Long> orderIds(List<EcomOrder> orders) {
+        return orders.stream().map(EcomOrder::getId).toList();
+    }
+
+    /** 包裹中的订单 ID */
+    private List<Long> packageOrderIds(Long packageId) {
+        return packageItemMapper.selectByPackageIds(List.of(packageId)).stream().map(EcomPackageItem::getOrderId).distinct().toList();
     }
 
     /** 包裹中的订单（按 ID） */
@@ -998,7 +1017,9 @@ public class EcomPackageService {
                 throw new BizException("ecom.error.ops.packageStatusNotAllow", locked.getPackageNo());
             }
             setStatus(id, EcomPackageStatus.CANCELLED);
-            packageItemMapper.selectByPackageIds(List.of(id)).stream().map(EcomPackageItem::getOrderId).distinct().forEach(this::recomputeOrder);
+            List<Long> orderIds = packageOrderIds(id);
+            orderIds.forEach(this::recomputeOrder);
+            logService.log(orderIds, EcomOrderLogAction.PACKAGE, EcomOrderLogService.text("ecom.log.packageCancelled", p.getPackageNo()));
         });
     }
 

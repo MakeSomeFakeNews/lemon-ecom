@@ -4,6 +4,8 @@ const ids = (v) => [].concat(v).join(',')
 
 /** 头程货件 /ecom/inbound：分页条件 storeId、status（InboundStatus）、keyword（单据号 / 货件号 / 运单号） */
 export const pageEcomInbound = (params) => request.get('/ecom/inbound', { params })
+/** 各状态的货件数（状态标签页）：{ 状态: 数量 }，条件 storeId、keyword */
+export const ecomInboundStatusCounts = (params) => request.get('/ecom/inbound/status-counts', { params })
 /** 详情含 items（unitLanded 为单件头程成本） */
 export const getEcomInbound = (id) => request.get(`/ecom/inbound/${id}`)
 /** 新增草稿（InboundRequest），返回 ID */

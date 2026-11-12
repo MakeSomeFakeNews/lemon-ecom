@@ -12,7 +12,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
-import { homeItem, shortModuleTitle, toMenuItems } from '../menuItems'
+import { homeItem, toMenuItems } from '../menuItems'
 
 /**
  * 顶部菜单布局：全部菜单显示为水平菜单，鼠标移到模块上展开下拉面板，分组按列排列（style.css 的 .top-menu-popup / .top-menu-cols-N），
@@ -26,7 +26,7 @@ const items = computed(() => [
   homeItem(),
   ...toMenuItems(userStore.menus).map((m) => ({
     ...m,
-    label: shortModuleTitle(m.label),
+    label: m.label,
     ...(m.children && { popupClassName: popupClass(m.children) })
   }))
 ])

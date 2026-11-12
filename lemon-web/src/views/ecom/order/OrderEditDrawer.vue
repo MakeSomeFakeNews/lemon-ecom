@@ -1,6 +1,7 @@
 <template>
   <FormDrawer :drawer="drawer" :edit-title="$t('ecomOrder.order.editTitle')" :create-title="$t('ecomOrder.order.editTitle')">
     <a-form ref="formRef" :model="form" :rules="rules" layout="vertical">
+      <div class="form-section">{{ $t('ecomOrdUi.detail.buyer') }}</div>
       <a-row :gutter="16">
         <a-col :span="12">
           <a-form-item :label="$t('ecomOrder.order.shipName')" name="shipName">
@@ -37,6 +38,9 @@
             <a-textarea v-model:value="form.shipAddress" :maxlength="255" :auto-size="{ minRows: 2, maxRows: 4 }" />
           </a-form-item>
         </a-col>
+      </a-row>
+      <div class="form-section">{{ $t('ecomOrdUi.edit.shipping') }}</div>
+      <a-row :gutter="16">
         <a-col :span="12">
           <a-form-item :label="$t('ecomOrder.order.fulfillment')" name="fulfillment">
             <a-select v-model:value="form.fulfillment" :options="toOptions(dict.ecom_fulfillment)" />
@@ -94,6 +98,10 @@ defineExpose({ open: (order) => drawer.openEdit(order) })
 </script>
 
 <style scoped>
+.form-section {
+  margin: 4px 0 12px;
+  font-weight: 600;
+}
 .full {
   width: 100%;
 }

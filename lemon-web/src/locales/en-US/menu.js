@@ -1,7 +1,19 @@
 // 菜单名称英文翻译：键为 sys_menu.id（与 sql/init.sql 一致），中文直接使用数据库中的名称
 export default {
-  17: 'E-commerce', // 电商
-  987: 'Data Analytics', // 数据分析
+  // 导航重组：一级模块与新分组
+  19: 'Products', // 商品管理
+  20: 'Orders', // 订单管理
+  23: 'Operations', // 运营管理
+  22: 'Logistics', // 物流管理
+  990: 'Platform Settlement', // 平台结算
+  991: 'Publishing & Pricing', // 刊登定价
+  992: 'Stores', // 店铺管理
+  993: 'After-sales & Service', // 售后客服
+  994: 'Order Settings', // 订单设置
+  995: '1688 Sourcing', // 1688 采购
+  996: 'Data Analytics', // 数据分析
+  997: 'FBA', // FBA
+  998: 'Advertising', // 广告管理
   490: 'Sales Statistics', // 销量统计
   491: 'Sales Forecast', // 销量预测
   492: 'Product Analysis', // 商品分析
@@ -33,7 +45,6 @@ export default {
   4811: 'Edit Rule', // 规则修改
   4812: 'Delete Rule', // 规则删除
   4813: 'Run Rules / Handle Suggestions', // 规则执行 / 处理建议
-  986: 'Customer Service', // 客服
   485: 'Buyer Messages', // 买家消息
   486: 'Reviews', // 评价管理
   487: 'Reply Templates', // 回复模板
@@ -85,10 +96,9 @@ export default {
   4324: 'Merge / Split Orders', // 合并拆分
   4330: 'Get Tracking Numbers', // 申请运单
   4331: 'Ship Packages', // 包裹发货
-  981: 'Stores & Listings', // 店铺与商品
-  982: 'Orders & After-sales', // 订单与售后
-  983: 'Inventory & Logistics', // 库存与物流
-  984: 'Settlement & Analysis', // 结算与分析
+  981: 'Product Catalog', // 商品资料
+  982: 'Order Processing', // 订单处理
+  983: 'First-Mile Logistics', // 头程物流
   420: 'E-commerce Dashboard', // 电商看板
   421: 'Stores', // 平台店铺
   422: 'Listings', // 在线商品
@@ -99,7 +109,7 @@ export default {
   427: 'Replenishment', // 补货建议
   428: 'Logistics Channels', // 物流渠道
   429: 'Platform Settlements', // 平台结算
-  430: 'Advertising', // 广告数据
+  430: 'Advertising Data', // 广告数据
   431: 'Profit Analysis', // 利润分析
   4210: 'Add Store', // 店铺新增
   4211: 'Edit Store', // 店铺修改
@@ -171,7 +181,7 @@ export default {
   134: 'Stock Inquiry', // 库存查询
   135: 'Stock Ledger', // 库存流水
   136: 'Batches & Serial Nos.', // 批次与序列号
-  137: 'Materials', // 物料管理
+  137: 'Local Products', // 本地商品
   138: 'Warehouses', // 仓库管理
   139: 'Locations', // 库位管理
   140: 'Purchase Orders', // 采购订单
@@ -208,7 +218,7 @@ export default {
   271: 'Delivery Notices', // 发货通知
   272: 'Backorders', // 欠交清单
   273: 'Stock Reservations', // 库存预留
-  274: 'Replenishment Suggestions', // 补货建议
+  274: 'Safety Stock Replenishment', // 安全库存补货
   276: 'Invoices', // 发票管理
   277: 'Advances', // 预收预付
   278: 'Bank Reconciliation', // 银行对账
@@ -249,8 +259,8 @@ export default {
   350: 'Integrations', // 第三方集成
   352: 'Business Dictionaries', // 业务字典
   353: 'Notices', // 通知公告
-  901: 'Purchasing', // 采购
-  902: 'Sales Deliveries', // 销售出库
+  901: 'Replenishment & Purchasing', // 补货采购
+  902: 'Wholesale Sales', // 批发销售
   903: 'Business Partners', // 往来单位
   904: 'Sourcing', // 采购寻源
   911: 'Stock Operations', // 库存作业
@@ -578,7 +588,7 @@ export default {
   5341: 'Create Resend', // 创建补发单
   5342: 'Tag / Note Orders', // 订单打标签 / 备注
   // 运营监控与团队（电商 17 下的「运营」分组 989）
-  989: 'Operations', // 运营
+  989: 'Monitoring', // 运营监控
   540: 'ASIN Monitor', // ASIN 监控
   541: 'Promotions', // 促销管理
   542: 'Operation Targets', // 运营目标

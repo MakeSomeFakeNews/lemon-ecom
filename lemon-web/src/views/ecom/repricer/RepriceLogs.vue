@@ -1,9 +1,9 @@
 <template>
   <div class="toolbar">
-    <StoreSelect v-model:value="query.storeId" :placeholder="$t('ecomPublish.common.allStores')" class="sel-store" />
+    <StoreSelect :value="query.storeId" :placeholder="$t('ecomPublish.common.allStores')" class="sel-store" @update:value="(v) => { query.storeId = v ?? undefined; search() }" />
     <a-input v-model:value="query.keyword" allow-clear :placeholder="$t('ecomPublish.change.keywordPh')" class="kw" @press-enter="search" />
-    <a-select v-model:value="query.status" allow-clear :placeholder="$t('ecomPublish.change.result')" :options="toOptions(dict.ecom_reprice_log_status)" class="sel" />
-    <a-range-picker v-model:value="range" value-format="YYYY-MM-DD" />
+    <a-select v-model:value="query.status" allow-clear :placeholder="$t('ecomPublish.change.result')" :options="toOptions(dict.ecom_reprice_log_status)" class="sel" @change="search" />
+    <a-range-picker v-model:value="range" value-format="YYYY-MM-DD" class="range" @change="search" />
     <a-button @click="search"><template #icon><SearchOutlined /></template>{{ $t('common.action.query') }}</a-button>
     <a-button v-if="query.ruleId" @click="clearRule">{{ $t('ecomPublish.repricer.allRules') }}</a-button>
     <span class="spacer" />
@@ -12,16 +12,16 @@
       <a-button v-perm="'ecom:repricer:execute'" @click="ignore(selectedKeys)">{{ $t('ecomPublish.repricer.ignoreN', { n: selectedKeys.length }) }}</a-button>
     </template>
   </div>
-  <a-table row-key="id" size="middle" :columns="columns" :data-source="list" :loading="loading" :pagination="pagination" :scroll="{ x: 1450 }"
+  <a-table row-key="id" size="middle" :columns="columns" :data-source="list" :loading="loading" :pagination="pagination" :scroll="{ x: scrollX, y: '100%' }"
            :row-selection="{ ...rowSelection, getCheckboxProps: (r) => ({ disabled: r.status !== RepriceLogStatus.SUGGESTED }) }" @change="onTableChange">
     <template #bodyCell="{ column, record }">
       <template v-if="column.key === 'runTime'">
-        {{ record.runTime }}
-        <div class="sub-text">{{ record.ruleName }}</div>
+        <div>{{ record.runTime }}</div>
+        <a-tooltip :title="record.ruleName"><div class="sub-text ellipsis">{{ record.ruleName }}</div></a-tooltip>
       </template>
       <template v-else-if="column.key === 'sku'">
-        <div>{{ record.sellerSku }}</div>
-        <div class="sub-text">{{ record.storeName }}</div>
+        <div class="ellipsis">{{ record.sellerSku }}</div>
+        <div class="sub-text ellipsis">{{ record.storeName }}</div>
       </template>
       <template v-else-if="column.key === 'change'">
         {{ record.oldPrice != null ? price(record.oldPrice) : '-' }}
@@ -63,14 +63,15 @@ const { t } = useI18n()
 const dict = useDict('ecom_reprice_log_status')
 const range = ref([])
 const columns = [
-  { title: t('ecomPublish.repricer.runTime'), key: 'runTime', width: 190, fixed: 'left' },
-  { title: t('ecomPublish.common.sellerSku'), key: 'sku', width: 190 },
+  { title: t('ecomPublish.repricer.runTime'), key: 'runTime', width: 180, fixed: 'left' },
+  { title: t('ecomPublish.common.sellerSku'), key: 'sku', width: 180 },
   { title: t('ecomPublish.repricer.priceChange'), key: 'change', width: 180 },
   { title: t('ecomPublish.repricer.market'), key: 'market', width: 230 },
-  { title: t('ecomPublish.repricer.reason'), dataIndex: 'reason', width: 300 },
-  { title: t('ecomPublish.change.result'), key: 'status', width: 200 },
+  { title: t('ecomPublish.repricer.reason'), dataIndex: 'reason', width: 260, ellipsis: true },
+  { title: t('ecomPublish.change.result'), key: 'status', width: 180 },
   { ...actionColumn(2), key: 'ops' }
 ]
+const scrollX = columns.reduce((s, c) => s + c.width, 0)
 const query = reactive({ ruleId: props.ruleId, storeId: undefined, keyword: undefined, status: undefined, beginDate: undefined, endDate: undefined })
 const { list, loading, pagination, selectedKeys, rowSelection, load, search: doSearch, onTableChange } = useTable(pageRepriceLog, query)
 function search() {
@@ -135,7 +136,10 @@ const rowActions = (r) => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 180px;
+  max-width: 100%;
+}
+.range {
+  width: 240px;
 }
 .sub-text {
   color: var(--app-text-3);

@@ -374,5 +374,31 @@ export default {
   pkg: {
     push: 'Push to Overseas',
     owhStatus: 'Overseas Outbound'
+  },
+  flow: {
+    draft: 'Draft',
+    pending: 'Pending',
+    pushed: 'Pushed',
+    receiving: 'Receiving',
+    received: 'Received',
+    erpReceived: 'ERP Received',
+    erpStocked: 'ERP Stocked In',
+    outbound: 'Outbound',
+    shipped: 'Shipped',
+    pushFailed: 'Push Failed',
+    intercepting: 'Intercepting',
+    outPushed: 'Outbound Processing',
+    inTransit: 'In Transit',
+    cancelled: 'Cancelled'
+  },
+  section: {
+    basic: 'Basic Info',
+    logistics: 'Logistics',
+    progress: 'Receiving Progress',
+    quality: 'Inspection Result',
+    route: 'Route'
+  },
+  misc: {
+    batchHint: 'Select packages to push them in batch'
   }
 }

@@ -3,10 +3,10 @@
     <a-card v-show="showSearch" :bordered="false" class="page-card">
       <SearchForm :model="query" @search="search" @reset="resetQuery">
         <a-form-item :label="$t('ecomCs.template.language')" name="language">
-          <a-select v-model:value="query.language" allow-clear :placeholder="$t('common.placeholder.all')" :options="toOptions(dict.ecom_cs_language)" />
+          <a-select v-model:value="query.language" allow-clear :placeholder="$t('common.placeholder.all')" :options="toOptions(dict.ecom_cs_language)" @change="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomCs.template.platform')" name="platform">
-          <a-select v-model:value="query.platform" allow-clear :placeholder="$t('common.placeholder.all')" :options="toOptions(dict.ecom_platform)" />
+          <a-select v-model:value="query.platform" allow-clear :placeholder="$t('common.placeholder.all')" :options="toOptions(dict.ecom_platform)" @change="search" />
         </a-form-item>
         <a-form-item :label="$t('common.field.keyword')" name="keyword">
           <a-input v-model:value="query.keyword" allow-clear :placeholder="$t('ecomCs.template.keywordPh')" @press-enter="search" />
@@ -19,7 +19,7 @@
         <a-button v-perm="'ecom:csTemplate:add'" type="primary" @click="form.openCreate()">
           <template #icon><PlusOutlined /></template>{{ $t('ecomCs.template.add') }}
         </a-button>
-        <span class="sub-text">{{ $t('ecomCs.template.tip') }}</span>
+        <span class="sub-text tip">{{ $t('ecomCs.template.tip') }}</span>
       </TableToolbar>
       <a-table
         row-key="id"
@@ -115,6 +115,9 @@ onMounted(load)
 </script>
 
 <style scoped>
+.tip {
+  align-self: center;
+}
 .content {
   max-width: 420px;
   overflow: hidden;

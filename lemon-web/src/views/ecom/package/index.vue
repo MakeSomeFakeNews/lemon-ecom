@@ -6,7 +6,7 @@
           <a-input v-model:value="query.keyword" :placeholder="$t('ecomOrder.pkg.keywordPh')" allow-clear @press-enter="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomOrder.common.store')" name="storeId">
-          <StoreSelect v-model:value="query.storeId" :placeholder="$t('common.placeholder.all')" />
+          <StoreSelect v-model:value="query.storeId" :placeholder="$t('common.placeholder.all')" @update:value="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomOrder.common.warehouse')" name="warehouseId">
           <WarehouseSelect v-model:value="query.warehouseId" :placeholder="$t('common.placeholder.all')" />
@@ -15,41 +15,27 @@
           <ChannelSelect v-model:value="query.channelId" :placeholder="$t('common.placeholder.all')" />
         </a-form-item>
         <a-form-item :label="$t('ecomOrder.pkg.createDate')" name="range" data-wide>
-          <a-range-picker v-model:value="query.range" value-format="YYYY-MM-DD" style="width: 100%" />
+          <a-range-picker v-model:value="query.range" value-format="YYYY-MM-DD" style="width: 100%" @change="search" />
         </a-form-item>
       </SearchForm>
     </a-card>
 
     <a-card :bordered="false" class="page-card table-card">
-      <a-tabs v-model:active-key="tab" size="small" class="status-tabs" @change="onTab">
+      <a-tabs v-model:active-key="tab" class="status-tabs" @change="onTab">
         <a-tab-pane v-for="tb in PACKAGE_TABS" :key="tb.key">
           <template #tab>
-            {{ $t(tb.label) }}<span v-if="tb.key !== 'all'" class="tab-count">{{ counts[tb.key] || 0 }}</span>
+            {{ $t(tb.label) }}<span class="tab-count">{{ tb.key === 'all' ? totalCount : counts[tb.key] || 0 }}</span>
           </template>
         </a-tab-pane>
       </a-tabs>
       <TableToolbar :exporter="exportAll" v-model:size="size" v-model:checked="checked" v-model:show-search="showSearch" :columns="columns" @refresh="reload">
-        <a-button v-if="tab !== EcomPackageStatus.SHIPPED && tab !== EcomPackageStatus.CANCELLED" v-perm="'ecom:package:label'" type="primary" :disabled="!selectedKeys.length" @click="labelModal.open(selectedKeys)">
-          <template #icon><ThunderboltOutlined /></template>{{ $t('ecomOrder.pkg.label') }}
-        </a-button>
-        <a-button v-perm="'ecom:package:label'" :disabled="!selectedKeys.length" :loading="printing" @click="printLabels(selectedKeys)">
-          <template #icon><PrinterOutlined /></template>{{ $t('ecomOrder.pkg.printLabels') }}
-        </a-button>
-        <a-button v-perm="'ecom:package:label'" :disabled="!selectedKeys.length" @click="printPickList(selectedKeys)">
-          <template #icon><UnorderedListOutlined /></template>{{ $t('ecomOrder.pkg.printPickList') }}
-        </a-button>
-        <a-button v-if="tab === EcomPackageStatus.LABELED || tab === 'all'" v-perm="'ecom:package:ship'" :disabled="!selectedKeys.length" @click="shipSelected">
-          <template #icon><CarOutlined /></template>{{ $t('ecomOrder.pkg.ship') }}
-        </a-button>
-        <a-button v-perm="'ecom:package:ship'" @click="router.push('/ecom/scan-ship')">
-          <template #icon><ScanOutlined /></template>{{ $t('ecomOrder.scan.title') }}
-        </a-button>
-        <a-button v-if="tab === EcomPackageStatus.WAIT_LABEL || tab === 'all'" v-perm="'ecom:owhOutbound:push'" :disabled="!selectedKeys.length" @click="pushOwh">
-          <template #icon><CloudUploadOutlined /></template>{{ $t('ecomOwh.pkg.push') }}
-        </a-button>
-        <span v-if="selectedKeys.length" class="selected-tip">
-          {{ $t('common.table.selected', { n: selectedKeys.length }) }} <a @click="selectedKeys = []">{{ $t('common.action.clear') }}</a>
-        </span>
+        <BatchActionBar v-if="selectedKeys.length" :count="selectedKeys.length" :text="$t('ecomOrdUi.pkg.selected', { n: selectedKeys.length })" :actions="batchActions" :direct="4" @clear="selectedKeys = []" />
+        <template v-else>
+          <a-button v-perm="'ecom:package:ship'" type="primary" @click="router.push('/ecom/scan-ship')">
+            <template #icon><ScanOutlined /></template>{{ $t('ecomOrder.scan.title') }}
+          </a-button>
+          <span v-if="batchActions.length" class="batch-hint">{{ $t('ecomOrdUi.pkg.hint') }}</span>
+        </template>
       </TableToolbar>
 
       <a-table
@@ -61,15 +47,17 @@
         :pagination="pagination"
         :row-selection="rowSelection"
         :scroll="{ x: scrollX + 32, y: '100%' }"
+        :locale="{ emptyText: $t('ecomOrdUi.pkg.empty') }"
         @change="onTableChange"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'packageNo'">
-            <a @click="detail.open(record.id)">{{ record.packageNo }}</a>
+            <a class="pkg-no" @click="detail.open(record.id)">{{ record.packageNo }}</a>
+            <div class="sub-text ellipsis" :title="record.storeName">{{ record.storeName }}</div>
           </template>
           <template v-else-if="column.key === 'receiver'">
-            <div>{{ record.shipName || '-' }}</div>
-            <div class="sub-text">{{ record.shipCountry }}</div>
+            <div class="ellipsis" :title="record.shipName">{{ record.shipName || '-' }}</div>
+            <div class="sub-text"><span v-if="record.shipCountry" class="country">{{ record.shipCountry }}</span></div>
           </template>
           <template v-else-if="column.key === 'status'">
             <DictTag type="ecom_package_status" :value="record.status" />
@@ -87,6 +75,10 @@
           <template v-else-if="column.key === 'totalQty'">{{ qty(record.totalQty) }}</template>
           <template v-else-if="column.key === 'weight'">{{ record.weight != null ? Number(record.weight) : '-' }}</template>
           <template v-else-if="column.key === 'shippingCost'">{{ record.shippingCost != null ? `¥${money(record.shippingCost)}` : '-' }}</template>
+          <template v-else-if="column.key === 'route'">
+            <div class="ellipsis" :title="record.warehouseName">{{ record.warehouseName || '-' }}</div>
+            <div class="sub-text ellipsis" :title="record.channelName">{{ record.channelName || '-' }}</div>
+          </template>
           <template v-else-if="column.key === 'action'">
             <TableActions :actions="rowActions(record)" />
           </template>
@@ -111,7 +103,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { Modal } from 'ant-design-vue'
@@ -135,6 +127,7 @@ import StoreSelect from '@/components/ecom/StoreSelect.vue'
 import ChannelSelect from '@/components/ecom/ChannelSelect.vue'
 import WarehouseSelect from '@/components/wms/WarehouseSelect.vue'
 import TableActions from '@/components/common/TableActions.vue'
+import BatchActionBar from '@/components/ecom/BatchActionBar.vue'
 import { actionColumn } from '@/components/common/tableActions'
 import PackageDetail from './PackageDetail.vue'
 import LabelModal from './LabelModal.vue'
@@ -170,8 +163,18 @@ const { t } = useI18n()
 const router = useRouter()
 
 const columns = [
-  { title: t('ecomOrder.pkg.packageNo'), key: 'packageNo', dataIndex: 'packageNo', width: 170 },
-  { title: t('ecomOrder.common.store'), dataIndex: 'storeName', width: 140, ellipsis: true },
+  {
+    title: t('ecomOrder.pkg.packageNo'),
+    key: 'packageNo',
+    dataIndex: 'packageNo',
+    width: 170,
+    fixed: 'left',
+    exportColumns: [
+      { title: t('ecomOrder.pkg.packageNo'), dataIndex: 'packageNo' },
+      { title: t('ecomOrder.common.store'), dataIndex: 'storeName' }
+    ]
+  },
+  { title: t('ecomOrder.pkg.status'), key: 'status', dataIndex: 'status', width: 100, dict: 'ecom_package_status' },
   {
     title: t('ecomOrder.pkg.receiver'),
     key: 'receiver',
@@ -183,8 +186,15 @@ const columns = [
   },
   { title: t('ecomOrder.pkg.orders'), dataIndex: 'orderCount', width: 70, align: 'right' },
   { title: t('ecomOrder.pkg.totalQty'), key: 'totalQty', dataIndex: 'totalQty', width: 70, align: 'right' },
-  { title: t('ecomOrder.common.warehouse'), dataIndex: 'warehouseName', width: 130, ellipsis: true },
-  { title: t('ecomOrder.common.channel'), dataIndex: 'channelName', width: 140, ellipsis: true },
+  {
+    title: t('ecomOrdUi.pkg.route'),
+    key: 'route',
+    width: 170,
+    exportColumns: [
+      { title: t('ecomOrder.common.warehouse'), dataIndex: 'warehouseName' },
+      { title: t('ecomOrder.common.channel'), dataIndex: 'channelName' }
+    ]
+  },
   {
     title: t('ecomOrder.common.trackingNo'),
     key: 'tracking',
@@ -196,7 +206,6 @@ const columns = [
   },
   { title: t('ecomOrder.pkg.weight'), key: 'weight', dataIndex: 'weight', width: 90, align: 'right' },
   { title: t('ecomOrder.pkg.shippingCost'), key: 'shippingCost', dataIndex: 'shippingCost', width: 100, align: 'right' },
-  { title: t('ecomOrder.pkg.status'), key: 'status', dataIndex: 'status', width: 100, dict: 'ecom_package_status' },
   { title: t('ecomOwh.pkg.owhStatus'), key: 'owh', width: 130, exportValue: (r) => owhMap.value[r.id]?.status || '' },
   { title: t('ecomOrder.pkg.printCount'), dataIndex: 'printCount', width: 80, align: 'right' },
   { title: t('ecomOrder.pkg.labelTime'), dataIndex: 'labelTime', width: 160 },
@@ -286,6 +295,26 @@ function shipSelected() {
   Modal.confirm({ title: t('ecomOrder.pkg.shipConfirm', { n: ids.length }), onOk: () => shipIds(ids) })
 }
 
+const batchActions = computed(() => {
+  const ids = () => [...selectedKeys.value]
+  const list = []
+  if (tab.value !== EcomPackageStatus.SHIPPED && tab.value !== EcomPackageStatus.CANCELLED) {
+    list.push({ key: 'label', label: t('ecomOrder.pkg.label'), icon: ThunderboltOutlined, perm: 'ecom:package:label', primary: tab.value === EcomPackageStatus.WAIT_LABEL, run: () => labelModal.value.open(ids()) })
+  }
+  if (tab.value === EcomPackageStatus.LABELED || tab.value === 'all') {
+    list.push({ key: 'ship', label: t('ecomOrder.pkg.ship'), icon: CarOutlined, perm: 'ecom:package:ship', primary: tab.value === EcomPackageStatus.LABELED, run: shipSelected })
+  }
+  if (tab.value !== EcomPackageStatus.CANCELLED) {
+    list.push({ key: 'print', label: t('ecomOrder.pkg.printLabels'), icon: PrinterOutlined, perm: 'ecom:package:label', loading: printing.value, run: () => printLabels(ids()) })
+    list.push({ key: 'pick', label: t('ecomOrder.pkg.printPickList'), icon: UnorderedListOutlined, perm: 'ecom:package:label', run: () => printPickList(ids()) })
+  }
+  if (tab.value === EcomPackageStatus.WAIT_LABEL || tab.value === 'all') {
+    list.push({ key: 'owh', label: t('ecomOwh.pkg.push'), icon: CloudUploadOutlined, perm: 'ecom:owhOutbound:push', run: pushOwh })
+  }
+  return list.sort((a, b) => Number(!!b.primary) - Number(!!a.primary))
+})
+const totalCount = computed(() => Object.values(counts.value).reduce((sum, n) => sum + (n || 0), 0))
+
 const refetch = useAction(refetchEcomPackageLabel, { successKey: 'ecomOrder.pkg.refetched', reload: afterChange })
 const cancel = useAction(cancelEcomPackage, { successKey: 'ecomOrder.pkg.cancelled', reload: afterChange })
 const cancelOne = (p) =>
@@ -317,19 +346,47 @@ const rowActions = (record) => [
   color: var(--app-text-3);
   font-size: 12px;
 }
-.selected-tip {
-  color: var(--app-text-3);
+.ellipsis {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
-.status-tabs {
-  margin-top: -8px;
+.pkg-no {
+  font-weight: 500;
 }
-.status-tabs :deep(.ant-tabs-nav) {
-  margin-bottom: 8px;
+.country {
+  padding: 0 4px;
+  border: 1px solid var(--app-border);
+  border-radius: 3px;
+  color: var(--app-text-2);
+  font-size: 11px;
 }
-.tab-count {
-  margin-left: 4px;
+.batch-hint {
+  align-self: center;
   color: var(--app-text-3);
   font-size: 12px;
+}
+.status-tabs {
+  margin-top: -12px;
+}
+.status-tabs :deep(.ant-tabs-nav) {
+  margin-bottom: 12px;
+}
+.tab-count {
+  display: inline-block;
+  min-width: 20px;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--app-hover);
+  color: var(--app-text-2);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+}
+.status-tabs :deep(.ant-tabs-tab-active) .tab-count {
+  background: var(--app-primary-bg, #e6f4ff);
+  color: var(--app-primary, #1677ff);
 }
 .exception-icon {
   margin-left: 4px;

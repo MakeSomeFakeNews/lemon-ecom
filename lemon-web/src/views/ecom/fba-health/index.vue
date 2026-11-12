@@ -3,13 +3,13 @@
     <a-card v-show="showSearch" :bordered="false" class="page-card">
       <SearchForm :model="query" @search="refresh" @reset="resetQuery">
         <a-form-item :label="$t('ecomFba.common.store')" name="storeId">
-          <StoreSelect v-model:value="query.storeId" :platform="EcomPlatform.AMAZON" :placeholder="$t('ecomFba.common.allStores')" />
+          <StoreSelect v-model:value="query.storeId" :platform="EcomPlatform.AMAZON" :placeholder="$t('ecomFba.common.allStores')" @change="refresh" />
         </a-form-item>
         <a-form-item :label="$t('common.field.keyword')" name="keyword">
           <a-input v-model:value="query.keyword" :placeholder="$t('ecomFba.health.keywordPh')" allow-clear @press-enter="refresh" />
         </a-form-item>
         <a-form-item :label="$t('ecomFba.health.advice')" name="advice">
-          <a-select v-model:value="query.advice" allow-clear :placeholder="$t('common.placeholder.all')" :options="toOptions(dict.ecom_fba_advice)" />
+          <a-select v-model:value="query.advice" allow-clear :placeholder="$t('common.placeholder.all')" :options="toOptions(dict.ecom_fba_advice)" @change="search" />
         </a-form-item>
         <a-form-item name="excessDays">
           <template #label>
@@ -24,26 +24,34 @@
       </SearchForm>
     </a-card>
 
-    <HealthSummary ref="summaryRef" @advice="(a) => ((query.advice = a), search())" />
+    <HealthSummary ref="summaryRef" :advice="query.advice" :aged-only="query.agedOnly" :excess-only="query.excessOnly"
+                   @advice="(a) => ((query.advice = a), search())" @filter="toggleFilter" />
 
     <a-card :bordered="false" class="page-card table-card">
       <TableToolbar :exporter="exportAll" v-model:size="size" v-model:checked="checked" v-model:show-search="showSearch" :columns="columns" @refresh="refresh">
-        <a-tooltip :title="query.storeId ? '' : $t('ecomFba.common.pickStoreFirst')">
-          <a-button v-perm="'ecom:fbaHealth:sync'" type="primary" :disabled="!query.storeId" @click="sync(query.storeId)">
-            <template #icon><CloudSyncOutlined /></template>{{ $t('ecomFba.common.syncFromAmazon') }}
+        <a-dropdown v-perm="'ecom:fbaHealth:sync'">
+          <a-button type="primary">
+            <template #icon><CloudSyncOutlined /></template>{{ $t('ecomFba.health.dataUpdate') }} <DownOutlined />
           </a-button>
-        </a-tooltip>
-        <a-tooltip :title="query.storeId ? '' : $t('ecomFba.common.pickStoreFirst')">
-          <a-button v-perm="'ecom:fbaHealth:sync'" :disabled="!query.storeId" @click="rebuild(query.storeId)">
-            <template #icon><CalculatorOutlined /></template>{{ $t('ecomFba.health.rebuild') }}
-          </a-button>
-        </a-tooltip>
-        <a-button v-perm="'ecom:fbaHealth:sync'" @click="uploadRef.open(query.storeId)">
-          <template #icon><UploadOutlined /></template>{{ $t('ecomFba.common.uploadReport') }}
-        </a-button>
-        <a-button v-perm="'ecom:fbaRemoval:add'" :disabled="!selectedKeys.length" @click="createRemoval">
-          <template #icon><ExportOutlined /></template>{{ $t('ecomFba.health.createRemoval') }}
-        </a-button>
+          <template #overlay>
+            <a-menu @click="onUpdateMenu">
+              <a-menu-item key="sync" :disabled="!query.storeId" :title="query.storeId ? '' : $t('ecomFba.common.pickStoreFirst')">
+                <CloudSyncOutlined /> {{ $t('ecomFba.common.syncFromAmazon') }}
+              </a-menu-item>
+              <a-menu-item key="rebuild" :disabled="!query.storeId" :title="query.storeId ? '' : $t('ecomFba.common.pickStoreFirst')">
+                <CalculatorOutlined /> {{ $t('ecomFba.health.rebuild') }}
+              </a-menu-item>
+              <a-menu-item key="upload"><UploadOutlined /> {{ $t('ecomFba.common.uploadReport') }}</a-menu-item>
+            </a-menu>
+          </template>
+        </a-dropdown>
+        <template v-if="selectedKeys.length">
+          <a-tooltip :title="$t('ecomFba.health.createRemovalTip')">
+            <a-button v-perm="'ecom:fbaRemoval:add'" @click="createRemoval">
+              <template #icon><ExportOutlined /></template>{{ $t('ecomFba.health.createRemoval') }} ({{ selectedKeys.length }})
+            </a-button>
+          </a-tooltip>
+        </template>
         <a-button @click="rateRef.open()"><template #icon><SettingOutlined /></template>{{ $t('ecomFba.health.rates') }}</a-button>
         <a-tooltip :title="$t('ecomFba.health.tip')"><InfoCircleOutlined class="tip-icon" /></a-tooltip>
       </TableToolbar>
@@ -103,7 +111,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { CalculatorOutlined, CloudSyncOutlined, ExportOutlined, InfoCircleOutlined, SettingOutlined, UploadOutlined } from '@ant-design/icons-vue'
+import { CalculatorOutlined, CloudSyncOutlined, DownOutlined, ExportOutlined, InfoCircleOutlined, SettingOutlined, UploadOutlined } from '@ant-design/icons-vue'
 import DictTag from '@/components/DictTag.vue'
 import SearchForm from '@/components/SearchForm.vue'
 import TableToolbar from '@/components/TableToolbar.vue'
@@ -171,8 +179,8 @@ const columns = [
   { title: t('ecomFba.health.sizeCategory'), key: 'sizeCategory', dataIndex: 'sizeCategory', width: 90, dict: 'ecom_fba_size_category' },
   f('monthlyFee', t('ecomFba.health.monthlyFee')),
   f('agedFee', t('ecomFba.health.agedFee')),
-  { title: t('ecomFba.health.advice'), key: 'advice', dataIndex: 'advice', width: 110, dict: 'ecom_fba_advice', fixed: 'right' },
-  { title: t('ecomFba.health.snapshotDate'), dataIndex: 'snapshotDate', width: 110 }
+  { title: t('ecomFba.health.snapshotDate'), dataIndex: 'snapshotDate', width: 110 },
+  { title: t('ecomFba.health.advice'), key: 'advice', dataIndex: 'advice', width: 110, dict: 'ecom_fba_advice', fixed: 'right' }
 ]
 const { checked, visibleColumns, scrollX } = useColumns(columns, 'ecom-fba-health')
 const showSearch = ref(true)
@@ -191,6 +199,19 @@ onMounted(refresh)
 function resetQuery() {
   Object.assign(query, emptyQuery())
   refresh()
+}
+
+/** 点击汇总卡切换只看超龄 / 冗余 */
+function toggleFilter(kind) {
+  if (kind === 'aged') query.agedOnly = !query.agedOnly
+  else query.excessOnly = !query.excessOnly
+  search()
+}
+
+function onUpdateMenu({ key }) {
+  if (key === 'sync') sync(query.storeId)
+  else if (key === 'rebuild') rebuild(query.storeId)
+  else uploadRef.value.open(query.storeId)
 }
 
 const uploadRef = ref()

@@ -12,7 +12,8 @@
     </a-spin>
     <template #footer>
       <div class="drawer-footer">
-        <span class="shortcut-hint">{{ $t('components.formDrawer.shortcut', { key: shortcut }) }}</span>
+        <span v-if="!readonly" class="shortcut-hint">{{ $t('components.formDrawer.shortcut', { key: shortcut }) }}</span>
+        <span v-else class="shortcut-hint" />
         <a-button @click="state.close">{{ $t('common.action.cancel') }}</a-button>
         <!-- actions：替换「保存」按钮（如「保存草稿」「审核」），插槽参数 saving、loading -->
         <slot name="actions" :saving="state.saving" :loading="state.loading">
@@ -31,14 +32,16 @@ import SubPage from './SubPage.vue'
 
 /**
  * 新增 / 编辑抽屉，drawer 传入 useFormDrawer() 的返回值；表单内容放在默认插槽。
- * 复杂表单（明细行多、字段多）加 page，以子页的形式占满内容区显示；底部按钮可用 actions 插槽替换「保存」
+ * 复杂表单（明细行多、字段多）加 page，以子页的形式占满内容区显示；底部按钮可用 actions 插槽替换「保存」；
+ * 只读查看（actions 插槽中不显示保存按钮）时加 readonly，不显示快捷保存的提示
  */
 const props = defineProps({
   drawer: { type: Object, required: true },
   createTitle: { type: String, default: () => t('common.action.add') },
   editTitle: { type: String, default: () => t('common.action.edit') },
   width: { type: String, default: 'min(640px, 100vw)' },
-  page: Boolean
+  page: Boolean,
+  readonly: Boolean
 })
 
 // 解包 useFormDrawer 返回的 ref，模板中直接使用

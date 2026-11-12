@@ -44,7 +44,22 @@
             <div class="stat-value">{{ num(counts[s.level]) }}</div>
           </div>
         </div>
-        <span class="sub-text stats-tip">{{ isPlatform ? $t('ecomPurchase.replenish.tipPlatform') : $t('ecomPurchase.replenish.tipPurchase') }}</span>
+        <div class="stat stat-total">
+          <ShoppingCartOutlined class="stat-icon" />
+          <div class="stat-body">
+            <div class="stat-label">{{ isPlatform ? $t('ecomUiOps.replenish.totalShip') : $t('ecomUiOps.replenish.totalPurchase') }}</div>
+            <div class="stat-value">
+              {{ num(suggestTotal.qty) }}
+              <span class="stat-sub">{{ $t('ecomUiOps.replenish.totalSku', { n: suggestTotal.count }) }}</span>
+            </div>
+          </div>
+        </div>
+        <a-popover placement="bottomRight" overlay-class-name="replenish-tip">
+          <template #content>
+            <div class="tip-body">{{ isPlatform ? $t('ecomPurchase.replenish.tipPlatform') : $t('ecomPurchase.replenish.tipPurchase') }}</div>
+          </template>
+          <a class="stats-tip"><QuestionCircleOutlined /> {{ $t('ecomUiOps.replenish.howCalc') }}</a>
+        </a-popover>
       </div>
 
       <PlatformTable
@@ -93,7 +108,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { message } from 'ant-design-vue'
-import { AlertOutlined, CheckCircleOutlined, SendOutlined, ShoppingCartOutlined, WarningOutlined } from '@ant-design/icons-vue'
+import { AlertOutlined, CheckCircleOutlined, QuestionCircleOutlined, SendOutlined, ShoppingCartOutlined, WarningOutlined } from '@ant-design/icons-vue'
 import SearchForm from '@/components/SearchForm.vue'
 import StoreSelect from '@/components/ecom/StoreSelect.vue'
 import { purchaseSuggestions, replenishRows, shipmentPlanFromReplenish } from '@/api/ecom/replenish'
@@ -173,7 +188,22 @@ const counts = computed(() => {
   all.value.forEach((r) => (c[r.level] = (c[r.level] || 0) + 1))
   return c
 })
-const rows = computed(() => (query.level ? all.value.filter((r) => r.level === query.level) : all.value))
+/** 默认排序：紧急 → 预警 → 充足，同级按可售天数从少到多（没有销量的排在最后）；表头排序可改 */
+const LEVEL_ORDER = { [ReplenishLevel.URGENT]: 0, [ReplenishLevel.WARN]: 1, [ReplenishLevel.OK]: 2 }
+const coverOf = (r) => {
+  const v = isPlatform.value ? r.coverDays : r.localCoverDays
+  return v == null ? Infinity : Number(v)
+}
+const rows = computed(() =>
+  (query.level ? all.value.filter((r) => r.level === query.level) : all.value)
+    .slice()
+    .sort((a, b) => (LEVEL_ORDER[a.level] ?? 9) - (LEVEL_ORDER[b.level] ?? 9) || coverOf(a) - coverOf(b))
+)
+/** 建议量合计（当前筛选，不含不补货的） */
+const suggestTotal = computed(() => {
+  const list = rows.value.filter((r) => !r.disabled && Number(r.suggestQty) > 0)
+  return { count: list.length, qty: list.reduce((sum, r) => sum + Number(r.suggestQty), 0) }
+})
 const toggleLevel = (level) => (query.level = query.level === level ? undefined : level)
 
 // ---------------------------------------------------------------- 补货设置、在途、生成计划
@@ -289,24 +319,44 @@ async function toShipment(selected) {
 .stat-ok .stat-icon {
   color: #52c41a;
 }
+.stat-total {
+  border-left-color: var(--ant-color-primary, #1677ff);
+  cursor: default;
+}
+.stat-total:hover {
+  box-shadow: none;
+}
+.stat-total .stat-icon {
+  color: var(--ant-color-primary, #1677ff);
+}
+.stat-sub {
+  margin-left: 4px;
+  color: var(--app-text-3);
+  font-size: 12px;
+  font-weight: normal;
+}
 .stats-tip {
-  flex: 1;
-  min-width: 240px;
+  margin-left: auto;
+  font-size: 13px;
 }
 </style>
 
 <style>
-/* 紧急行高亮 */
+.replenish-tip .tip-body {
+  max-width: 460px;
+  line-height: 1.7;
+}
+/* 紧急行淡红底色 */
 .ecom-replenish .ant-table-tbody > tr.row-urgent > td {
-  background: #fff2f0;
+  background: #fff8f7;
 }
 .ecom-replenish .ant-table-tbody > tr.row-urgent:hover > td {
-  background: #ffe7e3;
+  background: #fff1ef;
 }
 html[data-theme='dark'] .ecom-replenish .ant-table-tbody > tr.row-urgent > td {
-  background: #2c1618;
+  background: #221819;
 }
 html[data-theme='dark'] .ecom-replenish .ant-table-tbody > tr.row-urgent:hover > td {
-  background: #3a1d20;
+  background: #2c1c1e;
 }
 </style>

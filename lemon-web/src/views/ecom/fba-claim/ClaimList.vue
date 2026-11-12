@@ -4,7 +4,11 @@
       <a-select v-model:value="query.status" allow-clear :placeholder="$t('common.field.status')" :options="statusOptions" class="w140" @change="search" />
       <a-select v-model:value="query.claimType" allow-clear :placeholder="$t('ecomFba.claim.type')" :options="toOptions(dict.ecom_fba_claim_type)" class="w160" @change="search" />
       <a-input-search v-model:value="query.keyword" :placeholder="$t('ecomFba.claim.keywordPh')" allow-clear class="w260" @search="search" />
-      <a-checkbox v-model:checked="query.expiring" @change="search">{{ $t('ecomFba.claim.expiringDays', { n: 7 }) }}</a-checkbox>
+      <a-radio-group v-model:value="query.expiringDays" button-style="solid" @change="search">
+        <a-radio-button :value="0">{{ $t('ecomFba.claim.allDeadline') }}</a-radio-button>
+        <a-radio-button :value="7">{{ $t('ecomFba.claim.expiringDays', { n: 7 }) }}</a-radio-button>
+        <a-radio-button :value="30">{{ $t('ecomFba.claim.expiringDays', { n: 30 }) }}</a-radio-button>
+      </a-radio-group>
     </div>
     <TableToolbar :exporter="exportAll" v-model:size="size" v-model:checked="checked" :columns="columns" @refresh="load">
       <a-button v-perm="'ecom:fbaClaim:add'" @click="createRef.open(storeId)"><template #icon><PlusOutlined /></template>{{ $t('ecomFba.claim.add') }}</a-button>
@@ -18,6 +22,7 @@
       :loading="loading"
       :pagination="pagination"
       :scroll="{ x: scrollX, y: '100%' }"
+      :row-class-name="rowClass"
       @change="onTableChange"
     >
       <template #bodyCell="{ column, record }">
@@ -29,15 +34,17 @@
         </template>
         <template v-else-if="column.key === 'qty'">{{ n0(record.qty) }}</template>
         <template v-else-if="column.key === 'amount'">
-          <div>{{ money(record.estAmount) }} <span class="sub-text">{{ record.currency }}</span></div>
+          <div :class="{ 'amount-open': open(record) }">{{ money(record.estAmount) }} <span class="sub-text">{{ record.currency }}</span></div>
           <div class="sub-text">{{ money(record.unitValue) }} × {{ n0(record.qty) }}</div>
         </template>
         <template v-else-if="column.key === 'deadline'">
           <template v-if="record.deadline">
             <div>{{ record.deadline }}</div>
-            <div v-if="open(record) && record.daysLeft != null" :class="record.daysLeft < 0 ? 'expired' : record.daysLeft <= 7 ? 'soon' : 'sub-text'">
+            <a-tag v-if="open(record) && record.daysLeft != null && record.daysLeft <= 14" :color="record.daysLeft <= 7 ? 'red' : 'orange'" class="deadline-tag">
+              <ClockCircleOutlined />
               {{ record.daysLeft < 0 ? $t('ecomFba.claim.expired', { n: -record.daysLeft }) : $t('ecomFba.claim.daysLeft', { n: record.daysLeft }) }}
-            </div>
+            </a-tag>
+            <div v-else-if="open(record) && record.daysLeft != null" class="sub-text">{{ $t('ecomFba.claim.daysLeft', { n: record.daysLeft }) }}</div>
           </template>
           <span v-else class="sub-text">-</span>
         </template>
@@ -60,7 +67,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { InfoCircleOutlined, PlusOutlined } from '@ant-design/icons-vue'
+import { ClockCircleOutlined, InfoCircleOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import DictTag from '@/components/DictTag.vue'
 import TableToolbar from '@/components/TableToolbar.vue'
 import TableActions from '@/components/common/TableActions.vue'
@@ -139,9 +146,9 @@ const columns = [
   actionColumn(2, [t('ecomFba.claim.edit')])
 ]
 const { checked, visibleColumns, scrollX } = useColumns(columns, 'ecom-fba-claim')
-const query = reactive({ status: undefined, claimType: undefined, keyword: undefined, expiring: false })
+const query = reactive({ status: undefined, claimType: undefined, keyword: undefined, expiringDays: 0 })
 const { list, loading, size, pagination, load, search, onTableChange, exportAll } = useTable(pageClaim, query, {
-  params: (p) => ({ storeId: props.storeId || undefined, status: p.status, claimType: p.claimType, keyword: p.keyword, expiringDays: p.expiring ? 7 : undefined })
+  params: (p) => ({ storeId: props.storeId || undefined, status: p.status, claimType: p.claimType, keyword: p.keyword, expiringDays: p.expiringDays || undefined })
 })
 onMounted(load)
 watch(() => props.storeId, () => search())
@@ -164,7 +171,16 @@ const rowActions = (record) => [
   }
 ]
 
-defineExpose({ reload: () => load() })
+/** 未处理且 7 天内到期（或已过期）的行高亮 */
+const rowClass = (r) => (open(r) && r.daysLeft != null && r.daysLeft <= 7 ? 'row-urgent' : '')
+
+/** 汇总卡点击：筛选 n 天内到期 */
+function filterExpiring(days) {
+  query.expiringDays = days
+  search()
+}
+
+defineExpose({ reload: () => load(), filterExpiring })
 </script>
 
 <style scoped>
@@ -194,12 +210,14 @@ defineExpose({ reload: () => load() })
   color: var(--app-text-3);
   font-size: 12px;
 }
-.expired {
-  color: var(--status-critical, #cf1322);
+.amount-open {
+  font-weight: 600;
+}
+.deadline-tag {
+  margin: 2px 0 0;
   font-size: 12px;
 }
-.soon {
-  color: #d46b08;
-  font-size: 12px;
+:deep(.row-urgent > td) {
+  background: rgba(245, 34, 45, 0.035);
 }
 </style>

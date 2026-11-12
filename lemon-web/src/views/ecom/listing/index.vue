@@ -38,12 +38,17 @@
         <a-button v-perm="'ecom:listing:edit'" @click="styleRef.open({ storeId: query.storeId ?? undefined })">
           <template #icon><ApartmentOutlined /></template>{{ $t('ecomCatalog.style.title') }}
         </a-button>
-        <a-button v-if="view === 'sku'" :disabled="!selectedKeys.length" @click="openFnsku">
-          <template #icon><BarcodeOutlined /></template>{{ $t('ecomCatalog.fnsku.print') }}
-        </a-button>
-        <a-button v-if="view === 'sku'" v-perm="'ecom:priceChange:add'" :disabled="!selectedKeys.length" @click="openBatchPrice">
-          <template #icon><DollarOutlined /></template>{{ $t('ecomPublish.batch.button') }}
-        </a-button>
+        <template v-if="view === 'sku' && selectedKeys.length">
+          <a-divider type="vertical" />
+          <span class="selected-hint">{{ $t('common.table.selected', { n: selectedKeys.length }) }}</span>
+          <a-button @click="openFnsku">
+            <template #icon><BarcodeOutlined /></template>{{ $t('ecomCatalog.fnsku.print') }}
+          </a-button>
+          <a-button v-perm="'ecom:priceChange:add'" @click="openBatchPrice">
+            <template #icon><DollarOutlined /></template>{{ $t('ecomPublish.batch.button') }}
+          </a-button>
+          <a-button type="link" @click="selectedKeys = []">{{ $t('common.action.cancel') }}</a-button>
+        </template>
       </TableToolbar>
 
       <SpuView v-if="view === 'spu'" ref="spuRef" :size="size" @edit="(r) => formRef.openEdit(r)"
@@ -62,36 +67,66 @@
         @change="onTableChange"
       >
         <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'store'">
-            <div>{{ record.storeName || '-' }}</div>
-            <div v-if="record.platform" class="sub-text"><DictTag type="ecom_platform" :value="record.platform" /></div>
+          <template v-if="column.key === 'title'">
+            <div class="product">
+              <a-image v-if="record.imageUrl" :src="record.imageUrl" :width="48" :height="48" class="thumb" />
+              <div v-else class="thumb empty"><PictureOutlined /></div>
+              <div class="product-text">
+                <a-tooltip :title="record.title" placement="topLeft" :mouse-enter-delay="0.4">
+                  <a class="title-clamp" @click="openRow(record)">{{ record.title || record.sellerSku }}</a>
+                </a-tooltip>
+                <div v-if="record.variant" class="sub-text ellipsis" :title="record.variant">{{ record.variant }}</div>
+              </div>
+            </div>
           </template>
-          <template v-else-if="column.key === 'title'">
-            <div class="cell-ellipsis" :title="record.title">{{ record.title || '-' }}</div>
-            <div v-if="record.variant" class="sub-text">{{ record.variant }}</div>
+          <template v-else-if="column.key === 'sku'">
+            <div class="mono ellipsis" :title="record.sellerSku">{{ record.sellerSku }}</div>
+            <div class="sub-text ellipsis" :title="[record.platformItemId, record.fnsku].filter(Boolean).join(' · ')">
+              <a v-if="record.url && record.platformItemId" :href="record.url" target="_blank" rel="noopener" :title="$t('ecom.listing.openOnPlatform')">
+                {{ record.platformItemId }} <ExportOutlined class="ext-icon" />
+              </a>
+              <span v-else>{{ record.platformItemId || '-' }}</span>
+              <template v-if="record.fnsku"> · {{ record.fnsku }}</template>
+            </div>
+          </template>
+          <template v-else-if="column.key === 'store'">
+            <div class="ellipsis" :title="record.storeName">{{ record.storeName || '-' }}</div>
+            <DictTag v-if="record.platform" type="ecom_platform" :value="record.platform" />
           </template>
           <template v-else-if="column.key === 'price'">
-            <span v-if="record.price != null">{{ record.currency || '' }} {{ price(record.price) }}</span>
+            <template v-if="record.price != null">
+              <span class="currency">{{ record.currency || '' }}</span> <span class="amount">{{ price(record.price) }}</span>
+            </template>
             <span v-else>-</span>
+          </template>
+          <template v-else-if="column.key === 'platformQty'">
+            <span v-if="record.platformQty != null" :class="{ 'zero-stock': Number(record.platformQty) <= 0 }">{{ qty(record.platformQty, 0) }}</span>
+            <span v-else class="sub-text">-</span>
+          </template>
+          <template v-else-if="column.key === 'sales30'">
+            <span v-if="record.sales30 != null" :class="{ 'sub-text': !Number(record.sales30) }">{{ qty(record.sales30, 0) }}</span>
+            <span v-else class="sub-text">-</span>
           </template>
           <template v-else-if="column.key === 'fulfillment'">
             <DictTag type="ecom_fulfillment" :value="record.fulfillment" />
           </template>
           <template v-else-if="column.key === 'status'">
             <DictTag type="ecom_listing_status" :value="record.status" />
-            <a-tooltip v-if="record.stockLocked === 1" :title="$t('ecomPublish.batch.lockedTip')">
-              <a-tag color="orange" :bordered="false" class="lock-tag">{{ $t('ecomPublish.batch.locked') }}</a-tag>
+            <div v-if="record.stockLocked === 1" class="lock-line">
+              <a-tooltip :title="$t('ecomPublish.batch.lockedTip')">
+                <a-tag color="orange" :bordered="false" class="lock-tag"><LockOutlined /> {{ $t('ecomPublish.batch.locked') }}</a-tag>
+              </a-tooltip>
               <a v-if="userStore.hasPerm('ecom:priceChange:add')" @click="unlockStock(record)">{{ $t('ecomPublish.batch.unlock') }}</a>
-            </a-tooltip>
+            </div>
           </template>
           <template v-else-if="column.key === 'material'">
             <template v-if="record.composeType === ListingComposeType.BUNDLE && record.bundleItems?.length">
               <a-tag color="purple" :bordered="false">{{ $t('ecomCatalog.listing.bundle') }}</a-tag>
-              <div class="sub-text">{{ bundleText(record) }}</div>
+              <div class="sub-text ellipsis" :title="bundleText(record)">{{ bundleText(record) }}</div>
             </template>
             <template v-else-if="record.materialId">
-              <div>{{ record.materialCode }}</div>
-              <div class="sub-text">{{ record.materialName }}{{ record.materialSpec ? `（${record.materialSpec}）` : '' }}</div>
+              <div class="ellipsis" :title="record.materialCode">{{ record.materialCode }}</div>
+              <div class="sub-text ellipsis" :title="materialLabel(record)">{{ record.materialName }}{{ record.materialSpec ? `（${record.materialSpec}）` : '' }}</div>
             </template>
             <template v-else>
               <a-tag color="warning" :bordered="false"><WarningOutlined /> {{ $t('ecom.common.unmapped') }}</a-tag>
@@ -125,7 +160,7 @@
 <script setup>
 import { nextTick, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ApartmentOutlined, BarcodeOutlined, DollarOutlined, ImportOutlined, LinkOutlined, PlusOutlined, WarningOutlined } from '@ant-design/icons-vue'
+import { ApartmentOutlined, BarcodeOutlined, DollarOutlined, ExportOutlined, ImportOutlined, LinkOutlined, LockOutlined, PictureOutlined, PlusOutlined, WarningOutlined } from '@ant-design/icons-vue'
 import DictTag from '@/components/DictTag.vue'
 import ImportModal from '@/components/ImportModal.vue'
 import SearchForm from '@/components/SearchForm.vue'
@@ -141,7 +176,7 @@ import StyleMapModal from './StyleMapModal.vue'
 import FnskuLabelModal from '@/components/ecom/FnskuLabelModal.vue'
 import BatchPriceModal from './BatchPriceModal.vue'
 import { lockListingStock } from '@/api/ecom/publish'
-import { bundleText } from './listing'
+import { bundleText, materialLabel } from './listing'
 import { ListingComposeType } from '@/constants/enums'
 import { deleteListing, importListing, pageListing } from '@/api/ecom/listing'
 import { getMaterial } from '@/api/wms/material'
@@ -161,14 +196,34 @@ const dict = useDict('ecom_platform', 'ecom_fulfillment', 'ecom_listing_status',
 const paired = (r) => (r.composeType === ListingComposeType.BUNDLE ? !!r.bundleItems?.length : !!r.materialId)
 
 const columns = [
-  { title: t('ecom.common.store'), key: 'store', dataIndex: 'storeName', width: 170 },
-  { title: t('ecom.common.sellerSku'), dataIndex: 'sellerSku', width: 160 },
-  { title: t('ecom.common.platformItemId'), dataIndex: 'platformItemId', width: 140 },
-  { title: 'FNSKU', dataIndex: 'fnsku', width: 120 },
-  { title: t('ecom.listing.title'), key: 'title', dataIndex: 'title', width: 280 },
+  {
+    title: t('ecom.listing.product'),
+    key: 'title',
+    dataIndex: 'title',
+    width: 320,
+    fixed: 'left',
+    exportColumns: [
+      { title: t('ecom.listing.title'), dataIndex: 'title' },
+      { title: t('ecom.listing.variant'), dataIndex: 'variant' }
+    ]
+  },
+  {
+    title: t('ecom.listing.skuAsin'),
+    key: 'sku',
+    dataIndex: 'sellerSku',
+    width: 190,
+    exportColumns: [
+      { title: t('ecom.common.sellerSku'), dataIndex: 'sellerSku' },
+      { title: t('ecom.common.platformItemId'), dataIndex: 'platformItemId' },
+      { title: 'FNSKU', dataIndex: 'fnsku' }
+    ]
+  },
+  { title: t('ecom.common.store'), key: 'store', dataIndex: 'storeName', width: 150 },
   { title: t('ecom.listing.price'), key: 'price', dataIndex: 'price', width: 120, align: 'right' },
+  { title: t('ecom.listing.stock'), key: 'platformQty', dataIndex: 'platformQty', width: 100, align: 'right' },
+  { title: t('ecom.listing.sales30'), key: 'sales30', dataIndex: 'sales30', width: 110, align: 'right' },
+  { title: t('common.field.status'), key: 'status', dataIndex: 'status', width: 110, dict: 'ecom_listing_status' },
   { title: t('ecom.listing.fulfillment'), key: 'fulfillment', dataIndex: 'fulfillment', width: 110, dict: 'ecom_fulfillment' },
-  { title: t('common.field.status'), key: 'status', dataIndex: 'status', width: 100, dict: 'ecom_listing_status' },
   {
     title: t('ecom.common.material'),
     key: 'material',
@@ -179,7 +234,7 @@ const columns = [
     ]
   },
   { title: t('ecom.common.packQty'), key: 'packQty', dataIndex: 'packQty', width: 90, align: 'right' },
-  { title: t('common.field.remark'), dataIndex: 'remark', width: 160, ellipsis: true },
+  { title: t('common.field.remark'), dataIndex: 'remark', width: 160, ellipsis: { showTitle: true } },
   actionColumn(3)
 ]
 const { checked, visibleColumns, scrollX } = useColumns(columns, 'ecom-listing')
@@ -239,6 +294,7 @@ onMounted(async () => {
   formRef.value?.openCreate({ materialId, materialLabel: `${m.code} ${m.name}`, title: m.name, imageUrl: m.imageUrl || undefined })
 })
 const mapRef = ref()
+const openRow = (record) => (userStore.hasPerm('ecom:listing:edit') ? formRef.value.openEdit(record) : record.url && window.open(record.url, '_blank', 'noopener'))
 const remove = useAction(deleteListing, { successKey: 'common.msg.deleteSuccess', reload: () => reload() })
 
 const rowActions = (record) => [
@@ -271,10 +327,73 @@ const importSample = { storeCode: 'US01', sellerSku: 'SKU-0001', platformItemId:
   color: var(--app-text-3);
   font-size: 12px;
 }
-.cell-ellipsis {
+.ellipsis {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.product {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.product-text {
+  flex: 1;
+  min-width: 0;
+}
+.product :deep(.thumb),
+.thumb {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid var(--app-border);
+}
+.product :deep(.ant-image) {
+  flex: none;
+}
+.thumb.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--app-text-3);
+  background: var(--app-bg);
+}
+.title-clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+.ext-icon {
+  font-size: 11px;
+}
+.currency {
+  margin-right: 4px;
+  color: var(--app-text-3);
+  font-size: 12px;
+}
+.amount {
+  font-weight: 500;
+}
+.zero-stock {
+  color: #cf1322;
+}
+.lock-line {
+  margin-top: 4px;
+  white-space: nowrap;
+}
+.selected-hint {
+  color: var(--app-text-2);
 }
 </style>
 

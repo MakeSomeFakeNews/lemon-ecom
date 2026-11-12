@@ -12,6 +12,16 @@
         ORDER BY snapshot_date
     </select>
 
+    <select id="selectTrends" resultType="com.lemon.erp.modules.ecom.oper.entity.EcomMonitorSnapshot">
+        SELECT p.monitor_id, p.snapshot_date, p.rank_main, p.rank_sub, p.rating, p.review_count
+        FROM ecom_monitor_snapshot p
+        JOIN ecom_monitor m ON m.id = p.monitor_id
+        WHERE p.monitor_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+          AND p.snapshot_date &gt;= #{begin} AND p.snapshot_date &lt;= #{end}
+        ORDER BY p.monitor_id, p.snapshot_date
+    </select>
+
     <insert id="insertBatch">
         INSERT INTO ecom_monitor_snapshot (monitor_id, snapshot_date, category, rank_main, sub_category, rank_sub, rating, review_count,
                                            seller_count, price, title, main_image, bullets, listing_status, source, create_time, update_time)

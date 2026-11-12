@@ -1,7 +1,7 @@
 <template>
   <div class="filters">
-    <a-range-picker v-model:value="range" value-format="YYYY-MM-DD" :allow-clear="false" :presets="presets" />
-    <StoreSelect v-model:value="storeId" allow-clear :placeholder="$t('ecomAnalytics.common.allStores')" class="filter" />
+    <a-range-picker v-model:value="range" value-format="YYYY-MM-DD" :allow-clear="false" :presets="presets" @change="load" />
+    <StoreSelect v-model:value="storeId" allow-clear :placeholder="$t('ecomAnalytics.common.allStores')" class="filter" @update:value="load" />
     <a-input v-model:value="keyword" allow-clear :placeholder="$t('ecomAnalytics.common.keywordPh')" class="filter" @press-enter="load" />
     <a-checkbox v-model:checked="onlyReturned">{{ $t('ecomAnalytics.product.onlyReturned') }}</a-checkbox>
     <a-button type="primary" :loading="loading" @click="load">

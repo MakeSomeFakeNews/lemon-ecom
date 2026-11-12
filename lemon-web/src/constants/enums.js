@@ -770,6 +770,35 @@ export const EcomOpsTargetType = Object.freeze({
   USER: 'USER', // 运营人员
 })
 
+/** com.lemon.erp.modules.ecom.model.EcomOrderLogAction */
+export const EcomOrderLogAction = Object.freeze({
+  CREATE: 'CREATE', // 订单写入系统
+  PLATFORM_STATUS: 'PLATFORM_STATUS', // 平台状态变化
+  RULE: 'RULE', // 命中审单规则
+  TAG: 'TAG', // 打标签
+  UNTAG: 'UNTAG', // 去标签
+  AUDIT: 'AUDIT', // 审核通过
+  EXCEPTION: 'EXCEPTION', // 异常
+  OUT_OF_STOCK: 'OUT_OF_STOCK', // 缺货
+  RECHECK: 'RECHECK', // 重新检查库存
+  REMATCH: 'REMATCH', // 重新匹配 SKU
+  HOLD: 'HOLD', // 挂起
+  UNHOLD: 'UNHOLD', // 取消挂起
+  EDIT: 'EDIT', // 修改订单信息 / 收件地址
+  ASSIGN: 'ASSIGN', // 指定发货仓 / 物流渠道
+  PACKAGE: 'PACKAGE', // 包裹变化
+  LABEL: 'LABEL', // 申请运单号 / 填写运单号
+  PRINT: 'PRINT', // 打印面单
+  OUTBOUND: 'OUTBOUND', // 出库
+  SHIP: 'SHIP', // 发货
+  SHIP_CONFIRM: 'SHIP_CONFIRM', // 回传平台发货结果
+  CANCEL: 'CANCEL', // 取消订单
+  RETURN: 'RETURN', // 退货退款
+  REFUND: 'REFUND', // 退款
+  RESEND: 'RESEND', // 补发
+  NOTE: 'NOTE', // 内部备注
+})
+
 /** com.lemon.erp.modules.ecom.model.EcomOrderStatus（字典 ecom_order_status） */
 export const EcomOrderStatus = Object.freeze({
   PENDING: 'PENDING', // 待付款

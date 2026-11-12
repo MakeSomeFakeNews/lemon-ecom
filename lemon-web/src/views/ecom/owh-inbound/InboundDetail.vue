@@ -1,13 +1,19 @@
 <template>
   <SubPage :open="open" :title="detail ? $t('ecomOwh.inbound.detailTitle', { no: detail.inboundNo }) : ''" @close="open = false">
-    <template v-if="detail" #extra>
+    <template v-if="detail" #title>
+      <span class="doc-title">{{ $t('ecomOwh.inbound.detailTitle', { no: detail.inboundNo }) }}</span>
       <DictTag type="ecom_owh_inbound_status" :value="detail.status" />
       <a-tag v-if="detail.erpReceived === 1" color="green" :bordered="false">{{ $t('ecomOwh.inbound.erpReceived') }}</a-tag>
+    </template>
+    <template v-if="detail && actions.length" #extra>
+      <OwhDocActions :actions="actions" />
     </template>
 
     <a-spin :spinning="loading">
       <template v-if="detail">
+        <OwhFlowSteps :flow="inboundFlow(detail)" />
         <a-alert v-if="detail.errorMsg" type="warning" show-icon class="block" :message="$t('ecomOwh.common.errorMsg')" :description="detail.errorMsg" />
+        <div class="section-title">{{ $t('ecomOwh.section.basic') }}</div>
         <a-descriptions :column="{ xs: 1, sm: 2, lg: 3 }" size="small" class="block">
           <a-descriptions-item :label="$t('ecomOwh.inbound.source')">
             <DictTag type="ecom_owh_inbound_source" :value="detail.sourceType" /> {{ detail.sourceNo }}
@@ -16,14 +22,29 @@
           <a-descriptions-item :label="$t('ecomOwh.common.warehouse')">{{ detail.warehouseName }}（{{ detail.owhCode }}）</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOwh.inbound.owhOrderNo')">{{ detail.owhOrderNo || '-' }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOwh.inbound.owhStatus')">{{ detail.owhStatus || '-' }}</a-descriptions-item>
-          <a-descriptions-item :label="$t('ecomOwh.inbound.qtyReceived')">{{ qty(detail.receivedQty) }} / {{ qty(detail.totalQty) }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomOwh.inbound.qtyReceived')">
+            <div class="progress-cell">
+              <span>{{ qty(detail.receivedQty) }} / {{ qty(detail.totalQty) }}</span>
+              <a-progress :percent="receivedPercent" size="small" class="progress" />
+            </div>
+          </a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOwh.inbound.pushTime')">{{ detail.pushTime || '-' }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOwh.inbound.receiveTime')">{{ detail.receiveTime || '-' }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOwh.inbound.syncTime')">{{ detail.syncTime || '-' }}</a-descriptions-item>
         </a-descriptions>
 
         <div class="section-title">{{ $t('ecomOwh.inbound.firstLeg') }}</div>
-        <a-row :gutter="16" class="block">
+        <a-descriptions v-if="!editing" :column="{ xs: 1, sm: 2, lg: 3 }" size="small" class="block">
+          <a-descriptions-item :label="$t('ecomOwh.inbound.transportMode')">
+            <DictTag v-if="detail.transportMode" type="ecom_transport_mode" :value="detail.transportMode" />
+            <span v-else>-</span>
+          </a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomOwh.inbound.carrier')">{{ detail.carrier || '-' }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomOwh.inbound.trackingNo')">{{ detail.trackingNo || '-' }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('ecomOwh.inbound.etaDate')">{{ detail.etaDate || '-' }}</a-descriptions-item>
+          <a-descriptions-item :label="$t('common.field.remark')" :span="2">{{ detail.remark || '-' }}</a-descriptions-item>
+        </a-descriptions>
+        <a-row v-else :gutter="16" class="block">
           <a-col :xs="24" :sm="12" :lg="6">
             <div class="label">{{ $t('ecomOwh.inbound.transportMode') }}</div>
             <a-select v-if="editing" v-model:value="form.transportMode" allow-clear class="full" :options="optionsWithCurrent(dict.ecom_transport_mode, form.transportMode)" />
@@ -99,12 +120,6 @@
         <OwhDiffList :source-type="OwhDiffSource.INBOUND" :source-id="detail.id" :refresh-key="detail.updateTime" />
       </template>
     </a-spin>
-
-    <template v-if="detail && actions.length" #footer>
-      <div class="drawer-footer">
-        <a-button v-for="a in actions" :key="a.key" :type="a.primary ? 'primary' : 'default'" :danger="a.danger" :loading="a.loading" @click="a.run">{{ a.label }}</a-button>
-      </div>
-    </template>
   </SubPage>
 </template>
 
@@ -112,17 +127,19 @@
 import { computed, ref } from 'vue'
 import { message } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons-vue'
+import { CloseCircleOutlined, CloudUploadOutlined, DeleteOutlined, EditOutlined, PlusOutlined, SaveOutlined, StopOutlined, SyncOutlined } from '@ant-design/icons-vue'
 import SubPage from '@/components/SubPage.vue'
 import DictTag from '@/components/DictTag.vue'
 import { getOwhInbound, updateOwhInbound } from '@/api/ecom/owh'
 import OwhDiffList from '@/components/ecom/owh/OwhDiffList.vue'
+import OwhDocActions from '@/components/ecom/owh/OwhDocActions.vue'
+import OwhFlowSteps from '@/components/ecom/owh/OwhFlowSteps.vue'
 import { OwhDiffSource } from '@/constants/enums'
 import { useDict } from '@/composables/useDict'
 import { useUserStore } from '@/store/user'
 import { optionsWithCurrent } from '@/utils/dict'
 import { qty } from '@/utils/number'
-import { canSyncInbound, isInboundDraft, isInboundPushedOnly, useOwhCaps } from '../owh-outbound/owh'
+import { canSyncInbound, inboundFlow, isInboundDraft, isInboundPushedOnly, useOwhCaps } from '../owh-outbound/owh'
 
 /**
  * 海外仓入库单详情：来源、服务商单号与收货进度、头程信息、箱子（箱唛、尺寸、毛重）与装箱明细（箱号 × SKU × 数量，同步收货数量）。
@@ -159,6 +176,10 @@ const lineColumns = computed(() => [
   { title: t('ecomOwh.inbound.receivedQty'), key: 'receivedQty', width: 110, align: 'right' },
   ...(editing.value ? [{ title: '', key: 'action', width: 50 }] : [])
 ])
+const receivedPercent = computed(() => {
+  const d = detail.value
+  return d && Number(d.totalQty) > 0 ? Math.min(100, Math.round((Number(d.receivedQty) * 100) / Number(d.totalQty))) : 0
+})
 const materialOptions = computed(() => {
   const seen = new Map()
   for (const it of detail.value?.items || []) if (!seen.has(it.materialId)) seen.set(it.materialId, `${it.sku} ${it.materialName || ''}`.trim())
@@ -242,18 +263,18 @@ const actions = computed(() => {
   const out = []
   if (editing.value) {
     out.push({ key: 'cancelEdit', label: t('common.action.cancel'), run: () => (editing.value = false) })
-    out.push({ key: 'save', label: t('common.action.save'), primary: true, loading: saving.value, run: save })
+    out.push({ key: 'save', label: t('common.action.save'), icon: SaveOutlined, primary: true, loading: saving.value, run: save })
     return out
   }
-  if (isInboundDraft(d) && userStore.hasPerm('ecom:owhInbound:add')) out.push({ key: 'edit', label: t('ecomOwh.inbound.editPacking'), run: startEdit })
-  if (isInboundDraft(d) && userStore.hasPerm('ecom:owhInbound:cancel')) out.push({ key: 'cancel', label: t('ecomOwh.inbound.cancel'), danger: true, run: () => emit('cancel', d) })
+  if (isInboundDraft(d) && userStore.hasPerm('ecom:owhInbound:add')) out.push({ key: 'edit', label: t('ecomOwh.inbound.editPacking'), icon: EditOutlined, run: startEdit })
+  if (isInboundDraft(d) && userStore.hasPerm('ecom:owhInbound:cancel')) out.push({ key: 'cancel', label: t('ecomOwh.inbound.cancel'), icon: CloseCircleOutlined, danger: true, run: () => emit('cancel', d) })
   if (isInboundPushedOnly(d) && userStore.hasPerm('ecom:owhInbound:cancel')) {
     out.push(hasCap(d.provider, 'CANCEL_INBOUND')
-      ? { key: 'cancel', label: t('ecomOwh.inbound.cancelPushed'), danger: true, run: () => emit('cancel', d) }
-      : { key: 'void', label: t('ecomOwh.common.markVoided'), danger: true, run: () => emit('void', d) })
+      ? { key: 'cancel', label: t('ecomOwh.inbound.cancelPushed'), icon: CloseCircleOutlined, danger: true, run: () => emit('cancel', d) }
+      : { key: 'void', label: t('ecomOwh.common.markVoided'), icon: StopOutlined, danger: true, run: () => emit('void', d) })
   }
-  if (isInboundDraft(d) && userStore.hasPerm('ecom:owhInbound:push')) out.push({ key: 'push', label: t('ecomOwh.inbound.push'), primary: true, run: () => emit('push', d) })
-  if (canSyncInbound(d) && userStore.hasPerm('ecom:owhInbound:sync')) out.push({ key: 'sync', label: t('ecomOwh.inbound.sync'), primary: true, run: () => emit('sync', d) })
+  if (isInboundDraft(d) && userStore.hasPerm('ecom:owhInbound:push')) out.push({ key: 'push', label: t('ecomOwh.inbound.push'), icon: CloudUploadOutlined, primary: true, run: () => emit('push', d) })
+  if (canSyncInbound(d) && userStore.hasPerm('ecom:owhInbound:sync')) out.push({ key: 'sync', label: t('ecomOwh.inbound.sync'), icon: SyncOutlined, primary: true, run: () => emit('sync', d) })
   return out
 })
 
@@ -265,7 +286,25 @@ defineExpose({ open: show, reload })
   margin-bottom: 16px;
 }
 .section-title {
-  font-weight: 500;
+  margin: 8px 0 12px;
+  font-weight: 600;
+}
+.items-head .section-title {
+  margin: 0;
+}
+.doc-title {
+  margin-right: 8px;
+}
+.progress-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+.progress {
+  flex: 1;
+  max-width: 200px;
+  margin: 0;
 }
 .items-head {
   display: flex;
@@ -293,10 +332,5 @@ defineExpose({ open: show, reload })
 }
 .danger {
   color: var(--ant-color-error, #ff4d4f);
-}
-.drawer-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
 }
 </style>

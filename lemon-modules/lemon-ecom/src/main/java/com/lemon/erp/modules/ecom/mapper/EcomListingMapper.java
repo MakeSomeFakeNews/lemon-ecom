@@ -8,6 +8,7 @@ import com.lemon.erp.modules.ecom.model.ListingComposeType;
 import com.lemon.erp.modules.ecom.model.ListingStatus;
 import org.apache.ibatis.annotations.Param;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 
@@ -20,6 +21,9 @@ public interface EcomListingMapper extends BaseMapper<EcomListing> {
                                       @Param("status") ListingStatus status, @Param("fulfillment") FulfillmentType fulfillment,
                                       @Param("mapped") Boolean mapped, @Param("materialId") Long materialId,
                                       @Param("composeType") ListingComposeType composeType, @Param("parentItemId") String parentItemId);
+
+    /** 若干在线商品自 since 起的销量：id、sales30 */
+    List<EcomListing> selectSales(@Param("ids") Collection<Long> ids, @Param("since") LocalDateTime since);
 
     EcomListing selectDetail(@Param("id") Long id);
 

@@ -6,45 +6,36 @@
           <a-input v-model:value="query.keyword" :placeholder="$t('ecomOwh.fee.keywordPh')" allow-clear @press-enter="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomOwh.common.account')" name="accountId">
-          <a-select v-model:value="query.accountId" :placeholder="$t('common.placeholder.all')" allow-clear :options="accounts.map((a) => ({ value: a.id, label: a.name }))" />
+          <a-select v-model:value="query.accountId" :placeholder="$t('common.placeholder.all')" allow-clear :options="accounts.map((a) => ({ value: a.id, label: a.name }))" @change="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomOwh.fee.feeType')" name="feeType">
-          <a-select v-model:value="query.feeType" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_owh_fee_type)" />
+          <a-select v-model:value="query.feeType" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_owh_fee_type)" @change="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomOwh.fee.status')" name="status">
-          <a-select v-model:value="query.status" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_owh_fee_status)" />
+          <a-select v-model:value="query.status" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_owh_fee_status)" @change="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomOwh.fee.feeDate')" name="range" data-wide>
-          <a-range-picker v-model:value="query.range" value-format="YYYY-MM-DD" style="width: 100%" />
+          <a-range-picker v-model:value="query.range" value-format="YYYY-MM-DD" style="width: 100%" @change="search" />
         </a-form-item>
       </SearchForm>
     </a-card>
 
-    <a-card :bordered="false" class="page-card summary-card">
-      <div class="summary">
-        <div class="stat">
-          <div class="stat-label">{{ $t('ecomOwh.fee.total') }}</div>
-          <div class="stat-value">¥{{ money(summary.total) }}</div>
-        </div>
-        <div v-for="d in dict.ecom_owh_fee_type || []" :key="d.value" class="stat">
-          <div class="stat-label">{{ d.label }}</div>
-          <div class="stat-value">¥{{ money(summary.byType?.[d.value]) }}</div>
-        </div>
-      </div>
-      <div class="sub-text tip">{{ $t('ecomOwh.fee.tip') }}</div>
-    </a-card>
+    <OwhStatBar :items="stats" />
 
     <a-card :bordered="false" class="page-card table-card">
       <TableToolbar :exporter="exportAll" v-model:size="size" v-model:checked="checked" v-model:show-search="showSearch" :columns="columns" @refresh="reload">
         <a-button v-perm="'ecom:owhFee:sync'" type="primary" @click="openSync">
           <template #icon><SyncOutlined /></template>{{ $t('ecomOwh.fee.sync') }}
         </a-button>
-        <a-button v-perm="'ecom:owhFee:sync'" :disabled="!selectedKeys.length" @click="repost">
-          <template #icon><RedoOutlined /></template>{{ $t('ecomOwh.fee.repost') }}
-        </a-button>
-        <span v-if="selectedKeys.length" class="selected-tip">
-          {{ $t('common.table.selected', { n: selectedKeys.length }) }} <a @click="selectedKeys = []">{{ $t('common.action.clear') }}</a>
-        </span>
+        <a-tooltip :title="$t('ecomOwh.fee.tip')" :overlay-style="{ maxWidth: '420px' }"><InfoCircleOutlined class="tip-icon" /></a-tooltip>
+        <template v-if="selectedKeys.length">
+          <a-button v-perm="'ecom:owhFee:sync'" :loading="reposting" @click="repost">
+            <template #icon><RedoOutlined /></template>{{ $t('ecomOwh.fee.repost') }}
+          </a-button>
+          <span class="selected-tip">
+            {{ $t('common.table.selected', { n: selectedKeys.length }) }} <a @click="selectedKeys = []">{{ $t('common.action.clear') }}</a>
+          </span>
+        </template>
       </TableToolbar>
 
       <a-table
@@ -63,8 +54,8 @@
             <DictTag type="ecom_owh_fee_type" :value="record.feeType" />
           </template>
           <template v-else-if="column.key === 'ref'">
-            <div>{{ record.refNo || '-' }}</div>
-            <div v-if="record.outboundNo" class="sub-text">
+            <div class="nowrap">{{ record.refNo || '-' }}</div>
+            <div v-if="record.outboundNo" class="sub-text nowrap">
               <a @click="router.push({ path: '/ecom/owh-outbound', query: { id: record.outboundId } })">{{ record.outboundNo }}</a> · {{ record.packageNo }}
             </div>
             <div v-else-if="record.inboundNo" class="sub-text">
@@ -75,7 +66,7 @@
             <div>{{ record.sku || '-' }}</div>
             <div v-if="record.materialName" class="sub-text">{{ record.materialName }}</div>
           </template>
-          <template v-else-if="column.key === 'amount'">{{ record.currency }} {{ money(record.amount) }}</template>
+          <template v-else-if="column.key === 'amount'">{{ money(record.amount) }} <span class="sub-text">{{ record.currency }}</span></template>
           <template v-else-if="column.key === 'amountBase'">{{ record.amountBase != null ? `¥${money(record.amountBase)}` : '-' }}</template>
           <template v-else-if="column.key === 'status'">
             <DictTag type="ecom_owh_fee_status" :value="record.status" />
@@ -116,16 +107,17 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
 import dayjs from 'dayjs'
-import { RedoOutlined, SyncOutlined } from '@ant-design/icons-vue'
+import { InfoCircleOutlined, RedoOutlined, SyncOutlined } from '@ant-design/icons-vue'
 import SearchForm from '@/components/SearchForm.vue'
 import TableToolbar from '@/components/TableToolbar.vue'
 import DictTag from '@/components/DictTag.vue'
 import TableActions from '@/components/common/TableActions.vue'
+import OwhStatBar from '@/components/ecom/owh/OwhStatBar.vue'
 import { actionColumn } from '@/components/common/tableActions'
 import { owhAccountOptions, owhFeeAllocations, owhFeeSummary, pageOwhFee, repostOwhFee, syncOwhFee } from '@/api/ecom/owh'
 import { useColumns } from '@/composables/useColumns'
@@ -147,17 +139,17 @@ const accounts = ref([])
 const columns = [
   { title: t('ecomOwh.fee.feeDate'), dataIndex: 'feeDate', width: 110 },
   { title: t('ecomOwh.common.account'), dataIndex: 'accountName', width: 140, ellipsis: true },
-  { title: t('ecomOwh.fee.feeType'), key: 'feeType', dataIndex: 'feeType', width: 100, dict: 'ecom_owh_fee_type' },
-  { title: t('ecomOwh.fee.ref'), key: 'ref', width: 200, exportColumns: [{ title: t('ecomOwh.fee.ref'), dataIndex: 'refNo' }, { title: t('ecomOwh.fee.outboundNo'), dataIndex: 'outboundNo' }] },
-  { title: t('ecomOwh.common.warehouse'), dataIndex: 'warehouseName', width: 130, ellipsis: true },
-  { title: t('ecomOwh.fee.sku'), key: 'sku', width: 160, exportValue: (r) => r.sku },
+  { title: t('ecomOwh.fee.feeType'), key: 'feeType', dataIndex: 'feeType', width: 110, dict: 'ecom_owh_fee_type' },
+  { title: t('ecomOwh.fee.ref'), key: 'ref', width: 280, exportColumns: [{ title: t('ecomOwh.fee.ref'), dataIndex: 'refNo' }, { title: t('ecomOwh.fee.outboundNo'), dataIndex: 'outboundNo' }] },
+  { title: t('ecomOwh.common.warehouse'), dataIndex: 'warehouseName', width: 180, ellipsis: true },
+  { title: t('ecomOwh.fee.sku'), key: 'sku', width: 160, ellipsis: true, exportValue: (r) => r.sku },
   { title: t('ecomOwh.fee.amount'), key: 'amount', width: 120, align: 'right', exportValue: (r) => Number(r.amount) },
   { title: t('ecomOwh.fee.rate'), dataIndex: 'exchangeRate', width: 90, align: 'right' },
-  { title: t('ecomOwh.fee.amountBase'), key: 'amountBase', dataIndex: 'amountBase', width: 110, align: 'right' },
+  { title: t('ecomOwh.fee.amountBase'), key: 'amountBase', dataIndex: 'amountBase', width: 120, align: 'right' },
   { title: t('ecomOwh.fee.status'), key: 'status', dataIndex: 'status', width: 100, dict: 'ecom_owh_fee_status' },
   { title: t('ecomOwh.fee.postTarget'), dataIndex: 'postTarget', width: 180, ellipsis: true },
   { title: t('ecomOwh.fee.remark'), dataIndex: 'remark', width: 160, ellipsis: true },
-  actionColumn(1)
+  actionColumn(1, [t('ecomOwh.fee.allocations')])
 ]
 const { checked, visibleColumns, scrollX } = useColumns(columns, 'ecom-owh-fee')
 const showSearch = ref(true)
@@ -172,6 +164,10 @@ async function loadSummary() {
   const p = params({ ...query })
   summary.value = (await owhFeeSummary({ accountId: p.accountId, beginDate: p.beginDate, endDate: p.endDate })) || {}
 }
+const stats = computed(() => [
+  { key: 'total', label: t('ecomOwh.fee.total'), value: `¥${money(summary.value.total)}` },
+  ...(dict.ecom_owh_fee_type || []).map((d) => ({ key: d.value, label: d.label, value: `¥${money(summary.value.byType?.[d.value])}` }))
+])
 function reload() {
   load()
   loadSummary()
@@ -208,11 +204,17 @@ async function doSync() {
   }
 }
 
+const reposting = ref(false)
 async function repost() {
-  const n = await repostOwhFee([...selectedKeys.value])
-  message.success(t('ecomOwh.fee.reposted', { n }))
-  selectedKeys.value = []
-  reload()
+  reposting.value = true
+  try {
+    const n = await repostOwhFee([...selectedKeys.value])
+    message.success(t('ecomOwh.fee.reposted', { n }))
+    selectedKeys.value = []
+    reload()
+  } finally {
+    reposting.value = false
+  }
 }
 
 const allocOpen = ref(false)
@@ -231,30 +233,22 @@ async function showAllocations(record) {
 </script>
 
 <style scoped>
-.summary-card :deep(.ant-card-body) {
-  padding: 12px 16px;
-}
-.summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 32px;
-}
-.stat-label {
-  color: var(--app-text-3);
-  font-size: 12px;
-}
-.stat-value {
-  font-size: 18px;
-  font-weight: 500;
-}
-.tip {
-  margin-top: 8px;
-}
 .sub-text {
   color: var(--app-text-3);
   font-size: 12px;
 }
+.nowrap {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.tip-icon {
+  align-self: center;
+  color: var(--app-text-3);
+  cursor: help;
+}
 .selected-tip {
+  align-self: center;
   color: var(--app-text-3);
 }
 </style>

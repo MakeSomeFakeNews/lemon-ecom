@@ -6,13 +6,13 @@
           <a-input v-model:value="query.keyword" :placeholder="$t('ecomOwh.diff.keywordPh')" allow-clear @press-enter="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomOwh.diff.source')" name="sourceType">
-          <a-select v-model:value="query.sourceType" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_owh_diff_source)" />
+          <a-select v-model:value="query.sourceType" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_owh_diff_source)" @change="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomOwh.diff.status')" name="status">
-          <a-select v-model:value="query.status" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_owh_diff_status)" />
+          <a-select v-model:value="query.status" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_owh_diff_status)" @change="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomOwh.diff.warehouse')" name="warehouseId">
-          <WarehouseSelect v-model:value="query.warehouseId" :placeholder="$t('common.placeholder.all')" />
+          <WarehouseSelect v-model:value="query.warehouseId" :placeholder="$t('common.placeholder.all')" @change="search" />
         </a-form-item>
       </SearchForm>
     </a-card>
@@ -109,17 +109,17 @@ const dict = useDict('ecom_owh_diff_status', 'ecom_owh_diff_source')
 const SOURCE_PAGES = { [OwhDiffSource.INBOUND]: '/ecom/owh-inbound', [OwhDiffSource.RETURN]: '/ecom/owh-return', [OwhDiffSource.TRANSFER]: '/ecom/owh-transfer' }
 
 const columns = [
-  { title: t('ecomOwh.diff.source'), key: 'source', width: 200, exportValue: (r) => `${r.sourceNo} ${r.refNo || ''}` },
-  { title: t('ecomOwh.diff.warehouse'), dataIndex: 'warehouseName', width: 140, ellipsis: true },
+  { title: t('ecomOwh.diff.source'), key: 'source', width: 220, exportValue: (r) => `${r.sourceNo} ${r.refNo || ''}` },
+  { title: t('ecomOwh.diff.warehouse'), dataIndex: 'warehouseName', width: 170, ellipsis: true },
   { title: t('ecomOwh.stock.material'), key: 'material', width: 200, exportValue: (r) => `${r.materialCode} ${r.materialName || ''}` },
   { title: t('ecomOwh.diff.expected'), key: 'expectedQty', dataIndex: 'expectedQty', width: 90, align: 'right' },
   { title: t('ecomOwh.diff.received'), key: 'receivedQty', dataIndex: 'receivedQty', width: 90, align: 'right' },
   { title: t('ecomOwh.diff.diff'), key: 'diffQty', dataIndex: 'diffQty', width: 90, align: 'right' },
   { title: t('ecomOwh.diff.status'), key: 'status', dataIndex: 'status', width: 100, dict: 'ecom_owh_diff_status' },
   { title: t('ecomOwh.diff.reason'), dataIndex: 'reason', width: 180, ellipsis: true },
-  { title: t('ecomOwh.diff.diffDoc'), key: 'docs', width: 160, exportValue: (r) => r.diffDocNo || '' },
+  { title: t('ecomOwh.diff.diffDoc'), key: 'docs', width: 180, exportValue: (r) => r.diffDocNo || '' },
   { title: t('ecomOwh.diff.createTime'), dataIndex: 'createTime', width: 160 },
-  actionColumn(1)
+  actionColumn(1, [t('ecomOwh.diff.handle')])
 ]
 const { checked, visibleColumns, scrollX } = useColumns(columns, 'ecom-owh-diff')
 const showSearch = ref(true)

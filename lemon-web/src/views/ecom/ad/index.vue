@@ -46,7 +46,7 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue'
+import { reactive, ref, watch } from 'vue'
 import { InfoCircleOutlined, SearchOutlined } from '@ant-design/icons-vue'
 import dayjs from 'dayjs'
 import { useRoute } from 'vue-router'
@@ -80,6 +80,8 @@ const params = ref(toParams())
 function search() {
   params.value = toParams()
 }
+// 店铺、日期变化即查询
+watch(() => [query.storeId, query.range?.[0], query.range?.[1]], search)
 </script>
 
 <style scoped>

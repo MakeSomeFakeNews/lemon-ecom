@@ -16,7 +16,7 @@
       <template v-else-if="column.kind === 'int'">{{ num(record[column.key]) }}</template>
       <template v-else-if="column.kind === 'qty'">{{ qty(record[column.key]) }}</template>
       <template v-else-if="column.kind === 'percent'">
-        <span :class="{ neg: nz(record[column.key]) < 0 }">{{ percent(record[column.key], 2) }}</span>
+        <span :class="column.key === 'margin' ? ['margin', marginTone(record.margin)] : { neg: nz(record[column.key]) < 0 }">{{ percent(record[column.key], 2) }}</span>
       </template>
       <template v-else-if="column.kind === 'dict'"><DictTag :type="column.dict" :value="record[column.key]" /></template>
       <template v-else-if="column.key === 'material'">
@@ -37,7 +37,7 @@
             <template v-else-if="c.kind === 'int'">{{ num(total[c.key]) }}</template>
             <template v-else-if="c.kind === 'qty'">{{ qty(total[c.key]) }}</template>
             <template v-else-if="c.kind === 'percent'">
-              <span :class="{ neg: nz(total[c.key]) < 0 }">{{ percent(total[c.key], 2) }}</span>
+              <span :class="c.key === 'margin' ? ['margin', marginTone(total.margin)] : { neg: nz(total[c.key]) < 0 }">{{ percent(total[c.key], 2) }}</span>
             </template>
           </a-table-summary-cell>
         </a-table-summary-row>
@@ -67,6 +67,8 @@ const props = defineProps({
 })
 
 const pagination = reactive(localPagination(20))
+/** 毛利率着色：亏损红色、低于 10% 橙色、其余绿色 */
+const marginTone = (v) => (v == null ? '' : nz(v) < 0 ? 'neg' : nz(v) < 10 ? 'warn' : 'good')
 const scrollX = computed(() => sumWidth(props.columns))
 // 重新查询或切换页签后回到第一页
 watch(() => props.rows, () => (pagination.current = 1))
@@ -75,6 +77,24 @@ watch(() => props.rows, () => (pagination.current = 1))
 <style scoped>
 .neg {
   color: var(--status-critical, #cf1322);
+}
+.margin {
+  display: inline-block;
+  min-width: 64px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.margin.good {
+  color: #389e0d;
+  background: rgba(82, 196, 26, 0.1);
+}
+.margin.warn {
+  color: #d46b08;
+  background: rgba(250, 140, 22, 0.1);
+}
+.margin.neg {
+  background: rgba(245, 34, 45, 0.08);
 }
 .strong {
   font-weight: 600;

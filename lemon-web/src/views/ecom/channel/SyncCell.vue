@@ -6,7 +6,7 @@
       <span v-else-if="health.success === false" class="bad"><CloseCircleFilled /> {{ $t('ecom.hub.log.failed') }}</span>
       <span v-else class="sub-text"><MinusCircleOutlined /> {{ $t('ecom.hub.channel.never') }}</span>
       <a-badge v-if="health.failures24h" :count="health.failures24h" :number-style="{ backgroundColor: '#ff4d4f' }" class="badge" />
-      <div v-if="health.time" class="sub-text">{{ health.time }}</div>
+      <div v-if="health.time" class="sub-text" :title="health.time">{{ relativeTime(health.time) }}</div>
       <div v-else-if="off" class="sub-text">{{ off }}</div>
     </div>
   </a-tooltip>
@@ -16,6 +16,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { CheckCircleFilled, CloseCircleFilled, MinusCircleOutlined } from '@ant-design/icons-vue'
+import { relativeTime } from '../store/health'
 
 /** 渠道总览中一类同步的状态：最近一次成功 / 失败 / 未执行、时间、近 24 小时失败次数；悬停显示失败原因，点击查看日志 */
 const props = defineProps({
@@ -29,6 +30,7 @@ const { t } = useI18n()
 const tooltip = computed(() => {
   const h = props.health
   const parts = []
+  if (h?.time) parts.push(h.time)
   if (h?.message) parts.push(h.message)
   if (h?.failures24h) parts.push(t('ecom.hub.channel.fail24h', { n: h.failures24h }))
   if (props.off) parts.push(props.off)

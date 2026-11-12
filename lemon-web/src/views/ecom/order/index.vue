@@ -2,32 +2,32 @@
   <div class="table-page">
     <a-card v-show="showSearch" :bordered="false" class="page-card">
       <SearchForm :model="query" @search="search" @reset="resetQuery">
-        <a-form-item :label="$t('ecomOrder.common.store')" name="storeId">
-          <StoreSelect v-model:value="query.storeId" :placeholder="$t('common.placeholder.all')" />
-        </a-form-item>
-        <a-form-item :label="$t('ecomOrder.order.orderDate')" name="range" data-wide>
-          <a-range-picker v-model:value="query.range" value-format="YYYY-MM-DD" style="width: 100%" />
-        </a-form-item>
         <a-form-item :label="$t('common.field.keyword')" name="keyword">
           <a-input v-model:value="query.keyword" :placeholder="$t('ecomOrder.order.keywordPh')" allow-clear @press-enter="search" />
         </a-form-item>
+        <a-form-item :label="$t('ecomOrder.common.store')" name="storeId">
+          <StoreSelect v-model:value="query.storeId" :placeholder="$t('common.placeholder.all')" @update:value="search" />
+        </a-form-item>
+        <a-form-item :label="$t('ecomOrder.order.orderDate')" name="range" data-wide>
+          <a-range-picker v-model:value="query.range" value-format="YYYY-MM-DD" style="width: 100%" @change="search" />
+        </a-form-item>
         <a-form-item :label="$t('ecomOrder.common.platform')" name="platform">
-          <a-select v-model:value="query.platform" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_platform)" />
+          <a-select v-model:value="query.platform" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_platform)" @change="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomOrder.order.status')" name="status">
-          <a-select v-model:value="query.status" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_order_status)" />
+          <a-select v-model:value="query.status" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_order_status)" @change="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomOrder.order.fulfillment')" name="fulfillment">
-          <a-select v-model:value="query.fulfillment" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_fulfillment)" />
+          <a-select v-model:value="query.fulfillment" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_fulfillment)" @change="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomOrder.order.country')" name="country">
           <a-input v-model:value="query.country" :placeholder="$t('ecomOrder.order.countryPh')" allow-clear :maxlength="8" @press-enter="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomOrd.order.tag')" name="tagId">
-          <a-select v-model:value="query.tagId" :placeholder="$t('common.placeholder.all')" allow-clear :options="tagOptions" option-filter-prop="label" />
+          <a-select v-model:value="query.tagId" :placeholder="$t('common.placeholder.all')" allow-clear :options="tagOptions" option-filter-prop="label" @change="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomOrd.order.orderType')" name="orderType">
-          <a-select v-model:value="query.orderType" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_order_type)" />
+          <a-select v-model:value="query.orderType" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_order_type)" @change="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomOrd.order.addressInvalid')" name="addressInvalid">
           <a-switch v-model:checked="query.addressInvalid" @change="search" />
@@ -42,31 +42,27 @@
     </a-card>
 
     <a-card :bordered="false" class="page-card table-card">
-      <a-tabs v-model:active-key="tab" size="small" class="status-tabs" @change="onTab">
+      <a-tabs v-model:active-key="tab" class="status-tabs" @change="onTab">
         <a-tab-pane v-for="tb in ORDER_TABS" :key="tb.key">
           <template #tab>
-            {{ $t(tb.label) }}<span v-if="tb.key !== 'all'" class="tab-count">{{ tabCount(tb) }}</span>
+            {{ $t(tb.label) }}<span class="tab-count" :class="`tab-count-${tb.key}`">{{ tabCount(tb) }}</span>
           </template>
         </a-tab-pane>
       </a-tabs>
       <TableToolbar :exporter="exportAll" v-model:size="size" v-model:checked="checked" v-model:show-search="showSearch" :columns="columns" @refresh="reload">
-        <a-button v-if="tab === 'all' || tab === 'pending'" v-perm="'ecom:order:import'" @click="importModal.open()">
-          <template #icon><UploadOutlined /></template>{{ $t('ecomOrder.order.import') }}
-        </a-button>
-        <a-button v-if="tab === 'all' || tab === 'pending'" v-perm="'ecom:order:add'" @click="manualDrawer.openCreate()">
-          <template #icon><PlusOutlined /></template>{{ $t('ecomOrd.manual.add') }}
-        </a-button>
-        <template v-for="a in batchActions" :key="a.key">
-          <a-button v-perm="a.perm" :type="a.primary ? 'primary' : 'default'" :disabled="!selectedKeys.length" @click="a.run">
-            <template #icon><component :is="a.icon" /></template>{{ a.label }}
+        <BatchActionBar v-if="selectedKeys.length" :count="selectedKeys.length" :text="$t('ecomOrdUi.batch.selected', { n: selectedKeys.length })" :actions="batchActions" @clear="selectedKeys = []" />
+        <template v-else>
+          <a-button v-if="tab === 'all' || tab === 'pending'" v-perm="'ecom:order:add'" type="primary" @click="manualDrawer.openCreate()">
+            <template #icon><PlusOutlined /></template>{{ $t('ecomOrd.manual.add') }}
           </a-button>
+          <a-button v-if="tab === 'all' || tab === 'pending'" v-perm="'ecom:order:import'" @click="importModal.open()">
+            <template #icon><UploadOutlined /></template>{{ $t('ecomOrder.order.import') }}
+          </a-button>
+          <a-button v-if="tab === 'toLabel' || tab === 'toShip'" v-perm="'ecom:package:list'" type="primary" @click="router.push('/ecom/package')">
+            <template #icon><PrinterOutlined /></template>{{ $t('ecomOrder.ops.toPackages') }}
+          </a-button>
+          <span v-if="batchActions.length" class="batch-hint">{{ $t('ecomOrdUi.batch.hint') }}</span>
         </template>
-        <a-button v-if="tab === 'toLabel' || tab === 'toShip'" v-perm="'ecom:package:list'" @click="router.push('/ecom/package')">
-          <template #icon><PrinterOutlined /></template>{{ $t('ecomOrder.ops.toPackages') }}
-        </a-button>
-        <span v-if="selectedKeys.length" class="selected-tip">
-          {{ $t('common.table.selected', { n: selectedKeys.length }) }} <a @click="selectedKeys = []">{{ $t('common.action.clear') }}</a>
-        </span>
       </TableToolbar>
 
       <a-table
@@ -78,57 +74,12 @@
         :pagination="pagination"
         :row-selection="rowSelection"
         :scroll="{ x: scrollX + 32, y: '100%' }"
+        :locale="{ emptyText: emptyText }"
+        class="order-table"
         @change="onTableChange"
       >
         <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'platformOrderNo'">
-            <a @click="openDetail(record)">{{ record.platformOrderNo }}</a>
-            <OrderTags :order="record" />
-          </template>
-          <template v-else-if="column.key === 'estProfit'">
-            <OrderEstimate :order="record" />
-          </template>
-          <template v-else-if="column.key === 'platform'">
-            <DictTag type="ecom_platform" :value="record.platform" />
-          </template>
-          <template v-else-if="column.key === 'buyer'">
-            <div>{{ record.buyerName || record.shipName || '-' }}</div>
-            <div class="sub-text">
-              {{ record.shipCountry }}
-              <a-tooltip v-if="record.addressIssue" :title="record.addressIssue">
-                <EnvironmentOutlined :class="record.addressInvalid === 1 ? 'exception-icon' : 'warn-icon'" />
-              </a-tooltip>
-            </div>
-          </template>
-          <template v-else-if="column.key === 'paid'">
-            <div class="nowrap">{{ fcMoney(record.currency, record.totalAmount) }}</div>
-            <div class="sub-text nowrap">{{ baseMoney(record.totalBase) }}</div>
-          </template>
-          <template v-else-if="column.key === 'status'">
-            <DictTag type="ecom_order_status" :value="record.status" />
-          </template>
-          <template v-else-if="column.key === 'localStatus'">
-            <DictTag type="ecom_local_status" :value="record.localStatus" />
-            <a-tooltip v-if="record.localStatus === EcomLocalStatus.ON_HOLD ? record.holdReason : record.exception" :title="record.localStatus === EcomLocalStatus.ON_HOLD ? record.holdReason : record.exception">
-              <ExclamationCircleOutlined class="exception-icon" />
-            </a-tooltip>
-          </template>
-          <template v-else-if="column.key === 'fulfillment'">
-            <DictTag type="ecom_fulfillment" :value="record.fulfillment" />
-          </template>
-          <template v-else-if="column.key === 'shipBy'">
-            <span :class="{ 'overdue-text': isOverdue(record) }">{{ record.shipBy || '-' }}</span>
-            <a-tag v-if="dueHours(record)" color="warning" :bordered="false" class="due-tag">{{ $t('ecomOrder.ops.dueIn', { h: dueHours(record) }) }}</a-tag>
-            <div v-if="record.planShipTime" class="sub-text">{{ $t('ecomOrder.ops.planShip', { time: record.planShipTime.slice(5, 16) }) }}</div>
-          </template>
-          <template v-else-if="column.key === 'trackingNo'">
-            <div>{{ record.trackingNo || '-' }}</div>
-            <div v-if="record.carrier" class="sub-text">{{ record.carrier }}</div>
-          </template>
-          <template v-else-if="column.key === 'profit'">
-            <span v-if="record.profit != null" :class="{ 'profit-negative': Number(record.profit) < 0 }">{{ baseMoney(record.profit) }}</span>
-            <span v-else>-</span>
-          </template>
+          <OrderListCell v-if="CELL_KEYS.includes(column.key)" :column-key="column.key" :record="record" @open="openDetail(record)" />
           <template v-else-if="column.key === 'action'">
             <TableActions :actions="rowActions(record)" />
           </template>
@@ -162,16 +113,10 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { Modal, message } from 'ant-design-vue'
 import {
   AuditOutlined,
   CarOutlined,
-  EnvironmentOutlined,
-  ExclamationCircleOutlined,
   ExportOutlined,
-  FilterOutlined,
-  MergeCellsOutlined,
-  NodeIndexOutlined,
   PlusOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
@@ -180,12 +125,10 @@ import {
   RollbackOutlined,
   ScissorOutlined,
   SyncOutlined,
-  TagsOutlined,
   UploadOutlined
 } from '@ant-design/icons-vue'
 import SearchForm from '@/components/SearchForm.vue'
 import TableToolbar from '@/components/TableToolbar.vue'
-import DictTag from '@/components/DictTag.vue'
 import StoreSelect from '@/components/ecom/StoreSelect.vue'
 import TableActions from '@/components/common/TableActions.vue'
 import OrderDetail from './OrderDetail.vue'
@@ -198,32 +141,21 @@ import SplitModal from './SplitModal.vue'
 import ManualOrderDrawer from './ManualOrderDrawer.vue'
 import TagModal from './TagModal.vue'
 import AssignModal from './AssignModal.vue'
-import OrderTags from './OrderTags.vue'
-import OrderEstimate from './OrderEstimate.vue'
+import OrderListCell from './OrderListCell.vue'
+import BatchActionBar from '@/components/ecom/BatchActionBar.vue'
+import { useOrderBatch } from './useOrderBatch'
 import { orderTagOptions } from '@/api/ecom/orderEnhance'
 import { orderColumns } from './columns'
-import {
-  applyEcomOrderRules,
-  auditEcomOrders,
-  cancelEcomOrder,
-  ecomOrderStatusCounts,
-  mergeEcomOrders,
-  pageEcomOrder,
-  recheckEcomOrders,
-  rematchEcomOrder,
-  unholdEcomOrders
-} from '@/api/ecom/order'
+import { auditEcomOrders, cancelEcomOrder, ecomOrderStatusCounts, pageEcomOrder, recheckEcomOrders, rematchEcomOrder, unholdEcomOrders } from '@/api/ecom/order'
 import { useAction } from '@/composables/useAction'
 import { useColumns } from '@/composables/useColumns'
 import { useDict } from '@/composables/useDict'
 import { useRouteOpen } from '@/composables/useRouteOpen'
 import { useTable } from '@/composables/useTable'
 import { toOptions } from '@/utils/dict'
-import { EcomLocalStatus } from '@/constants/enums'
 import {
   ORDER_RESULT_KEYS,
   ORDER_TABS,
-  baseMoney,
   canAudit,
   canCancel,
   canEdit,
@@ -235,26 +167,25 @@ import {
   canShip,
   canSplit,
   canUnhold,
-  dueHours,
-  fcMoney,
-  isOverdue,
   showBatchResult,
   tabOfStatus
 } from './order'
 
 /**
  * 平台订单（作业台）：按处理状态分标签页——待审核（审单规则 / 人工审核）→ 待打单（已生成包裹，到「包裹打单」申请运单号）→ 待发货 → 已发货；
- * 缺货的补货后重新检查库存，异常（SKU 未匹配）与挂起的单独一页。批量操作逐单处理，有失败的弹窗列出原因。
+ * 缺货的补货后重新检查库存，异常（SKU 未匹配）与挂起的单独一页。勾选订单后出现批量操作条，批量操作逐单处理，有失败的弹窗列出原因。
  * 平台配送订单、不走包裹的简单情况仍可直接出库、发货
  */
 const { t } = useI18n()
 const router = useRouter()
 const dict = useDict('ecom_platform', 'ecom_order_status', 'ecom_local_status', 'ecom_fulfillment', 'ecom_order_type')
+/** 紧凑显示多项信息的列（OrderListCell） */
+const CELL_KEYS = ['order', 'items', 'buyer', 'paid', 'profit', 'localStatus', 'ship']
 const tagOptions = ref([])
 orderTagOptions().then((list) => (tagOptions.value = (list || []).map((x) => ({ value: x.id, label: x.name }))))
 
 const columns = orderColumns()
-const { checked, visibleColumns, scrollX } = useColumns(columns, 'ecom-order')
+const { checked, visibleColumns, scrollX } = useColumns(columns, 'ecom-order-v2')
 const showSearch = ref(true)
 
 const emptyQuery = () => ({
@@ -297,7 +228,11 @@ const counts = ref({})
 async function loadCounts() {
   counts.value = (await ecomOrderStatusCounts(baseParams({ ...query }))) || {}
 }
-const tabCount = (tb) => tb.statuses.reduce((sum, s) => sum + (counts.value[s] || 0), 0)
+const tabCount = (tb) =>
+  tb.statuses.length ? tb.statuses.reduce((sum, s) => sum + (counts.value[s] || 0), 0) : Object.values(counts.value).reduce((sum, n) => sum + (n || 0), 0)
+
+const hasFilter = computed(() => Object.entries(query).some(([k, v]) => !['overdue', 'urgency', 'addressInvalid'].includes(k) && v != null && v !== '') || query.overdue || query.addressInvalid)
+const emptyText = computed(() => (hasFilter.value ? t('ecomOrdUi.list.emptyFiltered') : t('ecomOrdUi.list.emptyTab')))
 
 function reload() {
   load()
@@ -337,59 +272,11 @@ function afterChange() {
 useRouteOpen({ id: (id) => detail.value.open(id), keyword: (kw) => (query.keyword = kw), reload: () => search() })
 onMounted(reload)
 
-/** 批量接口：确认 → 调用 → 列出失败 → 刷新 */
-function runBatch(api, confirmTitle, content) {
-  const ids = [...selectedKeys.value]
-  const exec = async () => {
-    showBatchResult(await api(ids), ids.length, ORDER_RESULT_KEYS)
-    afterChange()
-  }
-  if (!confirmTitle) return exec()
-  Modal.confirm({ title: confirmTitle, content, onOk: exec })
-}
-
-const BATCH = {
-  audit: () => ({
-    key: 'audit', label: t('ecomOrder.ops.batchAudit'), icon: AuditOutlined, perm: 'ecom:order:audit', primary: true,
-    run: () => runBatch(auditEcomOrders, t('ecomOrder.ops.auditConfirm', { n: selectedKeys.value.length }), t('ecomOrder.ops.auditHint'))
-  }),
-  rules: () => ({ key: 'rules', label: t('ecomOrder.ops.applyRules'), icon: FilterOutlined, perm: 'ecom:order:audit', run: () => runBatch(applyEcomOrderRules) }),
-  recheck: () => ({ key: 'recheck', label: t('ecomOrder.ops.recheck'), icon: SyncOutlined, perm: 'ecom:order:audit', primary: true, run: () => runBatch(recheckEcomOrders) }),
-  hold: () => ({ key: 'hold', label: t('ecomOrder.ops.hold'), icon: PauseCircleOutlined, perm: 'ecom:order:audit', run: () => holdModal.value.open(selectedKeys.value) }),
-  unhold: () => ({
-    key: 'unhold', label: t('ecomOrder.ops.unhold'), icon: PlayCircleOutlined, perm: 'ecom:order:audit',
-    run: () => runBatch(unholdEcomOrders, t('ecomOrder.ops.unholdConfirm', { n: selectedKeys.value.length }))
-  }),
-  merge: () => ({
-    key: 'merge', label: t('ecomOrder.ops.merge'), icon: MergeCellsOutlined, perm: 'ecom:order:merge',
-    run: () => Modal.confirm({
-      title: t('ecomOrder.ops.mergeConfirm', { n: selectedKeys.value.length }),
-      content: t('ecomOrder.ops.mergeHint'),
-      onOk: async () => {
-        await mergeEcomOrders(selectedKeys.value)
-        message.success(t('ecomOrder.ops.merged'))
-        afterChange()
-      }
-    })
-  }),
-  outbound: () => ({ key: 'outbound', label: t('ecomOrder.order.batchOutbound'), icon: ExportOutlined, perm: 'ecom:order:outbound', run: () => outboundModal.value.open(selectedKeys.value) }),
-  tag: () => ({ key: 'tag', label: t('ecomOrd.tag.batchTag'), icon: TagsOutlined, perm: 'ecom:order:tag', run: () => tagModal.value.open(selectedKeys.value, 'tag') }),
-  untag: () => ({ key: 'untag', label: t('ecomOrd.tag.batchUntag'), icon: TagsOutlined, perm: 'ecom:order:tag', run: () => tagModal.value.open(selectedKeys.value, 'untag') }),
-  assign: () => ({ key: 'assign', label: t('ecomOrd.assign.batch'), icon: NodeIndexOutlined, perm: 'ecom:order:audit', run: () => assignModal.value.open(selectedKeys.value) })
-}
-
-/** 各标签页的批量操作 */
-const batchActions = computed(() => {
-  const keys = {
-    pending: ['audit', 'assign', 'rules', 'hold', 'outbound', 'tag', 'untag'],
-    outOfStock: ['recheck', 'assign', 'hold', 'outbound', 'tag', 'untag'],
-    toLabel: ['merge', 'assign', 'recheck', 'hold', 'tag', 'untag'],
-    toShip: ['hold', 'tag', 'untag'],
-    shipped: ['tag', 'untag'],
-    abnormal: ['unhold', 'rules', 'audit', 'assign', 'tag', 'untag'],
-    all: ['outbound', 'tag', 'untag']
-  }[tab.value]
-  return keys.map((k) => BATCH[k]())
+const { batchActions } = useOrderBatch({
+  selectedKeys,
+  tab,
+  afterChange,
+  modals: { hold: holdModal, outbound: outboundModal, tag: tagModal, assign: assignModal }
 })
 
 const rematch = useAction(rematchEcomOrder, { successKey: 'ecomOrder.order.rematched', reload: afterChange })
@@ -440,45 +327,43 @@ const rowActions = (record) => [
 </script>
 
 <style scoped>
-.sub-text {
-  color: var(--app-text-3);
-  font-size: 12px;
-}
-.nowrap {
-  white-space: nowrap;
-}
-.selected-tip {
-  color: var(--app-text-3);
+.status-tabs :deep(.ant-tabs-nav) {
+  margin-bottom: 12px;
 }
 .status-tabs {
-  margin-top: -8px;
-}
-.status-tabs :deep(.ant-tabs-nav) {
-  margin-bottom: 8px;
+  margin-top: -12px;
 }
 .tab-count {
-  margin-left: 4px;
+  display: inline-block;
+  min-width: 20px;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--app-hover);
+  color: var(--app-text-2);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+}
+.status-tabs :deep(.ant-tabs-tab-active) .tab-count {
+  background: var(--app-primary-bg, #e6f4ff);
+  color: var(--app-primary, #1677ff);
+}
+.tab-count-abnormal,
+.tab-count-outOfStock {
+  background: rgba(255, 77, 79, 0.1);
+  color: var(--ant-color-error, #ff4d4f);
+}
+.batch-hint {
+  align-self: center;
   color: var(--app-text-3);
   font-size: 12px;
 }
-.warn-icon {
-  margin-left: 4px;
-  color: var(--ant-color-warning, #faad14);
-  cursor: help;
+.order-table :deep(.ant-table-tbody > tr > td) {
+  vertical-align: top;
 }
-.exception-icon {
-  margin-left: 4px;
-  color: var(--ant-color-error, #ff4d4f);
-  cursor: help;
-}
-.due-tag {
-  margin-left: 4px;
-}
-.overdue-text {
-  color: var(--ant-color-error, #ff4d4f);
-  font-weight: 500;
-}
-.profit-negative {
-  color: var(--ant-color-error, #ff4d4f);
+.order-table :deep(.ant-table-tbody > tr > td.ant-table-selection-column),
+.order-table :deep(.ant-table-tbody > tr > td.ant-table-cell-fix-right) {
+  vertical-align: middle;
 }
 </style>

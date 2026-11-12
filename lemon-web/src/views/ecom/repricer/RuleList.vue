@@ -1,25 +1,29 @@
 <template>
   <div class="toolbar">
-    <a-input v-model:value="query.keyword" allow-clear :placeholder="$t('ecomPublish.repricer.keywordPh')" class="kw" @press-enter="search" />
-    <a-select v-model:value="query.status" allow-clear :placeholder="$t('common.field.status')" :options="toOptions(dict.sys_common_status, true)" class="sel" />
-    <a-button @click="search"><template #icon><SearchOutlined /></template>{{ $t('common.action.query') }}</a-button>
-    <span class="spacer" />
     <a-button v-perm="'ecom:repricer:add'" type="primary" @click="formRef.openCreate()"><template #icon><PlusOutlined /></template>{{ $t('ecomPublish.repricer.add') }}</a-button>
+    <span class="spacer" />
+    <a-input v-model:value="query.keyword" allow-clear :placeholder="$t('ecomPublish.repricer.keywordPh')" class="kw" @press-enter="search">
+      <template #suffix><SearchOutlined class="kw-icon" @click="search" /></template>
+    </a-input>
+    <a-select v-model:value="query.status" allow-clear :placeholder="$t('common.field.status')" :options="toOptions(dict.sys_common_status, true)" class="sel" @change="search" />
+    <a-tooltip :title="$t('common.action.refresh')">
+      <a-button @click="load"><template #icon><ReloadOutlined /></template></a-button>
+    </a-tooltip>
   </div>
   <a-alert type="info" show-icon class="tip" :message="$t('ecomPublish.repricer.tip')" />
-  <a-table row-key="id" size="middle" :columns="columns" :data-source="list" :loading="loading" :pagination="pagination" :scroll="{ x: 1400 }" @change="onTableChange">
+  <a-table row-key="id" size="middle" :columns="columns" :data-source="list" :loading="loading" :pagination="pagination" :scroll="{ x: scrollX, y: '100%' }" @change="onTableChange">
     <template #bodyCell="{ column, record }">
       <template v-if="column.key === 'name'">
         <a @click="formRef.openEdit(record)">{{ record.name }}</a>
-        <div v-if="record.remark" class="sub-text">{{ record.remark }}</div>
+        <a-tooltip v-if="record.remark" :title="record.remark"><div class="sub-text clamp2">{{ record.remark }}</div></a-tooltip>
       </template>
       <template v-else-if="column.key === 'scope'">
-        <div>{{ storeNames(record.storeIds) }}</div>
+        <a-tooltip :title="storeNames(record.storeIds)"><div class="ellipsis">{{ storeNames(record.storeIds) }}</div></a-tooltip>
         <div class="sub-text ellipsis" :title="record.skus">{{ record.skus || $t('ecomPublish.repricer.allSkus') }}</div>
       </template>
       <template v-else-if="column.key === 'strategy'">
         <DictTag type="ecom_reprice_strategy" :value="record.strategy" />
-        <div class="sub-text">{{ strategyText(record) }}</div>
+        <a-tooltip :title="strategyText(record)"><div class="sub-text clamp2">{{ strategyText(record) }}</div></a-tooltip>
       </template>
       <template v-else-if="column.key === 'limits'">
         <div>{{ floorText(record) }}</div>
@@ -31,7 +35,7 @@
       </template>
       <template v-else-if="column.key === 'lastRun'">
         <div>{{ record.lastRunTime || '-' }}</div>
-        <div class="sub-text ellipsis" :title="record.lastRunMessage">{{ record.lastRunMessage }}</div>
+        <a-tooltip v-if="record.lastRunMessage" :title="record.lastRunMessage"><div class="sub-text ellipsis">{{ record.lastRunMessage }}</div></a-tooltip>
         <a v-if="record.suggestedCount" @click="emit('logs', record.id)">{{ $t('ecomPublish.repricer.suggestedN', { n: record.suggestedCount }) }}</a>
       </template>
       <template v-else-if="column.key === 'status'">
@@ -47,7 +51,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { PlusOutlined, SearchOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons-vue'
 import DictTag from '@/components/DictTag.vue'
 import TableActions from '@/components/common/TableActions.vue'
 import { actionColumn } from '@/components/common/tableActions'
@@ -69,15 +73,16 @@ const userStore = useUserStore()
 const stores = useStores()
 const dict = useDict('sys_common_status', 'ecom_reprice_strategy')
 const columns = [
-  { title: t('ecomPublish.repricer.name'), key: 'name', width: 200, fixed: 'left' },
-  { title: t('ecomPublish.repricer.scope'), key: 'scope', width: 200 },
-  { title: t('ecomPublish.repricer.strategy'), key: 'strategy', width: 200 },
-  { title: t('ecomPublish.repricer.limits'), key: 'limits', width: 180 },
-  { title: t('ecomPublish.repricer.mode'), key: 'mode', width: 130 },
-  { title: t('ecomPublish.repricer.lastRun'), key: 'lastRun', width: 260 },
-  { title: t('common.field.status'), key: 'status', width: 70 },
+  { title: t('ecomPublish.repricer.name'), key: 'name', width: 190, fixed: 'left' },
+  { title: t('ecomPublish.repricer.scope'), key: 'scope', width: 180 },
+  { title: t('ecomPublish.repricer.strategy'), key: 'strategy', width: 190 },
+  { title: t('ecomPublish.repricer.limits'), key: 'limits', width: 160 },
+  { title: t('ecomPublish.repricer.mode'), key: 'mode', width: 120 },
+  { title: t('ecomPublish.repricer.lastRun'), key: 'lastRun', width: 230 },
+  { title: t('common.field.status'), key: 'status', width: 70, align: 'center' },
   actionColumn(4)
 ]
+const scrollX = columns.reduce((s, c) => s + c.width, 0)
 const query = reactive({ keyword: undefined, status: undefined })
 const { list, loading, pagination, load, search, onTableChange } = useTable(pageRepriceRule, query)
 onMounted(load)
@@ -126,10 +131,20 @@ const rowActions = (r) => [
   margin-bottom: 12px;
 }
 .kw {
-  width: 200px;
+  width: 220px;
+}
+.kw-icon {
+  color: var(--app-text-3);
+  cursor: pointer;
 }
 .sel {
   width: 120px;
+}
+.clamp2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .spacer {
   flex: 1;
@@ -141,7 +156,7 @@ const rowActions = (r) => [
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 240px;
+  max-width: 100%;
 }
 .sub-text {
   color: var(--app-text-3);

@@ -162,7 +162,7 @@ public class OperMonitorDemoContributor implements DemoContributor {
                         cp.delistDay = 1;
                     }
                     String compTitle = brand + " " + (title == null ? "" : title.replaceAll("(?i)lemon\\s*home", "").trim());
-                    save(compId, history(rnd, today, cp, compTitle, null, bullets(compTitle), EcomMonitorSource.API), today);
+                    save(compId, history(rnd, today, cp, compTitle, image, bullets(compTitle), EcomMonitorSource.API), today);
                 }
             }
         }
@@ -206,7 +206,8 @@ public class OperMonitorDemoContributor implements DemoContributor {
         int reviews = p.reviews - p.dailyReviews * DAYS;
         int sellers = 1;
         String curTitle = title;
-        String curImage = image == null ? "https://images.demo.lemon-ecom.local/" + Math.abs(String.valueOf(title).hashCode()) + "/main-v1.jpg" : image;
+        // 主图用演示物料的本地图片（没有时为空，页面显示占位），不指向外部域名
+        String curImage = image;
         String curBullets = bullets;
         ListingStatus status = ListingStatus.ACTIVE;
         for (int d = DAYS - 1; d >= 0; d--) {
@@ -230,8 +231,8 @@ public class OperMonitorDemoContributor implements DemoContributor {
             if (d == p.titleDay && curTitle != null) {
                 curTitle = curTitle + " - 2026 Upgraded Version";
             }
-            if (d == p.imageDay) {
-                curImage = curImage.contains("main-v1") ? curImage.replace("main-v1", "main-v2") : curImage + (curImage.contains("?") ? "&" : "?") + "v=2";
+            if (d == p.imageDay && curImage != null) {
+                curImage = curImage + (curImage.contains("?") ? "&" : "?") + "v=2";
             }
             if (d == p.bulletsDay) {
                 curBullets = "NEW 2026 MODEL: faster, lighter and 30% longer battery life\n" + curBullets;

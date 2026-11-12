@@ -7,6 +7,7 @@ import com.lemon.erp.modules.ecom.entity.EcomOrderTag;
 import com.lemon.erp.modules.ecom.entity.EcomOrderTagLink;
 import com.lemon.erp.modules.ecom.mapper.EcomOrderTagLinkMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomOrderTagMapper;
+import com.lemon.erp.modules.ecom.model.EcomOrderLogAction;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +34,7 @@ public class EcomOrderTagService {
     private final EcomOrderTagMapper tagMapper;
     private final EcomOrderTagLinkMapper linkMapper;
     private final EcomOrderService orderService;
+    private final EcomOrderLogService logService;
 
     public List<EcomOrderTag> list(String keyword, EnableStatus status) {
         return tagMapper.selectListWithCount(keyword, status);
@@ -101,15 +103,19 @@ public class EcomOrderTagService {
         tags.forEach(this::get);
         Set<Long> orders = new LinkedHashSet<>(orderIds);
         orders.forEach(orderService::require);
-        return addLinks(orders, tags, 0);
+        int n = addLinks(orders, tags, 0);
+        logService.log(orders, EcomOrderLogAction.TAG, tagNames(tags));
+        return n;
     }
 
     /** 批量去标 */
     @Transactional
     public int untag(List<Long> orderIds, List<Long> tagIds) {
         orderIds.stream().distinct().forEach(orderService::require);
-        return linkMapper.delete(Wrappers.<EcomOrderTagLink>lambdaQuery().in(EcomOrderTagLink::getOrderId, orderIds)
+        int n = linkMapper.delete(Wrappers.<EcomOrderTagLink>lambdaQuery().in(EcomOrderTagLink::getOrderId, orderIds)
                 .in(EcomOrderTagLink::getTagId, tagIds));
+        logService.log(orderIds, EcomOrderLogAction.UNTAG, tagNames(tagIds));
+        return n;
     }
 
     /**
@@ -119,9 +125,16 @@ public class EcomOrderTagService {
         if (tagIds == null || tagIds.isEmpty()) {
             return;
         }
-        Set<Long> enabled = tagMapper.selectByIds(tagIds).stream().filter(t -> t.getStatus() == EnableStatus.ENABLED).map(EcomOrderTag::getId)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-        addLinks(Set.of(orderId), enabled, 1);
+        List<EcomOrderTag> enabledTags = tagMapper.selectByIds(tagIds).stream().filter(t -> t.getStatus() == EnableStatus.ENABLED).toList();
+        Set<Long> enabled = enabledTags.stream().map(EcomOrderTag::getId).collect(Collectors.toCollection(LinkedHashSet::new));
+        if (addLinks(Set.of(orderId), enabled, 1) > 0) {
+            logService.log(orderId, EcomOrderLogAction.TAG, EcomOrderLogService.text("ecom.log.autoTag",
+                    enabledTags.stream().map(EcomOrderTag::getName).collect(Collectors.joining(", "))));
+        }
+    }
+
+    private String tagNames(Collection<Long> tagIds) {
+        return tagIds.isEmpty() ? null : tagMapper.selectByIds(tagIds).stream().map(EcomOrderTag::getName).collect(Collectors.joining(", "));
     }
 
     private int addLinks(Collection<Long> orders, Collection<Long> tags, int auto) {

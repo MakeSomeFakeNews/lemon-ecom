@@ -1,6 +1,7 @@
 <template>
   <FormDrawer :drawer="drawer" :create-title="$t('ecomOwh.account.add')" :edit-title="$t('ecomOwh.account.edit')" width="min(720px, 100vw)">
     <a-form ref="formRef" :model="form" :rules="rules" layout="vertical">
+      <div class="section-title">{{ $t('ecomOwh.section.basic') }}</div>
       <a-row :gutter="16">
         <a-col :xs="24" :sm="12">
           <a-form-item :label="$t('ecomOwh.account.code')" name="code">
@@ -17,19 +18,19 @@
             <a-select v-model:value="form.provider" :options="providers.map((p) => ({ value: p.provider, label: p.name }))" />
           </a-form-item>
         </a-col>
-        <a-col :xs="12" :sm="6">
+        <a-col :xs="24" :sm="12">
+          <a-form-item :label="$t('ecomOwh.account.currency')" name="currency" :extra="$t('ecomOwh.account.currencyExtra')">
+            <a-input v-model:value="form.currency" :maxlength="8" placeholder="USD" />
+          </a-form-item>
+        </a-col>
+        <a-col :xs="24" :sm="12">
           <a-form-item :label="$t('ecomOwh.account.sandbox')" name="sandbox">
             <a-switch :checked="form.sandbox === 1" @change="(v) => (form.sandbox = v ? 1 : 0)" />
           </a-form-item>
         </a-col>
-        <a-col :xs="12" :sm="6">
+        <a-col :xs="24" :sm="12">
           <a-form-item :label="$t('ecomOwh.account.autoSync')" name="autoSync" :extra="$t('ecomOwh.account.autoSyncExtra')">
             <a-switch :checked="form.autoSync !== 0" @change="(v) => (form.autoSync = v ? 1 : 0)" />
-          </a-form-item>
-        </a-col>
-        <a-col :xs="12" :sm="6">
-          <a-form-item :label="$t('ecomOwh.account.currency')" name="currency" :extra="$t('ecomOwh.account.currencyExtra')">
-            <a-input v-model:value="form.currency" :maxlength="8" placeholder="USD" />
           </a-form-item>
         </a-col>
         <a-col :span="24">
@@ -128,7 +129,11 @@ defineExpose({ openCreate: drawer.openCreate, openEdit: drawer.openEdit })
   margin: 4px 0 12px;
 }
 .section-title {
-  font-weight: 500;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+.cred-head .section-title {
+  margin-bottom: 0;
 }
 .doc-link {
   margin-left: auto;

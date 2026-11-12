@@ -37,7 +37,8 @@ export default {
     submitted: '{n} submitted and publishing in the background, refresh later to see the result',
     offlineConfirm: 'Take the {n} selected listing(s) offline? They will be removed via the platform API and the listings marked inactive',
     offlined: '{n} taken offline',
-    deleteConfirm: 'Delete the {n} selected record(s)?'
+    deleteConfirm: 'Delete the {n} selected record(s)?',
+    publicUrlShort: 'Public URL not set'
   },
   create: {
     title: 'New listing',
@@ -82,7 +83,6 @@ export default {
     editTitle: 'Edit listing',
     viewTitle: 'View listing',
     lastError: 'Last publish failed (returned by the platform)',
-    content: 'Content',
     title: 'Title',
     bullets: 'Bullet points',
     addBullet: 'Add',
@@ -93,7 +93,6 @@ export default {
     exemptionNote: 'Exemption note',
     exemptionNotePh: 'Brand registry / GTIN exemption ID, etc.',
     images: 'Images',
-    variants: 'Variants & prices',
     priceTemplate: 'Price template',
     fillSuggested: 'Use suggested prices',
     quote: 'Estimate profit',
@@ -121,7 +120,16 @@ export default {
     returnPolicy: 'Return policy',
     handlingDays: 'Handling days',
     extra: 'Extra parameters',
-    extraTip: 'e.g. eBay paymentPolicyId, merchantLocationKey; TikTok warehouseId, brandId; Shopee brandId, weight; Shopify locationId'
+    extraTip: 'e.g. eBay paymentPolicyId, merchantLocationKey; TikTok warehouseId, brandId; Shopee brandId, weight; Shopify locationId',
+    masterContent: 'Master content / add stores',
+    storesN: 'Stores ({n})',
+    readonlyTip: 'This record cannot be edited in its current status; drafts, failed and offline records can be edited',
+    secBasic: 'Basic info',
+    secVariants: 'Variants, price & stock',
+    publishTemplateExtra: 'Fills in category, attributes, logistics and policy defaults',
+    saveAndPublish: 'Save & publish',
+    switchConfirm: 'Unsaved changes to this store will be lost if you switch.',
+    variantSummary: '{n} variant(s), total stock {qty}'
   },
   image: {
     publicUrlMissing: 'No public backend URL is configured; images uploaded to the system cannot be accessed by platforms and publishing will fail',
@@ -155,7 +163,7 @@ export default {
     requiredOnly: 'Required only',
     custom: 'Other attributes',
     addCustom: 'Add attribute',
-    tip: 'Use the platform attribute keys (attribute names for Amazon, attribute IDs for Shopee / TikTok); separate multiple values with commas, values starting with [ or { are submitted as JSON'
+    tip: "Use the platform attribute keys (attribute names for Amazon, attribute IDs for Shopee / TikTok); separate multiple values with commas, values starting with [ or {'{'} are submitted as JSON"
   },
   kv: {
     key: 'Key',
@@ -174,7 +182,8 @@ export default {
     tip: 'Save common attributes, shipping templates, return policies and other defaults per platform, and apply them when creating listings',
     attrCount: 'Attributes',
     lookupStore: 'Lookup store',
-    lookupStoreExtra: 'Choose a store of this platform to pick categories and load attributes via the platform API (lookup only, not saved)'
+    lookupStoreExtra: 'Choose a store of this platform to pick categories and load attributes via the platform API (lookup only, not saved)',
+    defaults: 'Defaults (logistics, policies & price)'
   },
   price: {
     add: 'New price template',
@@ -205,7 +214,9 @@ export default {
     rate: 'Exchange rate',
     suggested: 'Suggested price',
     fees: 'Platform fees',
-    profit: 'Profit (margin)'
+    profit: 'Profit (margin)',
+    formulaLabel: 'Pricing formula',
+    params: 'Pricing parameters'
   },
   change: {
     keywordPh: 'Seller SKU / title',

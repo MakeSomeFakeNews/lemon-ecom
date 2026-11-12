@@ -228,6 +228,10 @@ body {
   display: flex;
   flex-direction: column;
 }
+/* 只当作状态切换头使用的标签页（页签为空，表格在标签页之后）：标签页按内容高度显示，剩余高度留给后面的表格 */
+.table-card > .ant-card-body > .ant-tabs:not(:has(.ant-tabs-tabpane > *)) {
+  flex: none;
+}
 /* 一个页签中有多块内容（如两张表）放不下时，在页签内滚动 */
 .table-card > .ant-card-body > .ant-tabs > .ant-tabs-content-holder > .ant-tabs-content > .ant-tabs-tabpane-active {
   overflow-y: auto;

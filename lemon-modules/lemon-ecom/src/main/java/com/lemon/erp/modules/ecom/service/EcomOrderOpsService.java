@@ -12,8 +12,10 @@ import com.lemon.erp.modules.ecom.entity.EcomStore;
 import com.lemon.erp.modules.ecom.mapper.EcomOrderItemMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomOrderMapper;
 import com.lemon.erp.modules.ecom.model.EcomLocalStatus;
+import com.lemon.erp.modules.ecom.model.EcomOrderLogAction;
 import com.lemon.erp.modules.ecom.model.EcomOrderStatus;
 import com.lemon.erp.modules.ecom.model.FulfillmentType;
+import com.lemon.erp.modules.wms.service.WmsWarehouseService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
@@ -65,6 +67,8 @@ public class EcomOrderOpsService {
     private final EcomOrderCheckService checkService;
     private final EcomOrderTagService tagService;
     private final TransactionTemplate transactionTemplate;
+    private final EcomOrderLogService logService;
+    private final WmsWarehouseService warehouseService;
 
     // ---------------------------------------------------------------- 审单规则
 
@@ -138,6 +142,7 @@ public class EcomOrderOpsService {
                     .set(EcomOrder::getHoldRuleId, null);
         }
         orderMapper.update(u);
+        logRules(o, r, status);
         tagService.autoTag(o.getId(), r.tagIds());
         status = checkService.afterRules(o, status, facts);
         if (r.autoAudit() && status == EcomLocalStatus.PENDING) {
@@ -147,6 +152,18 @@ public class EcomOrderOpsService {
             }
         }
         return null;
+    }
+
+    /** 规则日志：命中的规则（指定的仓库 / 物流在规则名称中体现），规则挂起 / 恢复 */
+    private void logRules(EcomOrder o, EcomOrderRuleService.Outcome r, EcomLocalStatus status) {
+        if (!r.matched().isEmpty()) {
+            logService.log(o.getId(), EcomOrderLogAction.RULE, String.join(", ", r.matched()));
+        }
+        if (r.holdRule() != null && o.getLocalStatus() != EcomLocalStatus.ON_HOLD) {
+            logService.log(o.getId(), EcomOrderLogAction.HOLD, EcomOrderLogService.text("ecom.log.ruleHold", r.holdRule().getName()));
+        } else if (r.holdRule() == null && o.getLocalStatus() == EcomLocalStatus.ON_HOLD && status != EcomLocalStatus.ON_HOLD) {
+            logService.log(o.getId(), EcomOrderLogAction.UNHOLD, EcomOrderLogService.text("ecom.log.ruleUnhold"));
+        }
     }
 
     // ---------------------------------------------------------------- 审核与库存
@@ -192,6 +209,7 @@ public class EcomOrderOpsService {
         if (exception != null) {
             orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getLocalStatus, EcomLocalStatus.EXCEPTION)
                     .set(EcomOrder::getException, exception).eq(EcomOrder::getId, o.getId()));
+            logService.log(o.getId(), EcomOrderLogAction.EXCEPTION, exception);
             return exception;
         }
         // 审核前拦截：新命中黑名单挂起，地址校验不通过进入异常
@@ -207,9 +225,11 @@ public class EcomOrderOpsService {
         if (shortage != null) {
             orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getLocalStatus, EcomLocalStatus.OUT_OF_STOCK)
                     .set(EcomOrder::getException, abbreviate(shortage)).eq(EcomOrder::getId, o.getId()));
+            logService.log(o.getId(), EcomOrderLogAction.OUT_OF_STOCK, shortage);
             return shortage;
         }
         orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getAuditTime, LocalDateTime.now()).eq(EcomOrder::getId, o.getId()));
+        logService.log(o.getId(), EcomOrderLogAction.AUDIT, EcomOrderLogService.text("ecom.log.audited", warehouseName(wh)));
         return null;
     }
 
@@ -227,8 +247,10 @@ public class EcomOrderOpsService {
             String shortage = packageService.allocateRemainder(o, wh);
             if (shortage != null) {
                 orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getException, abbreviate(shortage)).eq(EcomOrder::getId, o.getId()));
+                logService.log(o.getId(), EcomOrderLogAction.OUT_OF_STOCK, shortage);
                 return shortage;
             }
+            logService.log(o.getId(), EcomOrderLogAction.RECHECK, EcomOrderLogService.text("ecom.log.rechecked"));
             if (o.getLocalStatus() == EcomLocalStatus.OUT_OF_STOCK) {
                 orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getAuditTime, LocalDateTime.now()).set(EcomOrder::getWarehouseId, wh)
                         .eq(EcomOrder::getId, o.getId()));
@@ -250,6 +272,7 @@ public class EcomOrderOpsService {
             orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getHoldPrevStatus, o.getLocalStatus())
                     .set(EcomOrder::getLocalStatus, EcomLocalStatus.ON_HOLD).set(EcomOrder::getHoldReason, req.reason().trim())
                     .set(EcomOrder::getHoldRuleId, null).eq(EcomOrder::getId, id));
+            logService.log(id, EcomOrderLogAction.HOLD, req.reason().trim());
         }
     }
 
@@ -274,6 +297,7 @@ public class EcomOrderOpsService {
             if (hasPackages) {
                 packageService.recomputeOrder(id);
             }
+            logService.log(id, EcomOrderLogAction.UNHOLD, null);
         }
     }
 
@@ -288,7 +312,9 @@ public class EcomOrderOpsService {
     public Long merge(List<Long> ids) {
         List<Long> distinct = ids.stream().distinct().toList();
         distinct.forEach(orderService::require);
-        return packageService.merge(orderMapper.selectByIdsForUpdate(distinct));
+        Long packageId = packageService.merge(orderMapper.selectByIdsForUpdate(distinct));
+        logService.log(distinct, EcomOrderLogAction.PACKAGE, EcomOrderLogService.text("ecom.log.merged", distinct.size()));
+        return packageId;
     }
 
     /**
@@ -309,6 +335,7 @@ public class EcomOrderOpsService {
         List<Long> created = packageService.split(o, req, wh);
         orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getWarehouseId, wh)
                 .set(EcomOrder::getAuditTime, o.getAuditTime() == null ? LocalDateTime.now() : o.getAuditTime()).eq(EcomOrder::getId, id));
+        logService.log(id, EcomOrderLogAction.PACKAGE, EcomOrderLogService.text("ecom.log.split", created.size()));
         return created;
     }
 
@@ -333,6 +360,10 @@ public class EcomOrderOpsService {
     private String orderNo(Long id) {
         EcomOrder o = orderMapper.selectById(id);
         return o == null ? String.valueOf(id) : o.getPlatformOrderNo();
+    }
+
+    private String warehouseName(Long warehouseId) {
+        return warehouseId == null ? "-" : warehouseService.get(warehouseId).getName();
     }
 
     private static String abbreviate(String s) {

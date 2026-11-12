@@ -52,7 +52,13 @@
         </div>
         <a-empty v-if="!snapshots.length" :description="$t('ecomOper.monitor.noSnapshot')" />
         <a-row v-else :gutter="16">
-          <a-col :xs="24" :lg="12"><EChart :option="rankOption" height="260px" /></a-col>
+          <a-col :xs="24" :lg="12">
+            <EChart v-if="hasRank" :option="rankOption" height="260px" />
+            <div v-else class="chart-empty">
+              <div class="section-title small">{{ $t('ecomOper.monitor.rankTrend') }}</div>
+              <a-empty :image="simpleImage" :description="$t('ecomUiOps.monitor.noRankData')" />
+            </div>
+          </a-col>
           <a-col :xs="24" :lg="12"><EChart :option="reviewOption" height="260px" /></a-col>
           <a-col :xs="24" :lg="12"><EChart :option="sellerOption" height="240px" /></a-col>
           <a-col :xs="24" :lg="12">
@@ -95,7 +101,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import dayjs from 'dayjs'
-import { message } from 'ant-design-vue'
+import { message, Empty } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
 import { CloudDownloadOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import SubPage from '@/components/SubPage.vue'
@@ -138,6 +144,9 @@ const cards = computed(() => {
   ]
 })
 
+const simpleImage = Empty.PRESENTED_IMAGE_SIMPLE
+/** 有排名数据（部分平台没有类目排名）时才画排名趋势 */
+const hasRank = computed(() => snapshots.value.some((s) => s.rankMain != null || s.rankSub != null))
 const xAxis = () => ({ type: 'category', data: snapshots.value.map((s) => dayjs(s.snapshotDate).format('MM-DD')) })
 const grid = { left: 8, right: 8, top: 36, bottom: 8, containLabel: true }
 const rankOption = computed(() => ({
@@ -325,5 +334,11 @@ defineExpose({ open: show, reload })
 }
 .danger {
   color: #ff4d4f;
+}
+.chart-empty {
+  height: 260px;
+}
+.chart-empty :deep(.ant-empty) {
+  margin-top: 60px;
 }
 </style>

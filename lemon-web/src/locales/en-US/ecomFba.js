@@ -71,7 +71,23 @@ export default {
     missingDims: '{n} SKU(s) have no dimensions; storage fees not estimated',
     maintainDims: 'Maintain dimensions',
     ageDistribution: 'Age distribution',
-    adviceDistribution: 'Recommendations'
+    adviceDistribution: 'Recommendations',
+    skuN: '{n} SKUs',
+    agedShare: '{p}% of aged-tracked units, click to filter',
+    storageFeeCard: 'Est. storage fee (this month)',
+    feeBreak: 'Monthly ¥{m} + aged surcharge ¥{a}',
+    suggestions: 'Suggested actions',
+    hideCharts: 'Hide analysis',
+    showCharts: 'Show age distribution & suggestions',
+    claimableLink: 'Claimable ¥{amount}, go to claims',
+    batchSelected: '{n} selected',
+    dataUpdate: 'Update data',
+    adviceDesc: {
+      REMOVE: 'Slow-moving or older than a year: create a removal / disposal plan',
+      PRICE_DOWN: 'Excess and aged: mark down to clear before aged surcharges',
+      PROMOTE: 'Excess stock: promote off-Amazon or increase ad exposure',
+      HEALTHY: 'Healthy: replenish as suggested'
+    }
   },
   rate: {
     title: 'FBA Storage Fee Rates',
@@ -101,6 +117,15 @@ export default {
     METRIC: 'cm / kg'
   },
   removal: {
+    basicInfo: 'Basic Info',
+    flow: {
+      DRAFT: 'Planned',
+      SUBMITTED: 'Submitted',
+      PROCESSING: 'Processing',
+      COMPLETED: 'Completed by Amazon',
+      RECEIVED: 'Received locally',
+      DISPOSED: 'Disposed'
+    },
     keywordPh: 'No. / removal order ID / tracking / SKU',
     all: 'All',
     docNo: 'No.',
@@ -164,6 +189,15 @@ export default {
     summaryPaid: 'Reimbursed',
     summaryExpiring: 'Due within 7 days',
     summaryByType: 'Open (by type)',
+    openCount: '{p} pending · {s} submitted',
+    paidCount: '{n} paid · {r} rejected',
+    deadlineCard: 'Deadlines',
+    within7: 'in 7 days',
+    within30: 'in 30 days',
+    nearest: 'Next deadline {date} ({n} days left), click to filter',
+    noExpiring: 'No claims due in 30 days',
+    allDeadline: 'All',
+    dataOps: 'Data sync',
     tabs: {
       claims: 'Claims',
       ledger: 'Inventory Ledger',

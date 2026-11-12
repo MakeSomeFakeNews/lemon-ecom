@@ -19,6 +19,13 @@
         <a-button v-perm="'ecom:store:add'" type="primary" @click="formRef.openCreate()">
           <template #icon><PlusOutlined /></template>{{ $t('ecom.store.add') }}
         </a-button>
+        <div v-if="summary.total" class="health-summary">
+          <span class="chip"><span class="dot ok" />{{ $t('ecom.hub.summaryAuthorized') }} <b>{{ summary.authorized }}</b></span>
+          <span class="chip" :class="{ warn: summary.reauth }"><span class="dot error" />{{ $t('ecom.hub.summaryReauth') }} <b>{{ summary.reauth }}</b></span>
+          <span class="chip"><span class="dot idle" />{{ $t('ecom.hub.summaryNone') }} <b>{{ summary.none }}</b></span>
+          <span class="chip" :class="{ warn: summary.error }"><span class="dot error" />{{ $t('ecom.hub.summaryError') }} <b>{{ summary.error }}</b></span>
+          <router-link v-if="summary.reauth || summary.error" :to="{ path: '/ecom/channel', query: { problem: '1' } }" class="overview-link">{{ $t('ecom.hub.viewOverview') }} <RightOutlined /></router-link>
+        </div>
       </TableToolbar>
 
       <a-table
@@ -33,8 +40,16 @@
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'name'">
-            <div>{{ record.name }}<a-tag v-if="record.demo === 1" color="purple" class="demo-tag" :title="$t('ecom.store.demoTip')">{{ $t('ecom.store.demo') }}</a-tag></div>
-            <div class="sub-text">{{ record.code }}</div>
+            <div class="store-cell">
+              <PlatformAvatar :platform="record.platform" />
+              <div class="store-text">
+                <div class="ellipsis" :title="record.name">
+                  <a @click="openEdit(record)">{{ record.name }}</a>
+                  <a-tag v-if="record.demo === 1" color="purple" class="demo-tag" :title="$t('ecom.store.demoTip')">{{ $t('ecom.store.demo') }}</a-tag>
+                </div>
+                <div class="sub-text ellipsis">{{ record.code }}</div>
+              </div>
+            </div>
           </template>
           <template v-else-if="column.key === 'platform'">
             <DictTag type="ecom_platform" :value="record.platform" />
@@ -52,15 +67,36 @@
           <template v-else-if="column.key === 'listingCount'">{{ num(record.listingCount) }}</template>
           <template v-else-if="column.key === 'authStatus'">
             <AuthStatusTag :status="record.authStatus" />
-            <div v-if="record.authStatus === StoreAuthStatus.AUTHORIZED && record.authorizedTime" class="sub-text">
-              {{ $t('ecom.hub.authorizedAt', { time: record.authorizedTime }) }}
+            <div v-if="record.authStatus === StoreAuthStatus.AUTHORIZED && record.authorizedTime" class="sub-text" :title="record.authorizedTime">
+              {{ $t('ecom.hub.authorizedAt', { time: relativeTime(record.authorizedTime) }) }}
             </div>
           </template>
-          <template v-else-if="column.key === 'lastSyncTime'">
-            <span v-if="record.lastSyncTime">{{ record.lastSyncTime }}</span>
-            <span v-else class="sub-text">{{ $t('ecom.store.neverSynced') }}</span>
-            <a-tooltip v-if="record.lastSyncMessage" :title="record.lastSyncMessage">
-              <div class="error-text"><ExclamationCircleOutlined /> {{ record.lastSyncMessage }}</div>
+          <template v-else-if="column.key === 'health'">
+            <a-tooltip placement="topLeft" :overlay-style="{ maxWidth: '420px' }">
+              <template #title>
+                <div v-for="s in healthOf(record).syncs" :key="s.type" class="health-tip-row">
+                  <span class="dot" :class="s.success === false ? 'error' : 'ok'" />
+                  {{ $t(`ecom.hub.cap.${s.type}`) }}：{{ s.time }}<template v-if="s.message"> · {{ s.message }}</template>
+                </div>
+                <div v-if="!healthOf(record).syncs.length">{{ $t('ecom.store.neverSynced') }}</div>
+              </template>
+              <div class="health-cell" @click="logRef.open(record)">
+                <div class="health-line">
+                  <span class="dot" :class="healthOf(record).level" />
+                  <span v-if="healthOf(record).latest">
+                    {{ $t(`ecom.hub.cap.${healthOf(record).latest.type}`) }} · {{ relativeTime(healthOf(record).latest.time) }}
+                  </span>
+                  <span v-else-if="record.lastSyncTime">{{ relativeTime(record.lastSyncTime) }}</span>
+                  <span v-else class="sub-text">{{ $t('ecom.store.neverSynced') }}</span>
+                  <a-tag v-if="healthOf(record).failures24h" color="error" :bordered="false" class="fail-count">
+                    {{ $t('ecom.hub.failures24h', { n: healthOf(record).failures24h }) }}
+                  </a-tag>
+                </div>
+                <div v-if="healthOf(record).failed" class="error-text">
+                  <ExclamationCircleOutlined /> {{ $t('ecom.hub.failedAt', { action: $t(`ecom.hub.cap.${healthOf(record).failed.type}`) }) }}<template v-if="healthOf(record).failed.message">：{{ healthOf(record).failed.message }}</template>
+                </div>
+                <div v-else-if="record.lastSyncMessage" class="error-text"><ExclamationCircleOutlined /> {{ record.lastSyncMessage }}</div>
+              </div>
             </a-tooltip>
           </template>
           <template v-else-if="column.key === 'status'">
@@ -80,7 +116,7 @@
 </template>
 
 <script setup>
-import { h, onMounted, reactive, ref } from 'vue'
+import { computed, h, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Modal, message } from 'ant-design-vue'
 import {
@@ -90,6 +126,7 @@ import {
   ExclamationCircleOutlined,
   LinkOutlined,
   PlusOutlined,
+  RightOutlined,
   SyncOutlined,
   TagsOutlined
 } from '@ant-design/icons-vue'
@@ -102,29 +139,34 @@ import StoreForm from './StoreForm.vue'
 import StoreSyncDialog from './StoreSyncDialog.vue'
 import SyncLogDrawer from './SyncLogDrawer.vue'
 import AuthStatusTag from './AuthStatusTag.vue'
+import PlatformAvatar from './PlatformAvatar.vue'
+import { relativeTime, syncHealth } from './health'
+import { channelOverview } from '@/api/ecom/channel'
 import { supports, useConnectors } from './connectors'
 import { changeStoreStatus, deleteStore, pageStore, storeAuthorizeUrl, syncStoreListings, testStore } from '@/api/ecom/store'
 import { useAction } from '@/composables/useAction'
 import { useColumns } from '@/composables/useColumns'
 import { useDict } from '@/composables/useDict'
 import { useTable } from '@/composables/useTable'
+import { useUserStore } from '@/store/user'
 import { toOptions } from '@/utils/dict'
 import { num } from '@/utils/number'
 import { STATUS_DISABLED, STATUS_ENABLED } from '@/utils/constants'
 import { AuthType, ConnectorCapability, StoreAuthStatus } from '@/constants/enums'
 
 const { t } = useI18n()
+const userStore = useUserStore()
 const dict = useDict('sys_common_status', 'ecom_platform', 'ecom_marketplace')
 const { byPlatform } = useConnectors()
 
 const authLabel = (s) => t(`ecom.hub.auth.${s || StoreAuthStatus.NONE}`)
 const columns = [
-  { title: t('ecom.common.store'), key: 'name', width: 200, exportValue: (r) => `${r.code} ${r.name}` },
+  { title: t('ecom.common.store'), key: 'name', width: 230, fixed: 'left', exportValue: (r) => `${r.code} ${r.name}` },
   { title: t('ecom.store.platform'), key: 'platform', dataIndex: 'platform', width: 130, dict: 'ecom_platform' },
   { title: t('ecom.store.marketplace'), key: 'marketplace', dataIndex: 'marketplace', width: 90, dict: 'ecom_marketplace' },
   { title: t('ecom.hub.env'), key: 'sandbox', width: 80, exportValue: (r) => (r.sandbox === 1 ? t('ecom.hub.sandbox') : t('ecom.hub.production')) },
   { title: t('ecom.hub.authStatus'), key: 'authStatus', width: 190, exportValue: (r) => authLabel(r.authStatus) },
-  { title: t('ecom.hub.lastSync'), key: 'lastSyncTime', dataIndex: 'lastSyncTime', width: 220, ellipsis: true },
+  { title: t('ecom.hub.health'), key: 'health', dataIndex: 'lastSyncTime', width: 280 },
   { title: t('ecom.store.currency'), dataIndex: 'currency', width: 80 },
   { title: t('ecom.store.customer'), dataIndex: 'customerName', width: 180, ellipsis: true },
   { title: t('ecom.store.warehouse'), dataIndex: 'warehouseName', width: 150, ellipsis: true },
@@ -141,7 +183,31 @@ const showSearch = ref(true)
 
 const emptyQuery = () => ({ keyword: undefined, platform: undefined, status: undefined })
 const query = reactive(emptyQuery())
-const { list, loading, size, pagination, load, search, onTableChange, exportAll } = useTable(pageStore, query)
+const { list, loading, size, pagination, load: loadPage, search, onTableChange, exportAll } = useTable(pageStore, query)
+
+/** 渠道总览：各店铺各接口最近一次同步结果，用于同步健康列和顶部统计 */
+const overview = ref([])
+const overviewStores = computed(() => overview.value.flatMap((p) => p.stores || []))
+const healthMap = computed(() => Object.fromEntries(overviewStores.value.map((s) => [s.id, s])))
+const healthOf = (record) => syncHealth(healthMap.value[record.id], record.authStatus)
+const summary = computed(() => {
+  const all = overviewStores.value
+  return {
+    total: all.length,
+    authorized: all.filter((s) => s.authStatus === StoreAuthStatus.AUTHORIZED).length,
+    reauth: all.filter((s) => s.authStatus === StoreAuthStatus.REAUTH).length,
+    none: all.filter((s) => !s.authStatus || s.authStatus === StoreAuthStatus.NONE).length,
+    error: all.filter((s) => syncHealth(s, s.authStatus).level === 'error').length
+  }
+})
+const loadOverview = () =>
+  channelOverview()
+    .then((res) => (overview.value = res || []))
+    .catch(() => {})
+function load() {
+  loadOverview()
+  return loadPage()
+}
 onMounted(load)
 function resetQuery() {
   Object.assign(query, emptyQuery())
@@ -149,6 +215,7 @@ function resetQuery() {
 }
 
 const formRef = ref()
+const openEdit = (record) => (userStore.hasPerm('ecom:store:edit') ? formRef.value.openEdit(record) : logRef.value.open(record))
 const syncRef = ref()
 const logRef = ref()
 
@@ -306,6 +373,81 @@ const rowActions = (record) => {
 <style scoped>
 .demo-tag {
   margin-left: 6px;
+}
+.store-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.store-text {
+  flex: 1;
+  min-width: 0;
+}
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.health-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 14px;
+  background: var(--app-bg);
+  color: var(--app-text-2);
+  font-size: 13px;
+}
+.chip b {
+  color: var(--app-text);
+}
+.chip.warn b {
+  color: #cf1322;
+}
+.overview-link {
+  font-size: 13px;
+}
+.dot {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #bfbfbf;
+}
+.dot.ok {
+  background: #52c41a;
+}
+.dot.error {
+  background: #ff4d4f;
+}
+.health-cell {
+  cursor: pointer;
+  min-width: 0;
+}
+.health-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.fail-count {
+  margin-inline-end: 0;
+  white-space: nowrap;
+}
+.health-tip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .sub-text {
   color: var(--app-text-3);

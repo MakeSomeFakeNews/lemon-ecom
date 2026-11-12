@@ -1,6 +1,7 @@
 <template>
   <FormDrawer page :drawer="drawer" :create-title="$t('ecom.logistics.add')" :edit-title="$t('ecom.logistics.edit')" width="min(1080px, 100vw)">
     <a-form ref="formRef" :model="form" :rules="rules" layout="vertical">
+      <div class="section-title head">{{ $t('ecom.logistics.basicInfo') }}</div>
       <a-row :gutter="16">
         <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item :label="$t('ecom.logistics.code')" name="code">
@@ -202,7 +203,13 @@ defineExpose({ openCreate: drawer.openCreate, openEdit: drawer.openEdit })
   margin: 8px 0 12px;
 }
 .section-title {
-  font-weight: 500;
+  padding-left: 8px;
+  border-left: 3px solid var(--app-primary);
+  font-weight: 600;
+  line-height: 1.2;
+}
+.section-title.head {
+  margin: 4px 0 12px;
 }
 .sub-text {
   color: var(--app-text-3);

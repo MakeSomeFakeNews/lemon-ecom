@@ -27,6 +27,11 @@ public final class OperViews {
     public record MonitorTrend(List<EcomMonitorSnapshot> snapshots, List<EcomMonitorAlert> alerts) {
     }
 
+    /** 列表迷你趋势：一个监控在区间内按日期升序的排名、评分、评论数（没有快照的日期不返回） */
+    public record MonitorSparkline(Long monitorId, List<LocalDate> dates, List<Integer> rankMain, List<Integer> rankSub, List<BigDecimal> rating,
+                                   List<Integer> reviewCount) {
+    }
+
     /** 接口取数的结果 */
     public record FetchOutcome(int total, int success, int failed, int alerts, String message) {
     }

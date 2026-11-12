@@ -13,14 +13,14 @@
 
     <a-card :bordered="false" class="page-card table-card">
       <TableToolbar :exporter="exportAll" v-model:size="size" v-model:checked="checked" v-model:show-search="showSearch" :columns="columns" @refresh="load">
-        <a-button v-perm="'ecom:ali1688Order:create'" :disabled="!selectedKeys.length" @click="pay(selectedKeys)">
-          <template #icon><PayCircleOutlined /></template>{{ $t('ecomDev.order.payBatch') }}
+        <a-button v-perm="'ecom:ali1688Order:create'" type="primary" @click="createModal.open()">
+          <template #icon><ShoppingCartOutlined /></template>{{ $t('ecomDev.order.createFromPo') }}
         </a-button>
         <a-button v-perm="'ecom:ali1688Order:sync'" :loading="syncing" @click="syncMany(selectedKeys)">
           <template #icon><SyncOutlined /></template>{{ selectedKeys.length ? $t('ecomDev.order.syncSelected') : $t('ecomDev.order.syncOpen') }}
         </a-button>
-        <a-button v-perm="'ecom:ali1688Order:create'" type="primary" @click="createModal.open()">
-          <template #icon><ShoppingCartOutlined /></template>{{ $t('ecomDev.order.createFromPo') }}
+        <a-button v-perm="'ecom:ali1688Order:create'" v-if="selectedKeys.length" @click="pay(selectedKeys)">
+          <template #icon><PayCircleOutlined /></template>{{ $t('ecomDev.order.payBatch') }} ({{ selectedKeys.length }})
         </a-button>
       </TableToolbar>
 
@@ -104,13 +104,13 @@ const dict = useDict('ecom_1688_order_status')
 
 const columns = [
   { title: t('ecomDev.order.aliOrderId'), key: 'aliOrderId', dataIndex: 'aliOrderId', width: 200 },
+  { title: t('common.field.status'), key: 'status', dataIndex: 'status', width: 110, dict: 'ecom_1688_order_status' },
   { title: t('ecomDev.order.po'), key: 'po', dataIndex: 'scmOrderNo', width: 180 },
-  { title: t('ecomDev.order.seller'), key: 'seller', dataIndex: 'sellerName', width: 200 },
+  { title: t('ecomDev.order.seller'), key: 'seller', dataIndex: 'sellerName', width: 180, ellipsis: true },
   { title: t('ecomDev.order.itemCount'), dataIndex: 'itemCount', width: 70, align: 'right' },
   { title: t('ecomDev.order.totalQty'), dataIndex: 'totalQty', width: 90, align: 'right' },
-  { title: t('ecomDev.order.totalAmount'), key: 'amount', dataIndex: 'totalAmount', width: 230, align: 'right' },
+  { title: t('ecomDev.order.totalAmount'), key: 'amount', dataIndex: 'totalAmount', width: 190, align: 'right' },
   { title: t('ecomDev.order.logistics'), key: 'logistics', dataIndex: 'logisticsNo', width: 170 },
-  { title: t('common.field.status'), key: 'status', dataIndex: 'status', width: 110, dict: 'ecom_1688_order_status' },
   { title: t('ecomDev.order.syncTime'), dataIndex: 'syncTime', width: 165 },
   actionColumn(3)
 ]

@@ -445,6 +445,26 @@ export default {
     cancelConfirm: 'Cancel shipment {no}?',
     cancelled: 'Cancelled',
     costs: 'Record Costs',
-    deleteConfirm: 'Delete shipment {no}?'
+    deleteConfirm: 'Delete shipment {no}?',
+    basicInfo: 'Basic Info',
+    logisticsInfo: 'Logistics',
+    costSection: 'First-leg costs (base currency)',
+    costBreak: 'Freight {f} / Duty {d} / Other {o}',
+    allStatus: 'All',
+    transitHint: 'In transit {n} d',
+    overdueHint: 'Overdue {n} d',
+    flow: {
+      draft: 'Created',
+      approving: 'Approving',
+      shipped: 'Shipped',
+      transit: 'In Transit',
+      received: 'Received',
+      eta: 'ETA {date}',
+      planned: 'Planned {date}',
+      daysLeft: 'ETA {date}, {n} days left',
+      overdue: 'ETA {date}, {n} days overdue',
+      shippedDays: 'Shipped {n} days ago',
+      transitDays: '{n} days in transit'
+    }
   }
 }

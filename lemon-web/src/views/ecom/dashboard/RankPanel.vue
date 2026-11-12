@@ -1,5 +1,5 @@
 <template>
-  <a-row :gutter="[16, 16]">
+  <a-row :gutter="[16, 16]" class="rank-row">
     <a-col :xs="24" :xl="10">
       <a-card :bordered="false" class="page-card" :title="$t('ecomFix.dash.topSku')">
         <template #extra>
@@ -7,7 +7,7 @@
             <a-radio-button v-for="b in SKU_BY" :key="b" :value="b">{{ $t(`ecomFix.dash.by.${b}`) }}</a-radio-button>
           </a-radio-group>
         </template>
-        <a-table row-key="key" size="small" :columns="skuColumns" :data-source="skuRows" :loading="loadingSku" :pagination="false" :scroll="{ x: 560 }">
+        <a-table row-key="key" size="small" :columns="skuColumns" :data-source="skuRows" :loading="loadingSku" :pagination="false" table-layout="fixed">
           <template #bodyCell="{ column, record, index }">
             <template v-if="column.key === 'rank'"><span class="rank" :class="`r${index + 1}`">{{ index + 1 }}</span></template>
             <template v-else-if="column.key === 'sku'">
@@ -27,17 +27,21 @@
     <a-col :xs="24" :xl="8">
       <a-card :bordered="false" class="page-card" :title="$t('ecomFix.dash.storeRank')">
         <EChart v-if="storeRows.length" :option="storeOption" :height="`${Math.max(300, storeRows.slice(0, 10).length * 34 + 40)}px`" />
-        <a-empty v-else :image="simpleImage" class="empty" />
+        <a-empty v-else :image="simpleImage" :description="$t('ecomDat.dash.noData')" class="empty" />
       </a-card>
     </a-col>
     <a-col :xs="24" :xl="6">
       <a-card :bordered="false" class="page-card" :title="$t('ecomFix.dash.platformShare')">
-        <EChart v-if="platformRows.length" :option="platformOption" height="300px" />
-        <a-empty v-else :image="simpleImage" class="empty" />
-        <div v-for="p in platformRows" :key="p.platform" class="platform-line">
-          <DictTag type="ecom_platform" :value="p.platform" />
-          <span class="sub-text">{{ percent(p.percent) }} · {{ $t('ecomFix.dash.margin') }} {{ percent(p.margin) }}</span>
-        </div>
+        <template v-if="platformRows.length">
+          <EChart :option="platformOption" height="220px" />
+          <div v-for="(p, i) in platformRows" :key="p.platform" class="platform-line">
+            <span class="dot" :style="{ background: PALETTE[i % PALETTE.length] }" />
+            <DictTag type="ecom_platform" :value="p.platform" />
+            <span class="platform-share">{{ percent(p.percent) }}</span>
+            <span class="sub-text platform-margin" :class="{ neg: nz(p.margin) < 0 }">{{ $t('ecomFix.dash.margin') }} {{ percent(p.margin) }}</span>
+          </div>
+        </template>
+        <a-empty v-else :image="simpleImage" :description="$t('ecomDat.dash.noData')" class="empty" />
       </a-card>
     </a-col>
   </a-row>
@@ -54,6 +58,7 @@ import { dashboardPlatformShare, dashboardStoreRank, dashboardTopSku } from '@/a
 import { useDict } from '@/composables/useDict'
 import { findDict } from '@/utils/dict'
 import { nz, qty } from '@/utils/number'
+import { useAppStore } from '@/store/app'
 import { t } from '@/locales'
 
 /**
@@ -62,6 +67,7 @@ import { t } from '@/locales'
  */
 const props = defineProps({ params: { type: Object, required: true } })
 const dict = useDict('ecom_platform')
+const app = useAppStore()
 const simpleImage = Empty.PRESENTED_IMAGE_SIMPLE
 const SKU_BY = ['QTY', 'SALES', 'PROFIT']
 const skuBy = ref('SALES')
@@ -71,11 +77,11 @@ const platformRows = ref([])
 const loadingSku = ref(false)
 
 const skuColumns = [
-  { key: 'rank', width: 44, align: 'center' },
-  { title: t('ecomFix.dash.sku'), key: 'sku', width: 220 },
-  { title: t('ecomFix.dash.units'), key: 'qty', width: 80, align: 'right' },
-  { title: t('ecomFix.dash.sales'), key: 'sales', width: 100, align: 'right' },
-  { title: t('ecomFix.dash.profit'), key: 'profit', width: 100, align: 'right' }
+  { key: 'rank', width: 40, align: 'center' },
+  { title: t('ecomFix.dash.sku'), key: 'sku' },
+  { title: t('ecomFix.dash.units'), key: 'qty', width: 64, align: 'right' },
+  { title: t('ecomFix.dash.sales'), key: 'sales', width: 92, align: 'right' },
+  { title: t('ecomFix.dash.profit'), key: 'profit', width: 92, align: 'right' }
 ]
 
 async function loadSku() {
@@ -114,7 +120,7 @@ const storeOption = computed(() => {
       }
     },
     grid: { left: 8, right: 48, top: 8, bottom: 8, containLabel: true },
-    xAxis: { type: 'value', axisLabel: { formatter: (v) => shortMoney(v) } },
+    xAxis: { type: 'value', splitNumber: 3, axisLabel: { formatter: (v) => shortMoney(v) } },
     yAxis: { type: 'category', data: top.map((r) => r.storeName), axisLabel: { width: 110, overflow: 'truncate' } },
     series: [
       {
@@ -122,7 +128,7 @@ const storeOption = computed(() => {
         type: 'bar',
         barMaxWidth: 16,
         itemStyle: { borderRadius: [0, 4, 4, 0], color: (p) => (nz(top[p.dataIndex].margin) < 0 ? '#ff7875' : '#4096ff') },
-        label: { show: true, position: 'right', formatter: (p) => percent(top[p.dataIndex].margin), fontSize: 11 },
+        label: { show: true, position: 'right', formatter: (p) => percent(top[p.dataIndex].margin), fontSize: 11, color: app.dark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.65)', textBorderWidth: 0 },
         data: top.map((r) => nz(r.sales))
       }
     ]
@@ -130,27 +136,44 @@ const storeOption = computed(() => {
 })
 
 const platformLabel = (v) => findDict(dict.ecom_platform, v)?.label || v
-const platformOption = computed(() => ({
-  tooltip: { trigger: 'item', valueFormatter: (v) => yuan(v) },
-  series: [
-    {
-      type: 'pie',
-      radius: ['45%', '72%'],
-      itemStyle: { borderRadius: 6, borderColor: 'transparent', borderWidth: 2 },
-      label: { formatter: '{b}\n{d}%' },
-      data: platformRows.value.map((r) => ({ name: platformLabel(r.platform), value: nz(r.sales) }))
-    }
-  ]
-}))
+/** 与 EChart 组件的默认配色一致，图例圆点与扇区颜色对应 */
+const PALETTE = ['#1677ff', '#52c41a', '#faad14', '#f5222d', '#722ed1', '#13c2c2', '#eb2f96', '#fa8c16', '#2f54eb', '#a0d911']
+const platformOption = computed(() => {
+  const total = platformRows.value.reduce((s, r) => s + nz(r.sales), 0)
+  return {
+    tooltip: { trigger: 'item', formatter: (p) => `${p.marker}${p.name}<br/>${yuan(p.value)} (${p.percent}%)` },
+    title: {
+      text: shortMoney(total),
+      subtext: t('ecomFix.dash.sales'),
+      left: 'center',
+      top: '38%',
+      itemGap: 4,
+      textStyle: { fontSize: 16, fontWeight: 600, color: app.dark ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.85)' },
+      subtextStyle: { fontSize: 12, color: app.dark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)' }
+    },
+    series: [
+      {
+        type: 'pie',
+        radius: ['58%', '82%'],
+        itemStyle: { borderRadius: 4, borderColor: 'transparent', borderWidth: 2 },
+        label: { show: false },
+        data: platformRows.value.map((r) => ({ name: platformLabel(r.platform), value: nz(r.sales) }))
+      }
+    ]
+  }
+})
 </script>
 
 <style scoped>
+.rank-row > .ant-col > .ant-card {
+  height: 100%;
+}
 .sub-text {
   color: var(--app-text-3);
   font-size: 12px;
 }
 .cell-ellipsis {
-  max-width: 220px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -185,8 +208,23 @@ const platformOption = computed(() => ({
 }
 .platform-line {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-top: 4px;
+  gap: 6px;
+  margin-top: 6px;
+}
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.platform-share {
+  margin-left: auto;
+  font-weight: 600;
+}
+.platform-margin {
+  min-width: 84px;
+  text-align: right;
+  white-space: nowrap;
 }
 </style>

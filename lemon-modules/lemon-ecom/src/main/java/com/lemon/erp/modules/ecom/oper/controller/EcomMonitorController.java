@@ -57,6 +57,13 @@ public class EcomMonitorController {
         return R.ok(monitorService.fetchPlatforms());
     }
 
+    /** 列表迷你趋势：ids 为当前页的监控 ID（逗号分隔），一次返回最近 days 天（默认 30）的排名 / 评分 */
+    @GetMapping("/trends")
+    @PreAuthorize("@ss.hasPerm('ecom:monitor:list')")
+    public R<List<OperViews.MonitorSparkline>> trends(@RequestParam List<Long> ids, @RequestParam(defaultValue = "30") int days) {
+        return R.ok(monitorService.sparklines(ids, days));
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("@ss.hasPerm('ecom:monitor:list')")
     public R<EcomMonitor> detail(@PathVariable Long id) {

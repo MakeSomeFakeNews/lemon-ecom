@@ -49,6 +49,9 @@ public class EcomOrderItem extends BaseEntity {
     private String materialSpec;
     @TableField(exist = false)
     private String unit;
+    /** 商品图片：在线商品（同店铺同 SKU）的图片，没有时取物料主图 */
+    @TableField(exist = false)
+    private String imageUrl;
     /** 详情：已分配到未取消包裹的件数 */
     @TableField(exist = false)
     private BigDecimal allocatedQty;

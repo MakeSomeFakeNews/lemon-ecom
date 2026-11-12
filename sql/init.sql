@@ -5160,11 +5160,9 @@ INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, s
 -- ---------------------------------------------------------------- 跨境电商：菜单、字典、内置角色授权、示例数据
 
 INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time) VALUES
-(17,  0,   '电商', 'M', '/ecom', NULL, NULL, 'GlobalOutlined', 1, 1, 1, NOW(), NOW()),
 (981, 17,  '店铺与商品', 'M', NULL, NULL, NULL, NULL, 1, 1, 1, NOW(), NOW()),
 (982, 17,  '订单与售后', 'M', NULL, NULL, NULL, NULL, 2, 1, 1, NOW(), NOW()),
 (983, 17,  '库存与物流', 'M', NULL, NULL, NULL, NULL, 3, 1, 1, NOW(), NOW()),
-(984, 17,  '结算与分析', 'M', NULL, NULL, NULL, NULL, 4, 1, 1, NOW(), NOW()),
 (421, 981, '平台店铺', 'C', 'store', 'ecom/store/index', 'ecom:store:list', 'ShopOutlined', 1, 1, 1, NOW(), NOW()),
 (422, 981, '在线商品', 'C', 'listing', 'ecom/listing/index', 'ecom:listing:list', 'TagsOutlined', 2, 1, 1, NOW(), NOW()),
 (423, 982, '平台订单', 'C', 'order', 'ecom/order/index', 'ecom:order:list', 'ShoppingOutlined', 1, 1, 1, NOW(), NOW()),
@@ -6226,7 +6224,6 @@ CREATE TABLE ecom_forecast_setting (
 
 -- 菜单：电商下的分组「数据分析」
 INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time) VALUES
-(987, 17,  '数据分析', 'M', NULL, NULL, NULL, NULL, 5, 1, 1, NOW(), NOW()),
 (490, 987, '销量统计', 'C', 'sales-stats', 'ecom/sales-stats/index', 'ecom:salesStats:list', 'BarChartOutlined', 1, 1, 1, NOW(), NOW()),
 (491, 987, '销量预测', 'C', 'forecast', 'ecom/forecast/index', 'ecom:forecast:list', 'LineChartOutlined', 2, 1, 1, NOW(), NOW()),
 (492, 987, '商品分析', 'C', 'product-analysis', 'ecom/product-analysis/index', 'ecom:productAnalysis:list', 'PieChartOutlined', 3, 1, 1, NOW(), NOW()),
@@ -6704,7 +6701,6 @@ CREATE TABLE ecom_cs_ticket (
 
 -- 菜单：电商下的「客服」分组（买家消息、评价管理、回复模板、售后工单）
 INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time) VALUES
-(986, 17, '客服', 'M', NULL, NULL, NULL, NULL, 6, 1, 1, NOW(), NOW()),
 (485, 986, '买家消息', 'C', 'cs-message', 'ecom/cs-message/index', 'ecom:csMessage:list', 'MessageOutlined', 1, 1, 1, NOW(), NOW()),
 (486, 986, '评价管理', 'C', 'cs-review', 'ecom/cs-review/index', 'ecom:csReview:list', 'StarOutlined', 2, 1, 1, NOW(), NOW()),
 (487, 986, '回复模板', 'C', 'cs-template', 'ecom/cs-template/index', 'ecom:csTemplate:list', 'FileTextOutlined', 3, 1, 1, NOW(), NOW()),
@@ -9128,3 +9124,137 @@ WHERE r.id = 5 AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r
 INSERT INTO sys_role_menu (role_id, menu_id)
 SELECT r.id, m.id FROM sys_role r JOIN sys_menu m ON m.id = 527
 WHERE r.id = 3 AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = r.id AND x.menu_id = m.id);
+
+-- ===== 导航重组：「电商」拆为商品管理、订单管理、运营管理、物流管理四个模块，采购相关并入供应链，平台结算并入财务管理 =====
+-- 页面改为绝对地址（/ecom/...、/scm/...、/wms/...），移动模块后页面地址不变，已有的跳转链接、通知链接、收藏的标签页继续可用；
+-- 一级模块的地址只作为顶部导航的标识。电商看板同时作为登录后的首页。
+INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time) VALUES
+(19, 0, '商品管理', 'M', '/product', NULL, NULL, 'AppstoreOutlined', 1, 1, 1, NOW(), NOW()),
+(20, 0, '订单管理', 'M', '/order', NULL, NULL, 'ShoppingOutlined', 2, 1, 1, NOW(), NOW()),
+(23, 0, '运营管理', 'M', '/ops', NULL, NULL, 'RiseOutlined', 3, 1, 1, NOW(), NOW()),
+(22, 0, '物流管理', 'M', '/logistics', NULL, NULL, 'CarOutlined', 4, 1, 1, NOW(), NOW()),
+(990, 7, '平台结算', 'M', NULL, NULL, NULL, NULL, 0, 1, 1, NOW(), NOW()),
+(991, 19, '刊登定价', 'M', NULL, NULL, NULL, NULL, 2, 1, 1, NOW(), NOW()),
+(992, 23, '店铺管理', 'M', NULL, NULL, NULL, NULL, 1, 1, 1, NOW(), NOW()),
+(993, 20, '售后客服', 'M', NULL, NULL, NULL, NULL, 2, 1, 1, NOW(), NOW()),
+(994, 20, '订单设置', 'M', NULL, NULL, NULL, NULL, 3, 1, 1, NOW(), NOW()),
+(995, 5, '1688 采购', 'M', NULL, NULL, NULL, NULL, 2, 1, 1, NOW(), NOW()),
+(996, 23, '数据分析', 'M', NULL, NULL, NULL, NULL, 4, 1, 1, NOW(), NOW()),
+(997, 22, 'FBA', 'M', NULL, NULL, NULL, NULL, 2, 1, 1, NOW(), NOW()),
+(998, 23, '广告管理', 'M', NULL, NULL, NULL, NULL, 2, 1, 1, NOW(), NOW());
+
+-- 原「电商」下的页面统一改为绝对地址（按钮没有地址，不受影响）
+UPDATE sys_menu SET path = CONCAT('/ecom/', path) WHERE type = 'C' AND parent_id IN (980, 981, 982, 983, 984, 986, 987, 988, 989);
+
+-- 商品管理：商品资料（本地商品 = 原仓库管理的物料管理、在线商品、SKU 配对）、刊登定价、产品开发
+UPDATE sys_menu SET parent_id = 19, name = '商品资料', sort = 1 WHERE id = 981;
+UPDATE sys_menu SET parent_id = 981, sort = 1, path = '/wms/material', name = '本地商品' WHERE id = 137;
+UPDATE sys_menu SET sort = 2 WHERE id = 422;
+UPDATE sys_menu SET sort = 3 WHERE id = 450;
+UPDATE sys_menu SET parent_id = 991, sort = 1 WHERE id = 500;
+UPDATE sys_menu SET parent_id = 991, sort = 2 WHERE id = 501;
+UPDATE sys_menu SET parent_id = 991, sort = 3 WHERE id = 502;
+UPDATE sys_menu SET parent_id = 991, sort = 4 WHERE id = 504;
+UPDATE sys_menu SET parent_id = 991, sort = 5 WHERE id = 505;
+UPDATE sys_menu SET parent_id = 991, sort = 6 WHERE id = 503;
+UPDATE sys_menu SET parent_id = 19, sort = 3 WHERE id = 980;
+-- 订单管理：订单处理、售后客服、订单设置
+UPDATE sys_menu SET parent_id = 20, name = '订单处理', sort = 1 WHERE id = 982;
+UPDATE sys_menu SET sort = 1 WHERE id = 423;
+UPDATE sys_menu SET sort = 2 WHERE id = 433;
+UPDATE sys_menu SET sort = 3 WHERE id = 434;
+UPDATE sys_menu SET parent_id = 982, sort = 4 WHERE id = 532;
+UPDATE sys_menu SET parent_id = 993, sort = 1 WHERE id = 424;
+UPDATE sys_menu SET parent_id = 993, sort = 2 WHERE id = 488;
+UPDATE sys_menu SET parent_id = 993, sort = 3 WHERE id = 485;
+UPDATE sys_menu SET parent_id = 993, sort = 4 WHERE id = 486;
+UPDATE sys_menu SET parent_id = 993, sort = 5 WHERE id = 487;
+UPDATE sys_menu SET parent_id = 994, sort = 1 WHERE id = 432;
+UPDATE sys_menu SET parent_id = 994, sort = 2 WHERE id = 530;
+UPDATE sys_menu SET parent_id = 994, sort = 3 WHERE id = 531;
+UPDATE sys_menu SET parent_id = 994, sort = 4 WHERE id = 533;
+-- 运营管理：店铺管理、广告管理、运营监控（ASIN 监控、促销、目标与绩效）、数据分析
+UPDATE sys_menu SET parent_id = 992, sort = 1 WHERE id = 421;
+UPDATE sys_menu SET parent_id = 992, sort = 2 WHERE id = 440;
+UPDATE sys_menu SET parent_id = 992, sort = 3 WHERE id = 544;
+UPDATE sys_menu SET parent_id = 998, sort = 1 WHERE id = 430;
+UPDATE sys_menu SET parent_id = 998, sort = 2 WHERE id = 480;
+UPDATE sys_menu SET parent_id = 23, name = '运营监控', sort = 3 WHERE id = 989;
+UPDATE sys_menu SET sort = 1 WHERE id = 540;
+UPDATE sys_menu SET sort = 2 WHERE id = 541;
+UPDATE sys_menu SET sort = 3 WHERE id = 542;
+UPDATE sys_menu SET sort = 4 WHERE id = 543;
+UPDATE sys_menu SET parent_id = 996, sort = 1 WHERE id = 420;
+UPDATE sys_menu SET parent_id = 996, sort = 2 WHERE id = 431;
+UPDATE sys_menu SET parent_id = 996, sort = 3 WHERE id = 490;
+UPDATE sys_menu SET parent_id = 996, sort = 4 WHERE id = 491;
+UPDATE sys_menu SET parent_id = 996, sort = 5 WHERE id = 492;
+-- 物流管理：头程物流（发货计划、头程货件、物流渠道）、FBA、海外仓
+UPDATE sys_menu SET parent_id = 22, name = '头程物流', sort = 1 WHERE id = 983;
+UPDATE sys_menu SET sort = 1 WHERE id = 451;
+UPDATE sys_menu SET sort = 2 WHERE id = 425;
+UPDATE sys_menu SET sort = 3 WHERE id = 428;
+UPDATE sys_menu SET parent_id = 997, sort = 1 WHERE id = 426;
+UPDATE sys_menu SET parent_id = 997, sort = 2 WHERE id = 510;
+UPDATE sys_menu SET parent_id = 997, sort = 3 WHERE id = 511;
+UPDATE sys_menu SET parent_id = 997, sort = 4 WHERE id = 512;
+UPDATE sys_menu SET parent_id = 997, sort = 5 WHERE id = 513;
+UPDATE sys_menu SET parent_id = 997, sort = 6 WHERE id = 514;
+UPDATE sys_menu SET parent_id = 22, sort = 3 WHERE id = 988;
+-- 供应链：补货采购（补货建议、采购计划、采购订单 / 入库 / 退货、安全库存补货）、1688 采购、批发销售、往来单位、进销存报表
+UPDATE sys_menu SET path = CONCAT('/scm/', path) WHERE type = 'C' AND parent_id IN (901, 902, 903, 966);
+UPDATE sys_menu SET name = '补货采购', sort = 1 WHERE id = 901;
+UPDATE sys_menu SET sort = sort + 2 WHERE parent_id = 901;
+UPDATE sys_menu SET parent_id = 901, sort = 1 WHERE id = 427;
+UPDATE sys_menu SET parent_id = 901, sort = 2 WHERE id = 460;
+UPDATE sys_menu SET name = '安全库存补货' WHERE id = 274;
+UPDATE sys_menu SET parent_id = 995, sort = 1 WHERE id = 555;
+UPDATE sys_menu SET parent_id = 995, sort = 2 WHERE id = 554;
+UPDATE sys_menu SET parent_id = 995, sort = 3 WHERE id = 553;
+UPDATE sys_menu SET name = '批发销售', sort = 3 WHERE id = 902;
+UPDATE sys_menu SET sort = 4 WHERE id = 903;
+UPDATE sys_menu SET sort = 5 WHERE id = 966;
+-- 财务管理 - 平台结算：平台结算、回款对账、费用映射、税务
+UPDATE sys_menu SET parent_id = 990, sort = 1 WHERE id = 429;
+UPDATE sys_menu SET parent_id = 990, sort = 2 WHERE id = 472;
+UPDATE sys_menu SET parent_id = 990, sort = 3 WHERE id = 470;
+UPDATE sys_menu SET parent_id = 990, sort = 4 WHERE id = 471;
+
+-- 原「电商」模块与「结算与分析」「数据分析」「客服」分组已不再建立，清理早先按它们写入的角色授权
+DELETE FROM sys_role_menu WHERE menu_id IN (17, 984, 986, 987);
+
+-- 顶部导航顺序：商品、订单、运营、物流、供应链、仓库、财务，然后是智能、流程中心、系统管理、系统监控
+UPDATE sys_menu SET sort = 5 WHERE id = 5;
+UPDATE sys_menu SET sort = 6 WHERE id = 4;
+UPDATE sys_menu SET sort = 7 WHERE id = 7;
+UPDATE sys_menu SET sort = 8 WHERE id = 16;
+UPDATE sys_menu SET sort = 9 WHERE id = 3;
+UPDATE sys_menu SET sort = 10 WHERE id = 1;
+UPDATE sys_menu SET sort = 11 WHERE id = 2;
+UPDATE sys_menu SET sort = 12 WHERE id = 15;
+
+-- 角色授权连带新的分组和模块（按钮 → 页面 → 分组 → 模块，逐级补齐）
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT DISTINCT rm.role_id, c.parent_id FROM sys_role_menu rm JOIN sys_menu c ON c.id = rm.menu_id
+WHERE c.parent_id <> 0 AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = rm.role_id AND x.menu_id = c.parent_id);
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT DISTINCT rm.role_id, c.parent_id FROM sys_role_menu rm JOIN sys_menu c ON c.id = rm.menu_id
+WHERE c.parent_id <> 0 AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = rm.role_id AND x.menu_id = c.parent_id);
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT DISTINCT rm.role_id, c.parent_id FROM sys_role_menu rm JOIN sys_menu c ON c.id = rm.menu_id
+WHERE c.parent_id <> 0 AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = rm.role_id AND x.menu_id = c.parent_id);
+
+-- 订单操作日志：订单的关键动作（写入、规则、审核、挂起、打单、发货、回传、取消、退货、补发、备注等），订单详情「处理记录」读取
+DROP TABLE IF EXISTS ecom_order_log;
+CREATE TABLE ecom_order_log (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id   BIGINT       NOT NULL DEFAULT 1 COMMENT '租户ID',
+    order_id    BIGINT       NOT NULL COMMENT '平台订单',
+    action      VARCHAR(32)  NOT NULL COMMENT '动作（EcomOrderLogAction）CREATE写入 RULE规则 AUDIT审核 HOLD挂起 LABEL打单 SHIP发货 NOTE备注等',
+    content     VARCHAR(500)          DEFAULT NULL COMMENT '内容',
+    create_by   BIGINT                DEFAULT NULL COMMENT '操作人，系统执行时为空',
+    create_time DATETIME              DEFAULT NULL COMMENT '操作时间',
+    update_time DATETIME              DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_order_log_order (order_id, create_time)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '订单操作日志';

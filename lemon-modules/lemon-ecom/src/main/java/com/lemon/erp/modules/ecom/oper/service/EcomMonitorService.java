@@ -166,6 +166,33 @@ public class EcomMonitorService {
         return new OperViews.MonitorTrend(snapshots, page.getRecords());
     }
 
+    /** 列表一次最多取多少个监控的迷你趋势（与分页单页上限一致） */
+    private static final int SPARKLINE_MAX_IDS = 500;
+
+    /** 列表迷你趋势：一次查询多个监控最近 days 天（默认 30）的排名 / 评分，店铺不可见的监控不返回 */
+    public List<OperViews.MonitorSparkline> sparklines(List<Long> ids, int days) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        if (ids.size() > SPARKLINE_MAX_IDS) {
+            throw new BizException("ecom.error.oper.tooManyIds", SPARKLINE_MAX_IDS);
+        }
+        int d = Math.max(1, Math.min(days, TREND_MAX_DAYS));
+        LocalDate today = LocalDate.now();
+        Map<Long, List<EcomMonitorSnapshot>> byMonitor = new LinkedHashMap<>();
+        snapshotMapper.selectTrends(ids, today.minusDays(d - 1L), today)
+                .forEach(x -> byMonitor.computeIfAbsent(x.getMonitorId(), k -> new ArrayList<>()).add(x));
+        return byMonitor.entrySet().stream().map(e -> {
+            List<EcomMonitorSnapshot> list = e.getValue();
+            return new OperViews.MonitorSparkline(e.getKey(),
+                    list.stream().map(EcomMonitorSnapshot::getSnapshotDate).toList(),
+                    list.stream().map(EcomMonitorSnapshot::getRankMain).toList(),
+                    list.stream().map(EcomMonitorSnapshot::getRankSub).toList(),
+                    list.stream().map(EcomMonitorSnapshot::getRating).toList(),
+                    list.stream().map(EcomMonitorSnapshot::getReviewCount).toList());
+        }).toList();
+    }
+
     // ---------------------------------------------------------------- 维护
 
     @Transactional

@@ -5,19 +5,30 @@
       <a-range-picker v-model:value="query.range" value-format="YYYY-MM-DD" :placeholder="[$t('ecomFba.audit.range'), $t('ecomFba.audit.range')]" @change="search" />
       <a-checkbox v-model:checked="query.overOnly" @change="search">{{ $t('ecomFba.audit.overOnly') }}</a-checkbox>
     </div>
-    <div class="cards">
-      <span>{{ $t('ecomFba.audit.skuCount') }} <b>{{ result.skuCount ?? 0 }}</b></span>
-      <span>{{ $t('ecomFba.audit.overSkus') }} <b class="neg">{{ result.overSkus ?? 0 }}</b></span>
-      <span>{{ $t('ecomFba.audit.missingDims') }} <b class="warn">{{ result.missingDims ?? 0 }}</b></span>
-      <span>{{ $t('ecomFba.audit.overchargeBase') }} <b class="neg">{{ money(result.overchargeBase) }}</b></span>
-      <span v-if="result.missingRates?.length" class="warn">{{ $t('ecomFba.common.missingRates', { list: result.missingRates.join(', ') }) }}</span>
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-label">{{ $t('ecomFba.audit.skuCount') }}</div>
+        <div class="stat-value">{{ result.skuCount ?? 0 }}</div>
+      </div>
+      <div class="stat clickable" :class="{ active: query.overOnly }" @click="toggleOver">
+        <div class="stat-label">{{ $t('ecomFba.audit.overSkus') }}</div>
+        <div class="stat-value neg">{{ result.overSkus ?? 0 }}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">{{ $t('ecomFba.audit.missingDims') }}</div>
+        <div class="stat-value warn">{{ result.missingDims ?? 0 }}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">{{ $t('ecomFba.audit.overchargeBase') }}</div>
+        <div class="stat-value neg">¥{{ money(result.overchargeBase ?? 0) }}</div>
+      </div>
     </div>
+    <a-alert v-if="result.missingRates?.length" type="warning" show-icon class="rates-alert" :message="$t('ecomFba.common.missingRates', { list: result.missingRates.join(', ') })" />
     <TableToolbar :exporter="exportAll" v-model:size="size" v-model:checked="checked" :columns="columns" @refresh="load">
-      <a-tooltip :title="$t('ecomFba.audit.generateTip')">
-        <a-button v-perm="'ecom:fbaClaim:add'" type="primary" :disabled="!selectedKeys.length" @click="generate">
-          <template #icon><SafetyCertificateOutlined /></template>{{ $t('ecomFba.audit.generate') }}
-        </a-button>
-      </a-tooltip>
+      <a-button v-if="selectedKeys.length" v-perm="'ecom:fbaClaim:add'" type="primary" @click="generate">
+        <template #icon><SafetyCertificateOutlined /></template>{{ $t('ecomFba.audit.generate') }} ({{ selectedKeys.length }})
+      </a-button>
+      <span v-else class="sub-text hint">{{ $t('ecomFba.audit.generateTip') }}</span>
       <a-tooltip :title="$t('ecomFba.audit.tip')"><InfoCircleOutlined class="tip-icon" /></a-tooltip>
     </TableToolbar>
     <a-table
@@ -114,6 +125,11 @@ async function fetcher({ current, size: pageSize }) {
 const { list, loading, size, pagination, load, search, onTableChange, exportAll, rowSelection, selectedKeys } = useTable(fetcher, query)
 onMounted(load)
 
+function toggleOver() {
+  query.overOnly = !query.overOnly
+  search()
+}
+
 async function generate() {
   const items = selectedKeys.value.map((k) => {
     const i = k.indexOf('|')
@@ -141,11 +157,38 @@ async function generate() {
 .w220 {
   width: 220px;
 }
-.cards {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 20px;
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.stat {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--app-border);
+}
+.stat.clickable {
+  cursor: pointer;
+}
+.stat.clickable:hover,
+.stat.active {
+  border-color: var(--status-critical, #cf1322);
+}
+.stat-label {
+  color: var(--app-text-3);
+  font-size: 12px;
+}
+.stat-value {
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.rates-alert {
   margin-bottom: 8px;
+}
+.hint {
+  align-self: center;
 }
 .tip-icon {
   color: var(--app-text-3);

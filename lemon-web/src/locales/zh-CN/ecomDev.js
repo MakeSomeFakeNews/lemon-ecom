@@ -139,7 +139,12 @@ export default {
     cannotSubmit: '当前状态不能提交审批',
     cannotApprove: '只有待审批（未发起审批流程）的项目可以手工审批，且需要审批权限',
     inFlow: '项目在审批流程中，请在「我的待办」中审批',
-    cannotMove: '不能拖到这个状态'
+    cannotMove: '不能拖到这个状态',
+    avgMargin: '本列已试算项目的平均利润率',
+    emptyColumn: '暂无项目',
+    kpiMargin: '利润率',
+    kpiSales: '预估月销',
+    kpiSamples: '样品合格'
   },
   calc: {
     tabCalc: '利润试算',
@@ -197,6 +202,7 @@ export default {
     saved: '方案已保存',
     needInput: '请填写采购价，以及售价或目标利润率',
     emptyResult: '填写采购价与售价（或目标利润率）后显示试算结果',
+    resultTitle: '试算结果',
     profit: '单件利润',
     margin: '利润率',
     salePriceResult: '售价',

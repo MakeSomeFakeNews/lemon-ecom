@@ -9,25 +9,25 @@
           <a-input v-model:value="query.keyword" allow-clear :placeholder="$t('ecomPublish.change.keywordPh')" @press-enter="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomPublish.change.type')" name="changeType">
-          <a-select v-model:value="query.changeType" allow-clear :placeholder="$t('common.placeholder.all')" :options="toOptions(dict.ecom_price_change_type)" />
+          <a-select v-model:value="query.changeType" allow-clear :placeholder="$t('common.placeholder.all')" :options="toOptions(dict.ecom_price_change_type)" @change="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomPublish.change.source')" name="source">
-          <a-select v-model:value="query.source" allow-clear :placeholder="$t('common.placeholder.all')" :options="toOptions(dict.ecom_price_change_source)" />
+          <a-select v-model:value="query.source" allow-clear :placeholder="$t('common.placeholder.all')" :options="toOptions(dict.ecom_price_change_source)" @change="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomPublish.change.result')" name="status">
-          <a-select v-model:value="query.status" allow-clear :placeholder="$t('common.placeholder.all')" :options="toOptions(dict.ecom_price_change_status)" />
+          <a-select v-model:value="query.status" allow-clear :placeholder="$t('common.placeholder.all')" :options="toOptions(dict.ecom_price_change_status)" @change="search" />
         </a-form-item>
-        <a-form-item :label="$t('ecomPublish.change.time')" name="range">
-          <a-range-picker v-model:value="query.range" value-format="YYYY-MM-DD" />
+        <a-form-item :label="$t('ecomPublish.change.time')" name="range" data-wide>
+          <a-range-picker v-model:value="query.range" value-format="YYYY-MM-DD" class="full" @change="search" />
         </a-form-item>
         <a-form-item :label="$t('ecomPublish.change.batchNo')" name="batchNo">
-          <a-input v-model:value="query.batchNo" allow-clear />
+          <a-input v-model:value="query.batchNo" allow-clear @press-enter="search" />
         </a-form-item>
       </SearchForm>
     </a-card>
     <a-card :bordered="false" class="page-card table-card">
       <TableToolbar v-model:size="size" v-model:checked="checked" v-model:show-search="showSearch" :columns="columns" :exporter="exportAll" @refresh="load">
-        <span class="sub-text">{{ $t('ecomPublish.change.tip') }}</span>
+        <span class="toolbar-tip"><InfoCircleOutlined /> {{ $t('ecomPublish.change.tip') }}</span>
       </TableToolbar>
       <a-table row-key="id" :size="size" :columns="visibleColumns" :data-source="list" :loading="loading" :pagination="pagination"
                :scroll="{ x: scrollX, y: '100%' }" @change="onTableChange">
@@ -37,8 +37,8 @@
             <DictTag v-if="record.platform" type="ecom_platform" :value="record.platform" />
           </template>
           <template v-else-if="column.key === 'sku'">
-            <div>{{ record.sellerSku }}</div>
-            <div class="sub-text ellipsis" :title="record.title">{{ record.title }}</div>
+            <div class="ellipsis">{{ record.sellerSku }}</div>
+            <a-tooltip :title="record.title"><div class="sub-text ellipsis">{{ record.title }}</div></a-tooltip>
           </template>
           <template v-else-if="column.key === 'changeType'"><DictTag type="ecom_price_change_type" :value="record.changeType" /></template>
           <template v-else-if="column.key === 'change'">
@@ -49,7 +49,7 @@
           </template>
           <template v-else-if="column.key === 'source'">
             <DictTag type="ecom_price_change_source" :value="record.source" />
-            <div v-if="record.ruleName" class="sub-text">{{ record.ruleName }}</div>
+            <a-tooltip v-if="record.ruleName" :title="record.ruleName"><div class="sub-text ellipsis">{{ record.ruleName }}</div></a-tooltip>
           </template>
           <template v-else-if="column.key === 'status'">
             <DictTag type="ecom_price_change_status" :value="record.status" />
@@ -65,7 +65,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowRightOutlined } from '@ant-design/icons-vue'
+import { ArrowRightOutlined, InfoCircleOutlined } from '@ant-design/icons-vue'
 import DictTag from '@/components/DictTag.vue'
 import SearchForm from '@/components/SearchForm.vue'
 import TableToolbar from '@/components/TableToolbar.vue'
@@ -82,16 +82,16 @@ import { price, qty } from '@/utils/number'
 const { t } = useI18n()
 const dict = useDict('ecom_platform', 'ecom_price_change_type', 'ecom_price_change_source', 'ecom_price_change_status')
 const columns = [
-  { title: t('ecomPublish.change.time'), dataIndex: 'createTime', width: 165 },
-  { title: t('ecomPublish.common.store'), key: 'store', dataIndex: 'storeName', width: 160 },
-  { title: t('ecomPublish.common.sellerSku'), key: 'sku', dataIndex: 'sellerSku', width: 220 },
-  { title: t('ecomPublish.change.type'), key: 'changeType', dataIndex: 'changeType', width: 80, dict: 'ecom_price_change_type' },
-  { title: t('ecomPublish.change.change'), key: 'change', width: 200, exportColumns: [
+  { title: t('ecomPublish.change.time'), dataIndex: 'createTime', width: 155 },
+  { title: t('ecomPublish.common.store'), key: 'store', dataIndex: 'storeName', width: 150 },
+  { title: t('ecomPublish.common.sellerSku'), key: 'sku', dataIndex: 'sellerSku', width: 190 },
+  { title: t('ecomPublish.change.type'), key: 'changeType', dataIndex: 'changeType', width: 80, align: 'center', dict: 'ecom_price_change_type' },
+  { title: t('ecomPublish.change.change'), key: 'change', width: 190, exportColumns: [
     { title: t('ecomPublish.change.oldValue'), dataIndex: 'oldValue' }, { title: t('ecomPublish.change.newValue'), dataIndex: 'newValue' }] },
-  { title: t('ecomPublish.change.source'), key: 'source', dataIndex: 'source', width: 160, dict: 'ecom_price_change_source' },
-  { title: t('ecomPublish.change.result'), key: 'status', dataIndex: 'status', width: 220, dict: 'ecom_price_change_status' },
-  { title: t('ecomPublish.change.batchNo'), dataIndex: 'batchNo', width: 140 },
-  { title: t('ecomPublish.change.operator'), key: 'operator', dataIndex: 'operatorName', width: 100 }
+  { title: t('ecomPublish.change.source'), key: 'source', dataIndex: 'source', width: 140, dict: 'ecom_price_change_source' },
+  { title: t('ecomPublish.change.result'), key: 'status', dataIndex: 'status', width: 180, dict: 'ecom_price_change_status' },
+  { title: t('ecomPublish.change.batchNo'), dataIndex: 'batchNo', width: 125, ellipsis: true },
+  { title: t('ecomPublish.change.operator'), key: 'operator', dataIndex: 'operatorName', width: 90, ellipsis: true }
 ]
 const { checked, visibleColumns, scrollX } = useColumns(columns, 'ecom-price-change')
 const showSearch = ref(true)
@@ -125,7 +125,15 @@ const trend = (r) => (r.oldValue == null || r.newValue == null ? '' : Number(r.n
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 200px;
+  max-width: 100%;
+}
+.full {
+  width: 100%;
+}
+.toolbar-tip {
+  align-self: center;
+  color: var(--app-text-3);
+  font-size: 12px;
 }
 .sub-text {
   color: var(--app-text-3);

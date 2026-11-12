@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -54,7 +55,18 @@ public class EcomListingService {
         Page<EcomListing> page = Page.of(current, size);
         listingMapper.selectPageList(page, storeId, keyword, status, fulfillment, mapped, materialId, composeType, parentItemId);
         attachBundles(page.getRecords());
+        attachSales(page.getRecords());
         return PageResult.of(page);
+    }
+
+    /** 列表带上近 30 天销量（没有订单的为 0） */
+    private void attachSales(List<EcomListing> list) {
+        if (list.isEmpty()) {
+            return;
+        }
+        Map<Long, BigDecimal> sales = listingMapper.selectSales(list.stream().map(EcomListing::getId).toList(), LocalDate.now().minusDays(29).atStartOfDay())
+                .stream().collect(Collectors.toMap(EcomListing::getId, EcomListing::getSales30));
+        list.forEach(l -> l.setSales30(sales.getOrDefault(l.getId(), BigDecimal.ZERO)));
     }
 
     /** 组合商品带上组成（列表、详情显示） */

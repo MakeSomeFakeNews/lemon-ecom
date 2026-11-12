@@ -1,7 +1,7 @@
 <template>
   <FormDrawer :drawer="drawer" :create-title="$t('ecomPublish.price.add')" :edit-title="$t('ecomPublish.price.edit')" width="min(760px, 100vw)">
     <a-form ref="formRef" :model="form" :rules="rules" layout="vertical">
-      <a-alert type="info" show-icon class="block" :message="$t('ecomPublish.price.formula')" />
+      <a-divider orientation="left" orientation-margin="0" class="first-divider">{{ $t('ecomPublish.item.secBasic') }}</a-divider>
       <a-row :gutter="16">
         <a-col :xs="24" :sm="12">
           <a-form-item :label="$t('ecomPublish.price.name')" name="name"><a-input v-model:value="form.name" :maxlength="64" /></a-form-item>
@@ -11,22 +11,27 @@
             <a-select v-model:value="form.platform" allow-clear :options="toOptions(dict.ecom_platform)" :placeholder="$t('ecomPublish.price.anyPlatform')" />
           </a-form-item>
         </a-col>
+        <a-col :xs="24" :sm="6">
+          <a-form-item :label="$t('common.field.status')" name="status">
+            <a-switch v-model:checked="form.status" :checked-value="STATUS_ENABLED" :un-checked-value="STATUS_DISABLED" />
+          </a-form-item>
+        </a-col>
+        <a-col :xs="24" :sm="18">
+          <a-form-item :label="$t('common.field.remark')" name="remark"><a-input v-model:value="form.remark" :maxlength="255" /></a-form-item>
+        </a-col>
+      </a-row>
+
+      <a-divider orientation="left" orientation-margin="0">{{ $t('ecomPublish.price.params') }}</a-divider>
+      <a-alert type="info" show-icon class="block" :message="$t('ecomPublish.price.formula')" />
+      <a-row :gutter="16">
         <a-col v-for="f in fields" :key="f.key" :xs="12" :sm="6">
           <a-form-item :label="$t(`ecomPublish.price.${f.key}`)" :name="f.key" :extra="f.extra ? $t(f.extra) : undefined">
             <a-input-number v-model:value="form[f.key]" :min="f.min ?? 0" :max="f.max" :precision="f.precision ?? 2" class="full" :addon-after="f.unit" />
           </a-form-item>
         </a-col>
-        <a-col :xs="12" :sm="6">
-          <a-form-item :label="$t('common.field.status')" name="status">
-            <a-switch v-model:checked="form.status" :checked-value="STATUS_ENABLED" :un-checked-value="STATUS_DISABLED" />
-          </a-form-item>
-        </a-col>
-        <a-col :span="24">
-          <a-form-item :label="$t('common.field.remark')" name="remark"><a-input v-model:value="form.remark" :maxlength="255" /></a-form-item>
-        </a-col>
       </a-row>
 
-      <a-divider orientation="left">{{ $t('ecomPublish.price.calculator') }}</a-divider>
+      <a-divider orientation="left" orientation-margin="0">{{ $t('ecomPublish.price.calculator') }}</a-divider>
       <a-row :gutter="16" align="bottom">
         <a-col :xs="12" :sm="6">
           <a-form-item :label="$t('ecomPublish.price.calcCurrency')">
@@ -132,6 +137,9 @@ defineExpose({
 </script>
 
 <style scoped>
+.first-divider {
+  margin-top: 0;
+}
 .block {
   margin-bottom: 12px;
 }

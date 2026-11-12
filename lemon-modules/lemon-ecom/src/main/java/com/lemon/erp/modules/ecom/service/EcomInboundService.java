@@ -96,6 +96,15 @@ public class EcomInboundService {
         return PageResult.of(page);
     }
 
+    /** 各状态的货件数（状态标签页）：条件与列表相同、不含状态；店铺数据权限由 EcomStoreScope 自动过滤 */
+    public Map<String, Long> statusCounts(Long storeId, String keyword) {
+        Map<String, Long> out = new LinkedHashMap<>();
+        for (Map<String, Object> row : inboundMapper.countByStatus(storeId, null, keyword)) {
+            out.put(String.valueOf(row.get("status")), ((Number) row.get("cnt")).longValue());
+        }
+        return out;
+    }
+
     public EcomInbound detail(Long id) {
         EcomInbound i = EcomStoreScope.require(() -> inboundMapper.selectDetail(id), "ecom.error.inboundNotFound");
         i.setItems(itemMapper.selectByInboundId(id));

@@ -67,6 +67,7 @@
         </a-space>
       </div>
       <a-form-item name="items" :rules="itemRules" class="items-item">
+        <a-form-item-rest>
         <LineItemsTable :items="form.items" :columns="itemColumns">
           <template #cell="{ column, record }">
             <template v-if="column.key === 'listingId'">
@@ -90,6 +91,7 @@
             </template>
           </template>
         </LineItemsTable>
+        </a-form-item-rest>
       </a-form-item>
     </a-form>
   </FormDrawer>

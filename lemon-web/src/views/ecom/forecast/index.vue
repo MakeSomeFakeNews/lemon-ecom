@@ -64,7 +64,7 @@
             <span :class="{ adjusted: record.stockoutDays && Number(record.adjustedDaily) !== Number(record.historyDaily) }">{{ qty(record.adjustedDaily, 2) }}</span>
           </template>
           <template v-else-if="['historyDaily', 'forecast30', 'forecast60', 'forecast90'].includes(column.key)">
-            {{ qty(record[column.key], column.key === 'historyDaily' ? 2 : 0) }}
+            <span :class="{ strong: column.key === 'forecast30' }">{{ qty(record[column.key], column.key === 'historyDaily' ? 2 : 0) }}</span>
           </template>
           <template v-else-if="column.key === 'action'">
             <TableActions :actions="[{ type: 'detail', onClick: () => openDetail(record) }]" />
@@ -110,22 +110,23 @@ const dict = useDict('ecom_forecast_method')
 const mapeCol = (key, method) => ({ title: `${t('ecomAnalytics.forecast.mape')} · ${t(`ecomAnalytics.forecast.short${method}`)}`, key, dataIndex: key,
   width: 110, align: 'right', mape: method })
 const columns = [
-  { title: t('ecomAnalytics.common.store'), dataIndex: 'storeName', width: 150, ellipsis: true },
-  { title: t('ecomAnalytics.common.sku'), key: 'sku', width: 220, exportValue: (r) => `${r.sellerSku} ${r.title || ''}` },
-  { title: t('ecomAnalytics.common.material'), key: 'material', width: 180, exportValue: (r) => [r.materialCode, r.materialName].filter(Boolean).join(' ') },
-  { title: t('ecomAnalytics.forecast.method'), key: 'method', dataIndex: 'method', width: 150, dict: 'ecom_forecast_method' },
-  mapeCol('mapeMa', ForecastMethod.MA),
-  mapeCol('mapeWma', ForecastMethod.WMA),
-  mapeCol('mapeHolt', ForecastMethod.HOLT),
-  mapeCol('mapeSeasonal', ForecastMethod.SEASONAL),
+  { title: t('ecomAnalytics.common.sku'), key: 'sku', width: 220, fixed: 'left', exportValue: (r) => `${r.sellerSku} ${r.title || ''}` },
+  { title: t('ecomAnalytics.common.store'), dataIndex: 'storeName', width: 140, ellipsis: true },
+  { title: t('ecomAnalytics.common.material'), key: 'material', width: 170, exportValue: (r) => [r.materialCode, r.materialName].filter(Boolean).join(' ') },
+  // 预测结果在前（最常看），各方法的回测误差在后
   { title: t('ecomAnalytics.forecast.historyDaily'), key: 'historyDaily', dataIndex: 'historyDaily', width: 110, align: 'right' },
   { title: t('ecomFix.stockout.adjustedDaily'), key: 'adjustedDaily', dataIndex: 'adjustedDaily', width: 120, align: 'right' },
   { title: t('ecomFix.stockout.days'), key: 'stockoutDays', dataIndex: 'stockoutDays', width: 100, align: 'center' },
   { title: t('ecomAnalytics.forecast.next30'), key: 'forecast30', dataIndex: 'forecast30', width: 100, align: 'right' },
   { title: t('ecomAnalytics.forecast.next60'), key: 'forecast60', dataIndex: 'forecast60', width: 100, align: 'right' },
   { title: t('ecomAnalytics.forecast.next90'), key: 'forecast90', dataIndex: 'forecast90', width: 100, align: 'right' },
+  { title: t('ecomAnalytics.forecast.method'), key: 'method', dataIndex: 'method', width: 170, dict: 'ecom_forecast_method' },
+  mapeCol('mapeMa', ForecastMethod.MA),
+  mapeCol('mapeWma', ForecastMethod.WMA),
+  mapeCol('mapeHolt', ForecastMethod.HOLT),
+  mapeCol('mapeSeasonal', ForecastMethod.SEASONAL),
   { title: t('ecomAnalytics.forecast.generatedTime'), dataIndex: 'generatedTime', width: 160 },
-  actionColumn(1)
+  actionColumn(1, [t('common.action.detail')])
 ]
 const { checked, visibleColumns, scrollX } = useColumns(columns, 'ecom-forecast')
 const showSearch = ref(true)
@@ -167,6 +168,9 @@ async function generate() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.strong {
+  font-weight: 600;
 }
 .best {
   color: var(--status-success, #389e0d);

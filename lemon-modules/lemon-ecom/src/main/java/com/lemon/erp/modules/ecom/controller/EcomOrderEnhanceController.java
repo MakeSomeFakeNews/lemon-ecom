@@ -4,6 +4,7 @@ import com.lemon.erp.common.result.R;
 import com.lemon.erp.framework.log.OperLog;
 import com.lemon.erp.framework.log.OperType;
 import com.lemon.erp.modules.ecom.dto.OrderEnhanceViews;
+import com.lemon.erp.modules.ecom.entity.EcomOrderLog;
 import com.lemon.erp.modules.ecom.entity.EcomOrderNote;
 import com.lemon.erp.modules.ecom.service.EcomOrderBatchService;
 import com.lemon.erp.modules.ecom.service.EcomOrderCheckService;
@@ -86,6 +87,12 @@ public class EcomOrderEnhanceController {
     @PreAuthorize("@ss.hasPerm('ecom:order:list')")
     public R<List<EcomOrderNote>> notes(@PathVariable Long id) {
         return R.ok(noteService.list(id));
+    }
+
+    @GetMapping("/order/{id}/logs")
+    @PreAuthorize("@ss.hasPerm('ecom:order:list')")
+    public R<List<EcomOrderLog>> logs(@PathVariable Long id) {
+        return R.ok(noteService.logs(id));
     }
 
     @PostMapping("/order/{id}/notes")

@@ -139,7 +139,12 @@ export default {
     cannotSubmit: 'Cannot be submitted in the current status',
     cannotApprove: 'Only projects pending approval without an approval flow can be approved manually, with approval permission',
     inFlow: 'The project is in an approval flow; approve it in "My Tasks"',
-    cannotMove: 'Cannot be moved to this status'
+    cannotMove: 'Cannot be moved to this status',
+    avgMargin: 'Average margin of estimated projects in this column',
+    emptyColumn: 'No projects',
+    kpiMargin: 'Margin',
+    kpiSales: 'Est. sales/mo',
+    kpiSamples: 'Samples OK'
   },
   calc: {
     tabCalc: 'Profit calculator',
@@ -197,6 +202,7 @@ export default {
     saved: 'Scheme saved',
     needInput: 'Please enter the purchase price and a selling price or target margin',
     emptyResult: 'Enter the purchase price and selling price (or target margin) to see the result',
+    resultTitle: 'Result',
     profit: 'Unit profit',
     margin: 'Margin',
     salePriceResult: 'Selling price',

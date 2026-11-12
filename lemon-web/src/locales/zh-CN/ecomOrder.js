@@ -445,6 +445,26 @@ export default {
     cancelConfirm: '取消货件 {no}？',
     cancelled: '已取消',
     costs: '补录费用',
-    deleteConfirm: '删除货件 {no}？'
+    deleteConfirm: '删除货件 {no}？',
+    basicInfo: '基本信息',
+    logisticsInfo: '物流信息',
+    costSection: '头程费用（本位币）',
+    costBreak: '运费 {f} / 关税 {d} / 其他 {o}',
+    allStatus: '全部',
+    transitHint: '在途 {n} 天',
+    overdueHint: '超期 {n} 天',
+    flow: {
+      draft: '创建',
+      approving: '审批中',
+      shipped: '已发运',
+      transit: '在途',
+      received: '已签收',
+      eta: '预计 {date} 到达',
+      planned: '计划 {date}',
+      daysLeft: '预计 {date}，还剩 {n} 天',
+      overdue: '预计 {date}，已超期 {n} 天',
+      shippedDays: '已发运 {n} 天',
+      transitDays: '在途 {n} 天'
+    }
   }
 }

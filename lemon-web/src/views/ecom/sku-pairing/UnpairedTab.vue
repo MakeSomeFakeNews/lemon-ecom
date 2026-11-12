@@ -8,12 +8,16 @@
         <a-input v-model:value="query.keyword" :placeholder="$t('ecomCatalog.pairing.keywordPh')" allow-clear class="w200" @press-enter="search" />
       </a-form-item>
       <a-form-item>
-        <a-button type="primary" @click="search">{{ $t('common.action.search') }}</a-button>
+        <a-button type="primary" @click="search">
+          <template #icon><SearchOutlined /></template>{{ $t('common.action.search') }}
+        </a-button>
       </a-form-item>
-      <a-form-item>
-        <a-button v-perm="'ecom:pairing:edit'" :disabled="!confirmable.length" :loading="saving" @click="confirmSelected">
+      <a-form-item v-if="selected.length" class="batch">
+        <span class="selected-hint">{{ $t('common.table.selected', { n: selected.length }) }}</span>
+        <a-button v-perm="'ecom:pairing:edit'" type="primary" ghost :disabled="!confirmable.length" :loading="saving" @click="confirmSelected">
           <template #icon><CheckOutlined /></template>{{ $t('ecomCatalog.pairing.confirmSelected', { n: confirmable.length }) }}
         </a-button>
+        <a-button type="link" @click="selected = []">{{ $t('common.action.cancel') }}</a-button>
       </a-form-item>
     </a-form>
     <a-table
@@ -25,24 +29,33 @@
       :loading="loading"
       :pagination="pagination"
       :row-selection="{ selectedRowKeys: selected, onChange: (k) => (selected = k) }"
-      :scroll="{ x: 1200, y: '100%' }"
+      :scroll="{ x: sumWidth(columns) + 32, y: '100%' }"
       @change="onTableChange"
     >
+      <template #emptyText>
+        <a-empty v-if="!loading" :description="query.keyword || query.storeId ? $t('common.msg.noData') : $t('ecomCatalog.pairing.allPaired')" />
+      </template>
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'store'">
-          <div>{{ record.storeName }}</div>
-          <div v-if="record.platform" class="sub-text"><DictTag type="ecom_platform" :value="record.platform" /></div>
+          <div class="cell-ellipsis" :title="record.storeName">{{ record.storeName }}</div>
+          <DictTag v-if="record.platform" type="ecom_platform" :value="record.platform" />
+        </template>
+        <template v-else-if="column.key === 'sku'">
+          <div class="cell-ellipsis" :title="record.sellerSku">{{ record.sellerSku }}</div>
+          <div v-if="record.platformItemId" class="sub-text cell-ellipsis">{{ record.platformItemId }}</div>
         </template>
         <template v-else-if="column.key === 'title'">
           <div class="cell-ellipsis" :title="record.title">{{ record.title || '-' }}</div>
-          <div v-if="record.variant" class="sub-text">{{ record.variant }}</div>
+          <div v-if="record.variant" class="sub-text cell-ellipsis">{{ record.variant }}</div>
         </template>
         <template v-else-if="column.key === 'suggestion'">
           <template v-if="record.suggestion">
             <a-tag :color="MATCH_COLORS[record.suggestion.matchType]" :bordered="false">
               {{ $t(`ecomCatalog.pairing.match.${record.suggestion.matchType}`) }} {{ record.suggestion.score }}
             </a-tag>
-            <span class="sub-text">{{ record.suggestion.materialCode }} {{ record.suggestion.materialName }}</span>
+            <div class="sub-text cell-ellipsis" :title="`${record.suggestion.materialCode} ${record.suggestion.materialName || ''}`">
+              {{ record.suggestion.materialCode }} {{ record.suggestion.materialName }}
+            </div>
           </template>
           <span v-else class="sub-text">{{ $t('ecomCatalog.pairing.noSuggestion') }}</span>
         </template>
@@ -54,9 +67,7 @@
           <a-input-number v-model:value="record.packQty" :min="0.0001" :precision="4" class="full" />
         </template>
         <template v-else-if="column.key === 'action'">
-          <a v-if="userStore.hasPerm('ecom:pairing:edit')" :class="{ disabled: !record.materialId }" @click="confirmRows([record])">
-            {{ $t('ecomCatalog.pairing.confirm') }}
-          </a>
+          <TableActions :actions="rowActions(record)" />
         </template>
       </template>
     </a-table>
@@ -67,29 +78,40 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { message } from 'ant-design-vue'
-import { CheckOutlined } from '@ant-design/icons-vue'
+import { CheckOutlined, SearchOutlined } from '@ant-design/icons-vue'
+import TableActions from '@/components/common/TableActions.vue'
+import { actionColumn } from '@/components/common/tableActions'
+import { sumWidth } from '@/composables/useColumns'
 import DictTag from '@/components/DictTag.vue'
 import StoreSelect from '@/components/ecom/StoreSelect.vue'
 import MaterialSelect from '@/components/wms/MaterialSelect.vue'
 import { confirmPairs, pageUnpaired } from '@/api/ecom/pairing'
 import { useTable } from '@/composables/useTable'
-import { useUserStore } from '@/store/user'
 import { PairingMatchType } from '@/constants/enums'
 
 /** 未配对的平台 SKU：每行带推荐物料（可改选），勾选后一键确认；确认后触发 changed。ref 调用 reload() */
 const emit = defineEmits(['changed'])
 const { t } = useI18n()
-const userStore = useUserStore()
 
 const MATCH_COLORS = { [PairingMatchType.EXACT]: 'green', [PairingMatchType.STRIPPED]: 'blue', [PairingMatchType.TITLE]: 'orange', [PairingMatchType.ATTRIBUTE]: 'cyan' }
 const columns = [
   { title: t('ecom.common.store'), key: 'store', width: 160 },
-  { title: t('ecom.common.sellerSku'), dataIndex: 'sellerSku', width: 170 },
+  { title: t('ecom.listing.skuAsin'), key: 'sku', dataIndex: 'sellerSku', width: 170 },
   { title: t('ecomCatalog.common.title'), key: 'title', width: 240 },
   { title: t('ecomCatalog.pairing.suggestion'), key: 'suggestion', width: 260 },
   { title: t('ecomCatalog.pairing.material'), key: 'material', width: 260 },
   { title: t('ecom.common.packQty'), key: 'packQty', width: 110 },
-  { title: t('common.action.operation'), key: 'action', width: 90, fixed: 'right' }
+  actionColumn(1, [t('ecomCatalog.pairing.confirm')])
+]
+const rowActions = (r) => [
+  {
+    type: 'confirm',
+    label: t('ecomCatalog.pairing.confirm'),
+    perm: 'ecom:pairing:edit',
+    disabled: !r.materialId,
+    tip: !r.materialId ? t('ecomCatalog.pairing.pickMaterial') : undefined,
+    onClick: () => confirmRows([r])
+  }
 ]
 
 const query = reactive({ storeId: undefined, keyword: undefined })
@@ -161,8 +183,12 @@ defineExpose({ reload })
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.disabled {
-  pointer-events: none;
-  color: var(--app-text-3);
+.batch :deep(.ant-form-item-control-input-content) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.selected-hint {
+  color: var(--app-text-2);
 }
 </style>

@@ -6,7 +6,7 @@
           <a-input v-model:value="query.keyword" allow-clear @press-enter="load" />
         </a-form-item>
         <a-form-item :label="$t('common.field.status')" name="status">
-          <a-select v-model:value="query.status" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.sys_common_status, true)" />
+          <a-select v-model:value="query.status" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.sys_common_status, true)" @change="load" />
         </a-form-item>
       </SearchForm>
     </a-card>
@@ -22,6 +22,9 @@
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'name'">
             <a-tag :color="record.color" :bordered="false">{{ record.name }}</a-tag>
+          </template>
+          <template v-else-if="column.key === 'color'">
+            <a-tag :color="record.color" class="swatch" />
           </template>
           <template v-else-if="column.key === 'orderCount'">
             <a v-if="record.orderCount" @click="router.push({ path: '/ecom/order', query: { tagId: record.id } })">{{ record.orderCount }}</a>
@@ -70,7 +73,7 @@ const router = useRouter()
 const dict = useDict('sys_common_status')
 const columns = [
   { title: t('ecomOrd.tag.name'), key: 'name', dataIndex: 'name', width: 200 },
-  { title: t('ecomOrd.tag.color'), dataIndex: 'color', width: 110 },
+  { title: t('ecomOrd.tag.color'), key: 'color', dataIndex: 'color', width: 90 },
   { title: t('ecomOrd.tag.sort'), dataIndex: 'sort', width: 80, align: 'right' },
   { title: t('ecomOrd.tag.orderCount'), key: 'orderCount', dataIndex: 'orderCount', width: 100, align: 'right' },
   { title: t('common.field.status'), key: 'status', dataIndex: 'status', width: 90 },
@@ -105,5 +108,11 @@ const remove = useAction(deleteOrderTag, { successKey: 'common.msg.deleteSuccess
 <style scoped>
 .help {
   margin-bottom: 12px;
+}
+.swatch {
+  width: 32px;
+  height: 16px;
+  margin: 0;
+  vertical-align: middle;
 }
 </style>

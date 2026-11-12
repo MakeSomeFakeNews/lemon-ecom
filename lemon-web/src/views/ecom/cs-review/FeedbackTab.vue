@@ -1,10 +1,10 @@
 <template>
   <div class="tab-body">
     <div class="filters">
-      <StoreSelect v-model:value="query.storeId" :placeholder="$t('ecomCs.common.allStores')" class="filter" />
-      <a-select v-model:value="query.rating" allow-clear :placeholder="$t('ecomCs.review.allRatings')" :options="ratingFilters()" class="filter-sm" />
-      <a-select v-model:value="query.handleStatus" allow-clear :placeholder="$t('ecomCs.review.handleStatus')" :options="toOptions(dict.ecom_cs_review_status)" class="filter-sm" />
-      <a-range-picker v-model:value="query.range" value-format="YYYY-MM-DD" :presets="presets" />
+      <StoreSelect v-model:value="query.storeId" :placeholder="$t('ecomCs.common.allStores')" class="filter" @update:value="search" />
+      <a-select v-model:value="query.rating" allow-clear :placeholder="$t('ecomCs.review.allRatings')" :options="ratingFilters()" class="filter-sm" @change="search" />
+      <a-select v-model:value="query.handleStatus" allow-clear :placeholder="$t('ecomCs.review.handleStatus')" :options="toOptions(dict.ecom_cs_review_status)" class="filter-sm" @change="search" />
+      <a-range-picker v-model:value="query.range" value-format="YYYY-MM-DD" :presets="presets" @change="search" />
       <a-input v-model:value="query.keyword" allow-clear :placeholder="$t('ecomCs.feedback.keywordPh')" class="filter" @press-enter="search" />
       <a-button type="primary" @click="search">
         <template #icon><SearchOutlined /></template>{{ $t('common.action.query') }}
@@ -197,7 +197,11 @@ onMounted(async () => {
   color: var(--app-text-3);
   font-size: 12px;
 }
+/* 不透明的浅红底：固定列（操作列）不会透出下面滚动的内容 */
 .tab-body :deep(.low-row) > td {
-  background: rgba(255, 77, 79, 0.04);
+  background: color-mix(in srgb, #ff4d4f 5%, var(--app-card));
+}
+.tab-body :deep(.low-row:hover) > td {
+  background: color-mix(in srgb, #ff4d4f 9%, var(--app-card));
 }
 </style>

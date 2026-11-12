@@ -153,7 +153,7 @@
                 <a-input-number v-model:value="form.returnRate" :min="0" :max="100" :precision="2" class="full" addon-after="%" />
               </a-form-item>
             </a-col>
-            <a-col :xs="12" :md="6">
+            <a-col :xs="24" :md="12">
               <a-form-item :label="$t('ecomDev.calc.tax')">
                 <a-input-group compact class="rate-group">
                   <a-select v-model:value="form.taxType" allow-clear :options="toOptions(dict.ecom_tax_type)" class="tax-type"
@@ -178,7 +178,10 @@
       </a-col>
 
       <a-col :xs="24" :xl="compact ? 24 : 11" :xxl="compact ? 12 : 11">
-        <ProfitResultView :result="result" :loading="loading" />
+        <div class="result-panel">
+          <div class="result-title">{{ $t('ecomDev.calc.resultTitle') }}</div>
+          <ProfitResultView :result="result" :loading="loading" />
+        </div>
       </a-col>
     </a-row>
 
@@ -414,10 +417,10 @@ defineExpose({ load, params, calculate })
   width: 60%;
 }
 .rate-group .tax-type {
-  width: 55%;
+  width: 62%;
 }
 .rate-group .tax-rate {
-  width: 45%;
+  width: 38%;
 }
 .fee-row {
   display: flex;
@@ -427,6 +430,25 @@ defineExpose({ load, params, calculate })
 }
 .fba-check {
   white-space: nowrap;
+}
+.result-panel {
+  position: sticky;
+  top: 0;
+  padding: 16px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-card);
+}
+.result-title {
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--app-text-2);
+}
+@media (max-width: 1199px) {
+  .result-panel {
+    position: static;
+    margin-top: 8px;
+  }
 }
 .fee-row .fee {
   flex: 1;

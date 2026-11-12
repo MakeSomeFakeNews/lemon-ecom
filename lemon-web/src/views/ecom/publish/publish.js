@@ -28,6 +28,40 @@ export function parseAttrs(text) {
   return out
 }
 
+/** 店铺刊登内容表单 → 保存的数据（刊登工作台） */
+export function itemPayload(f) {
+  return {
+    title: f.title,
+    bullets: f.bullets.filter((b) => b && b.trim()),
+    description: f.description || null,
+    images: f.images,
+    brand: f.brand || null,
+    barcodeType: f.barcodeType || null,
+    upcExempt: f.upcExempt ? 1 : 0,
+    exemptionNote: f.exemptionNote || null,
+    categoryId: f.categoryId || null,
+    categoryName: f.categoryName || null,
+    attributes: f.attributes,
+    publishTemplateId: f.publishTemplateId || null,
+    priceTemplateId: f.priceTemplateId || null,
+    fulfillment: f.fulfillment || null,
+    shippingTemplate: f.shippingTemplate || null,
+    returnPolicy: f.returnPolicy || null,
+    handlingDays: f.handlingDays ?? null,
+    extra: f.extra,
+    parentSku: f.parentSku || null,
+    variants: f.variants.map((v) => ({
+      materialId: v.materialId,
+      sellerSku: v.sellerSku,
+      variantText: v.variantText || Object.values(parseAttrs(v.attrsText)).join(' / ') || null,
+      variantAttrs: parseAttrs(v.attrsText),
+      barcode: v.barcode || null,
+      price: v.price,
+      qty: v.qty ?? 0
+    }))
+  }
+}
+
 // ---------------------------------------------------------------- 刊登设置（后端外网地址）
 
 

@@ -5,8 +5,8 @@
       <a-radio-button value="stockout">{{ $t('ecomAnalytics.product.viewStockout') }}</a-radio-button>
       <a-radio-button value="newProducts">{{ $t('ecomAnalytics.product.viewNew') }}</a-radio-button>
     </a-radio-group>
-    <a-range-picker v-model:value="range" value-format="YYYY-MM-DD" :allow-clear="false" :presets="presets" />
-    <StoreSelect v-model:value="storeId" allow-clear :placeholder="$t('ecomAnalytics.common.allStores')" class="filter" />
+    <a-range-picker v-model:value="range" value-format="YYYY-MM-DD" :allow-clear="false" :presets="presets" @change="load" />
+    <StoreSelect v-model:value="storeId" allow-clear :placeholder="$t('ecomAnalytics.common.allStores')" class="filter" @update:value="load" />
     <a-input v-model:value="keyword" allow-clear :placeholder="keywordPh" class="filter" @press-enter="load" />
     <a-button type="primary" :loading="loading" @click="load">
       <template #icon><SearchOutlined /></template>{{ $t('common.action.query') }}
@@ -72,7 +72,7 @@ const COLUMNS = {
     col('salesQty', t('ecomAnalytics.product.salesQty'), 'qty'),
     col('closingQty', t('ecomAnalytics.product.closingQty'), 'qty'),
     col('sellThroughPercent', t('ecomAnalytics.product.sellThrough'), 'percent', { width: 150, custom: true }),
-    col('dailySales', t('ecomAnalytics.common.dailySales'), 'qty'),
+    col('dailySales', t('ecomAnalytics.common.dailySales'), 'qty', { digits: 2 }),
     col('turnoverDays', t('ecomAnalytics.product.turnoverDays'), 'days'),
     col('stockQty', t('ecomAnalytics.common.stockQty'), 'qty'),
     col('coverDays', t('ecomAnalytics.product.coverDays'), 'days'),
@@ -97,7 +97,7 @@ const COLUMNS = {
     col('orders30', t('ecomAnalytics.product.orders30'), 'int'),
     col('qty30', t('ecomAnalytics.product.qty30'), 'qty'),
     col('sales30', t('ecomAnalytics.product.sales30'), 'money'),
-    col('dailyQty', t('ecomAnalytics.common.dailySales'), 'qty'),
+    col('dailyQty', t('ecomAnalytics.common.dailySales'), 'qty', { digits: 2 }),
     col('stockoutDays30', t('ecomAnalytics.product.stockoutDays30'), 'int')
   ]
 }

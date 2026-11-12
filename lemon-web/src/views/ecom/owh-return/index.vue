@@ -5,23 +5,29 @@
         <a-form-item :label="$t('common.field.keyword')" name="keyword">
           <a-input v-model:value="query.keyword" :placeholder="$t('ecomOwh.ret.keywordPh')" allow-clear @press-enter="search" />
         </a-form-item>
-        <OwhFilters :model="query" />
+        <OwhFilters :model="query" field="account" @change="search" />
+        <OwhFilters :model="query" field="warehouse" @change="search" />
       </SearchForm>
     </a-card>
 
     <a-card :bordered="false" class="page-card table-card">
       <a-tabs v-model:active-key="tab" size="small" class="status-tabs" @change="onTab">
         <a-tab-pane v-for="tb in TABS" :key="tb.key">
-          <template #tab>{{ tb.label }}<span v-if="tb.key !== 'all'" class="tab-count">{{ counts[tb.key] || 0 }}</span></template>
+          <template #tab>{{ tb.label }}<span class="tab-count">{{ tb.key === 'all' ? allCount : counts[tb.key] || 0 }}</span></template>
         </a-tab-pane>
       </a-tabs>
       <TableToolbar :exporter="exportAll" v-model:size="size" v-model:checked="checked" v-model:show-search="showSearch" :columns="columns" @refresh="reload">
         <a-button v-perm="'ecom:owhReturn:add'" type="primary" @click="createRef.open()">
           <template #icon><PlusOutlined /></template>{{ $t('ecomOwh.ret.create') }}
         </a-button>
-        <a-button v-perm="'ecom:owhReturn:sync'" :disabled="!selectedKeys.length" :loading="syncing" @click="syncIds(selectedKeys)">
-          <template #icon><SyncOutlined /></template>{{ $t('ecomOwh.ret.sync') }}
-        </a-button>
+        <template v-if="selectedKeys.length">
+          <a-button v-perm="'ecom:owhReturn:sync'" :loading="syncing" @click="syncIds(selectedKeys)">
+            <template #icon><SyncOutlined /></template>{{ $t('ecomOwh.ret.sync') }}
+          </a-button>
+          <span v-if="selectedKeys.length" class="selected-tip">
+            {{ $t('common.table.selected', { n: selectedKeys.length }) }} <a @click="selectedKeys = []">{{ $t('common.action.clear') }}</a>
+          </span>
+        </template>
       </TableToolbar>
       <a-table
         row-key="id"
@@ -99,18 +105,18 @@ const { t } = useI18n()
 const dict = useDict('ecom_owh_return_status')
 const STATUS_TABS = [OwhReturnStatus.DRAFT, OwhReturnStatus.PUSHED, OwhReturnStatus.RECEIVED, OwhReturnStatus.CANCELLED]
 const TABS = computed(() => [
-  ...STATUS_TABS.map((s) => ({ key: s, label: findDict(dict.ecom_owh_return_status, s)?.label || s })),
-  { key: 'all', label: t('common.status.all') }
+  { key: 'all', label: t('common.status.all') },
+  ...STATUS_TABS.map((s) => ({ key: s, label: findDict(dict.ecom_owh_return_status, s)?.label || s }))
 ])
 
 const columns = [
   { title: t('ecomOwh.ret.returnNo'), key: 'returnNo', dataIndex: 'returnNo', width: 170 },
   { title: t('ecomOwh.ret.source'), key: 'source', width: 170, exportValue: (r) => `${r.ecomReturnNo} ${r.platformOrderNo || ''}` },
   { title: t('ecomOwh.common.store'), dataIndex: 'storeName', width: 130, ellipsis: true },
-  { title: t('ecomOwh.common.warehouse'), key: 'warehouse', width: 180, exportValue: (r) => `${r.warehouseName} ${r.owhCode || ''}` },
-  { title: t('ecomOwh.ret.owhOrderNo'), dataIndex: 'owhOrderNo', width: 150 },
-  { title: t('ecomOwh.ret.trackingNo'), dataIndex: 'trackingNo', width: 150 },
-  { title: t('ecomOwh.ret.resultCol'), key: 'result', width: 140, exportValue: (r) => `${r.goodQty}/${r.badQty}/${r.totalQty}` },
+  { title: t('ecomOwh.common.warehouse'), key: 'warehouse', width: 200, ellipsis: true, exportValue: (r) => `${r.warehouseName} ${r.owhCode || ''}` },
+  { title: t('ecomOwh.ret.owhOrderNo'), dataIndex: 'owhOrderNo', width: 150, ellipsis: true },
+  { title: t('ecomOwh.ret.trackingNo'), dataIndex: 'trackingNo', width: 190, ellipsis: true },
+  { title: t('ecomOwh.ret.resultCol'), key: 'result', width: 140, align: 'right', exportValue: (r) => `${r.goodQty}/${r.badQty}/${r.totalQty}` },
   { title: t('ecomOwh.ret.status'), key: 'status', dataIndex: 'status', width: 110, dict: 'ecom_owh_return_status' },
   { title: t('ecomOwh.ret.erp'), key: 'erpReceived', width: 100, exportValue: (r) => (r.erpReceived === 1 ? t('ecomOwh.ret.erpReceived') : t('ecomOwh.ret.erpPending')) },
   { title: t('ecomOwh.ret.receiveTime'), dataIndex: 'receiveTime', width: 160 },
@@ -126,6 +132,7 @@ const { list, loading, size, pagination, selectedKeys, rowSelection, load, searc
   params: (q) => ({ ...q, status: tab.value === 'all' ? undefined : tab.value })
 })
 const counts = ref({})
+const allCount = computed(() => STATUS_TABS.reduce((n, s) => n + Number(counts.value[s] || 0), 0))
 async function loadCounts() {
   counts.value = (await owhReturnStatusCounts({ ...query })) || {}
 }
@@ -196,6 +203,10 @@ const rowActions = (record) => [
 </script>
 
 <style scoped>
+.selected-tip {
+  align-self: center;
+  color: var(--app-text-3);
+}
 .sub-text {
   color: var(--app-text-3);
   font-size: 12px;

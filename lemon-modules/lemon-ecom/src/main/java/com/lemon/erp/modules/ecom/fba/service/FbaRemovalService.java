@@ -80,6 +80,15 @@ public class FbaRemovalService implements AmzReportHandler {
         return PageResult.of(page);
     }
 
+    /** 各状态的移除订单数（状态标签页）：条件与列表相同、不含状态；店铺数据权限由 EcomStoreScope 自动过滤 */
+    public Map<String, Long> statusCounts(Long storeId, FbaRemovalType type, String keyword) {
+        Map<String, Long> out = new LinkedHashMap<>();
+        for (Map<String, Object> row : removalMapper.countByStatus(storeId, type, null, keyword)) {
+            out.put(String.valueOf(row.get("status")), ((Number) row.get("cnt")).longValue());
+        }
+        return out;
+    }
+
     public EcomFbaRemoval detail(Long id) {
         EcomFbaRemoval r = removalMapper.selectDetail(id);
         if (r == null) {
