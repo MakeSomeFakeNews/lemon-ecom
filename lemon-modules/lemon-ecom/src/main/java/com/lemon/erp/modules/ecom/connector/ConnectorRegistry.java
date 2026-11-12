@@ -24,6 +24,11 @@ public class ConnectorRegistry {
         return Optional.ofNullable(connectors.get(platform));
     }
 
+    /** 全部连接器，按平台枚举顺序 */
+    public java.util.List<ChannelConnector> all() {
+        return java.util.List.copyOf(connectors.values());
+    }
+
     public boolean supports(EcomPlatform platform) {
         return connectors.containsKey(platform);
     }

@@ -6,6 +6,7 @@ import com.lemon.erp.common.enums.EnableStatus;
 import com.lemon.erp.common.exception.BizException;
 import com.lemon.erp.common.result.PageResult;
 import com.lemon.erp.framework.dict.DictLookup;
+import com.lemon.erp.modules.ecom.connector.ConnectorContext;
 import com.lemon.erp.modules.ecom.connector.CredentialCipher;
 import com.lemon.erp.modules.ecom.connector.StoreCredentials;
 import com.lemon.erp.modules.ecom.entity.EcomListing;
@@ -28,7 +29,9 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -103,6 +106,11 @@ public class EcomStoreService {
                 .isNotNull(EcomStore::getCredentials).ne(EcomStore::getCredentials, "").orderByAsc(EcomStore::getId));
     }
 
+    /** 开启了自动同步订单、有授权的启用店铺（定时任务） */
+    public List<EcomStore> orderSyncable() {
+        return syncable().stream().filter(s -> !Integer.valueOf(0).equals(s.getOrderSync())).toList();
+    }
+
     @Transactional
     public Long create(EcomStore s) {
         s.setId(null);
@@ -128,8 +136,11 @@ public class EcomStoreService {
         s.setId(id);
         s.setCustomerId(old.getCustomerId());
         s.setStatus(null);
-        s.setCredentials(StringUtils.hasText(s.getCredentials()) ? cipher.encrypt(s.getCredentials()) : null);
+        s.setCredentials(StringUtils.hasText(s.getCredentials()) ? cipher.encrypt(mergeCredentials(old, s.getCredentials())) : null);
         storeMapper.updateById(s);
+        if (!StringUtils.hasText(s.getApiBaseUrl()) && StringUtils.hasText(old.getApiBaseUrl())) {
+            storeMapper.update(Wrappers.<EcomStore>lambdaUpdate().set(EcomStore::getApiBaseUrl, null).eq(EcomStore::getId, id));
+        }
         if (s.getPlatformWarehouseId() == null && old.getPlatformWarehouseId() != null) {
             storeMapper.update(Wrappers.<EcomStore>lambdaUpdate().set(EcomStore::getPlatformWarehouseId, null).eq(EcomStore::getId, id));
         }
@@ -168,6 +179,58 @@ public class EcomStoreService {
         return StoreCredentials.parse(cipher.decrypt(s.getCredentials()));
     }
 
+    /**
+     * 修改店铺时提交的授权 JSON 与已保存的合并：提交的键覆盖原值，值为空串的键删除，没提交的键（如 OAuth 换来的令牌）保留
+     */
+    private String mergeCredentials(EcomStore old, String submitted) {
+        Map<String, String> merged = new HashMap<>(credentials(old).values());
+        StoreCredentials.parse(submitted).values().forEach((k, v) -> {
+            if (v == null || v.isBlank()) {
+                merged.remove(k);
+            } else {
+                merged.put(k, v);
+            }
+        });
+        return merged.isEmpty() ? null : HttpJsonHolder.write(merged);
+    }
+
+    /** 调用渠道接口的上下文：解密授权信息，刷新令牌后由框架加密写回 */
+    public ConnectorContext context(EcomStore s) {
+        return new ConnectorContext(s, credentials(s), Integer.valueOf(1).equals(s.getSandbox()), s.getApiBaseUrl(),
+                c -> saveCredentials(s.getId(), c.values()));
+    }
+
+    /** 保存授权信息（加密），连接器刷新令牌、OAuth 回调时调用 */
+    public void saveCredentials(Long id, Map<String, String> values) {
+        String json = values == null || values.isEmpty() ? null : HttpJsonHolder.write(values);
+        storeMapper.update(Wrappers.<EcomStore>lambdaUpdate().set(EcomStore::getCredentials, cipher.encrypt(json)).eq(EcomStore::getId, id));
+    }
+
+    /** OAuth 授权成功：保存令牌、卖家 ID 和授权时间 */
+    public void markAuthorized(Long id, Map<String, String> values, String sellerId) {
+        saveCredentials(id, values);
+        storeMapper.update(Wrappers.<EcomStore>lambdaUpdate().set(EcomStore::getAuthorizedTime, LocalDateTime.now())
+                .set(sellerId != null, EcomStore::getSellerId, sellerId).eq(EcomStore::getId, id));
+    }
+
+    /** 记录最近一次同步失败的原因（成功时清空） */
+    public void markSyncMessage(Long id, String message) {
+        String m = message == null || message.length() <= 500 ? message : message.substring(0, 500);
+        storeMapper.update(Wrappers.<EcomStore>lambdaUpdate().set(EcomStore::getLastSyncMessage, m).eq(EcomStore::getId, id));
+    }
+
+    /** 开启了自动回传库存、有授权的启用店铺 */
+    public List<EcomStore> inventorySyncable() {
+        return syncable().stream().filter(s -> Integer.valueOf(1).equals(s.getInventorySync())).toList();
+    }
+
+    /** JSON 序列化（避免本类直接依赖 Jackson 的版本差异） */
+    private static final class HttpJsonHolder {
+        static String write(Map<String, String> values) {
+            return com.lemon.erp.modules.ecom.connector.HttpJson.MAPPER.writeValueAsString(new java.util.TreeMap<>(values));
+        }
+    }
+
     public void markSynced(Long id, LocalDateTime time) {
         storeMapper.update(Wrappers.<EcomStore>lambdaUpdate().set(EcomStore::getLastSyncTime, time).eq(EcomStore::getId, id));
     }
@@ -190,6 +253,13 @@ public class EcomStoreService {
         if (s.getCommissionRate() == null) s.setCommissionRate(DEFAULT_COMMISSION);
         if (s.getLeadDays() == null) s.setLeadDays(DEFAULT_LEAD_DAYS);
         if (s.getSafetyDays() == null) s.setSafetyDays(DEFAULT_SAFETY_DAYS);
+        if (s.getSandbox() == null) s.setSandbox(0);
+        if (s.getOrderSync() == null) s.setOrderSync(1);
+        if (s.getInventorySync() == null) s.setInventorySync(0);
+        if (s.getInventoryBuffer() == null) s.setInventoryBuffer(BigDecimal.ZERO);
+        if (StringUtils.hasText(s.getApiBaseUrl()) && !s.getApiBaseUrl().trim().matches("(?i)^https?://.+")) {
+            throw new BizException("ecom.error.apiBaseUrlInvalid");
+        }
         if (StringUtils.hasText(s.getCredentials())) {
             StoreCredentials.parse(s.getCredentials());
         }

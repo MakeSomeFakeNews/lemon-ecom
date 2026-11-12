@@ -14,8 +14,6 @@ import tools.jackson.databind.JsonNode;
 import java.math.BigDecimal;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -37,25 +35,29 @@ public class AliExpressConnector implements ChannelConnector {
     private static final String GATEWAY = "https://gw.api.taobao.com/router/rest";
     private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final int PAGE_SIZE = 50;
+    private static final ConnectorInfo INFO = new ConnectorInfo(EcomPlatform.ALIEXPRESS, AuthType.KEYS, List.of(
+            CredentialField.text("appKey", "ecom.label.cred.appKey", true),
+            CredentialField.secret("appSecret", "ecom.label.cred.appSecret"),
+            CredentialField.secret("accessToken", "ecom.label.cred.accessToken")),
+            GATEWAY, null, java.util.EnumSet.of(ConnectorCapability.ORDERS, ConnectorCapability.SHIP_CONFIRM),
+            "https://open.aliexpress.com/");
 
     @Override
-    public EcomPlatform platform() {
-        return EcomPlatform.ALIEXPRESS;
+    public ConnectorInfo info() {
+        return INFO;
     }
 
     @Override
-    public boolean supportsShipmentConfirm() {
-        return true;
-    }
-
-    @Override
-    public List<OrderDraft> fetchOrders(EcomStore store, StoreCredentials c, LocalDateTime since) {
+    public List<OrderDraft> fetchOrders(ConnectorContext ctx, LocalDateTime since) {
+        EcomStore store = ctx.store();
+        StoreCredentials c = ctx.credentials();
+        String gateway = ctx.baseUrl(INFO);
         List<OrderDraft> drafts = new ArrayList<>();
         int page = 1;
         while (page <= 20) {
             String query = HttpJson.MAPPER.writeValueAsString(Map.of("page_size", PAGE_SIZE, "current_page", page,
                     "modified_date_start", since.atZone(ZoneId.systemDefault()).withZoneSameInstant(ZoneId.of("Asia/Shanghai")).format(TS)));
-            JsonNode resp = call(c, "aliexpress.solution.order.get", Map.of("param_aeop_order_query", query));
+            JsonNode resp = call(gateway, c, "aliexpress.solution.order.get", Map.of("param_aeop_order_query", query));
             JsonNode result = resp.path("aliexpress_solution_order_get_response").path("result");
             JsonNode list = result.path("target_list").path("order_dto");
             if (!list.isArray() || list.isEmpty()) {
@@ -63,7 +65,7 @@ public class AliExpressConnector implements ChannelConnector {
             }
             for (JsonNode o : list) {
                 OrderDraft d = toDraft(store, o);
-                JsonNode detail = call(c, "aliexpress.solution.order.info.get",
+                JsonNode detail = call(gateway, c, "aliexpress.solution.order.info.get",
                         Map.of("param1", HttpJson.MAPPER.writeValueAsString(Map.of("order_id", d.getPlatformOrderNo()))))
                         .path("aliexpress_solution_order_info_get_response").path("result");
                 fillDetail(d, detail);
@@ -120,14 +122,15 @@ public class AliExpressConnector implements ChannelConnector {
     }
 
     @Override
-    public void confirmShipment(EcomStore store, StoreCredentials c, EcomOrder order, List<EcomOrderItem> items) {
+    public void confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
+        StoreCredentials c = ctx.credentials();
         Map<String, String> params = new TreeMap<>();
         params.put("service_name", order.getCarrier());
         params.put("logistics_no", order.getTrackingNo());
         params.put("out_ref", order.getPlatformOrderNo());
         params.put("send_type", "all");
         params.put("description", "shipped");
-        JsonNode resp = call(c, "aliexpress.solution.order.fulfill", params);
+        JsonNode resp = call(ctx.baseUrl(INFO), c, "aliexpress.solution.order.fulfill", params);
         JsonNode result = resp.path("aliexpress_solution_order_fulfill_response").path("result");
         if (!result.path("result_success").asBoolean(false)) {
             throw new BizException("ecom.error.connectorCallFailed", PLATFORM, HttpJson.abbreviate(result.toString()));
@@ -135,7 +138,7 @@ public class AliExpressConnector implements ChannelConnector {
     }
 
     /** 调用 TOP 接口：系统参数 + 业务参数，MD5 签名，错误响应转为业务异常 */
-    private static JsonNode call(StoreCredentials c, String method, Map<String, String> business) {
+    private static JsonNode call(String gateway, StoreCredentials c, String method, Map<String, String> business) {
         TreeMap<String, String> params = new TreeMap<>(business);
         params.put("method", method);
         params.put("app_key", c.require("appKey"));
@@ -144,13 +147,13 @@ public class AliExpressConnector implements ChannelConnector {
         params.put("format", "json");
         params.put("v", "2.0");
         params.put("sign_method", "md5");
-        params.put("sign", sign(params, c.require("appSecret")));
+        params.put("sign", ConnectorSigns.md5Upper(c.require("appSecret") + ConnectorSigns.concatSorted(params) + c.require("appSecret")));
         StringBuilder form = new StringBuilder();
         params.forEach((k, v) -> {
             if (!form.isEmpty()) form.append('&');
             form.append(k).append('=').append(URLEncoder.encode(v, StandardCharsets.UTF_8));
         });
-        JsonNode resp = HttpJson.postForm(GATEWAY, Map.of(), form.toString(), PLATFORM);
+        JsonNode resp = HttpJson.postForm(gateway, Map.of(), form.toString(), PLATFORM);
         JsonNode error = resp.path("error_response");
         if (!error.isMissingNode()) {
             throw new BizException("ecom.error.connectorCallFailed", PLATFORM, HttpJson.abbreviate(error.toString()));
@@ -158,21 +161,6 @@ public class AliExpressConnector implements ChannelConnector {
         return resp;
     }
 
-    static String sign(TreeMap<String, String> params, String secret) {
-        StringBuilder sb = new StringBuilder(secret);
-        params.forEach((k, v) -> sb.append(k).append(v));
-        sb.append(secret);
-        try {
-            byte[] digest = MessageDigest.getInstance("MD5").digest(sb.toString().getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder();
-            for (byte b : digest) {
-                hex.append(String.format("%02X", b));
-            }
-            return hex.toString();
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
-    }
 
     private static EcomOrderStatus status(String s) {
         if (s == null) {

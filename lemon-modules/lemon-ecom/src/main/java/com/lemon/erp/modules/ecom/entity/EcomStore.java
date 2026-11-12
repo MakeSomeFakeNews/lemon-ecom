@@ -96,6 +96,29 @@ public class EcomStore extends BaseEntity {
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private LocalDateTime lastSyncTime;
 
+    /** 渠道接口环境：1 沙箱 / 测试，0 正式 */
+    private Integer sandbox;
+
+    /** 自定义接口地址（私有网关、测试用模拟服务器），为空按环境取连接器的默认地址 */
+    @Size(max = 255, message = "{ecom.valid.urlCannotExceedCharacters}")
+    private String apiBaseUrl;
+
+    /** 自动同步订单 1 是 0 否 */
+    private Integer orderSync;
+
+    /** 自动回传可售库存（自发货）1 是 0 否 */
+    private Integer inventorySync;
+
+    /** 回传库存时保留的安全数量（件） */
+    @jakarta.validation.constraints.DecimalMin(value = "0", message = "{ecom.valid.countCannotNegative}")
+    private BigDecimal inventoryBuffer;
+
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private LocalDateTime authorizedTime;
+
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private String lastSyncMessage;
+
     private EnableStatus status;
 
     @Size(max = 255, message = "{ecom.valid.remarkCannotExceedCharacters}")

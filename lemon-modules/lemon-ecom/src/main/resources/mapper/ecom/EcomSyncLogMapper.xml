@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomSyncLogMapper">
+
+    <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.entity.EcomSyncLog">
+        SELECT l.*, s.name AS store_name
+        FROM ecom_sync_log l
+        JOIN ecom_store s ON s.id = l.store_id
+        <where>
+            <if test="storeId != null">l.store_id = #{storeId}</if>
+            <if test="syncType != null">AND l.sync_type = #{syncType}</if>
+            <if test="success != null">AND l.success = #{success}</if>
+        </where>
+        ORDER BY l.start_time DESC, l.id DESC
+    </select>
+
+</mapper>

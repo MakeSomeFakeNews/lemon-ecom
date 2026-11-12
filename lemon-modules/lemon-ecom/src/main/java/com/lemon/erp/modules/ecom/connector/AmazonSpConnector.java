@@ -38,21 +38,32 @@ public class AmazonSpConnector implements ChannelConnector {
             "NA", "https://sellingpartnerapi-na.amazon.com",
             "EU", "https://sellingpartnerapi-eu.amazon.com",
             "FE", "https://sellingpartnerapi-fe.amazon.com");
+    /** SP-API 静态沙箱（返回固定示例数据，用于验证授权和报文） */
+    private static final Map<String, String> SANDBOX_ENDPOINTS = Map.of(
+            "NA", "https://sandbox.sellingpartnerapi-na.amazon.com",
+            "EU", "https://sandbox.sellingpartnerapi-eu.amazon.com",
+            "FE", "https://sandbox.sellingpartnerapi-fe.amazon.com");
+    private static final ConnectorInfo INFO = new ConnectorInfo(EcomPlatform.AMAZON, AuthType.KEYS, List.of(
+            CredentialField.text("region", "ecom.label.cred.amazonRegion", true),
+            CredentialField.text("marketplaceId", "ecom.label.cred.marketplaceId", true),
+            CredentialField.text("clientId", "ecom.label.cred.clientId", true),
+            CredentialField.secret("clientSecret", "ecom.label.cred.clientSecret"),
+            CredentialField.secret("refreshToken", "ecom.label.cred.refreshToken")),
+            ENDPOINTS.get("NA"), SANDBOX_ENDPOINTS.get("NA"),
+            java.util.EnumSet.of(ConnectorCapability.ORDERS, ConnectorCapability.SHIP_CONFIRM),
+            "https://developer-docs.amazon.com/sp-api/");
     private static final DateTimeFormatter ISO = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
 
     @Override
-    public EcomPlatform platform() {
-        return EcomPlatform.AMAZON;
+    public ConnectorInfo info() {
+        return INFO;
     }
 
     @Override
-    public boolean supportsShipmentConfirm() {
-        return true;
-    }
-
-    @Override
-    public List<OrderDraft> fetchOrders(EcomStore store, StoreCredentials c, LocalDateTime since) {
-        String endpoint = endpoint(c);
+    public List<OrderDraft> fetchOrders(ConnectorContext ctx, LocalDateTime since) {
+        EcomStore store = ctx.store();
+        StoreCredentials c = ctx.credentials();
+        String endpoint = endpoint(ctx);
         String token = accessToken(c);
         Map<String, String> headers = Map.of("x-amz-access-token", token, "Accept", "application/json");
         String marketplace = c.require("marketplaceId");
@@ -138,8 +149,9 @@ public class AmazonSpConnector implements ChannelConnector {
     }
 
     @Override
-    public void confirmShipment(EcomStore store, StoreCredentials c, EcomOrder order, List<EcomOrderItem> items) {
-        String endpoint = endpoint(c);
+    public void confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
+        StoreCredentials c = ctx.credentials();
+        String endpoint = endpoint(ctx);
         Map<String, String> headers = Map.of("x-amz-access-token", accessToken(c), "Accept", "application/json");
         List<Map<String, Object>> lines = new ArrayList<>();
         for (EcomOrderItem it : items) {
@@ -172,9 +184,13 @@ public class AmazonSpConnector implements ChannelConnector {
         return token;
     }
 
-    private static String endpoint(StoreCredentials c) {
+    private static String endpoint(ConnectorContext ctx) {
+        if (ctx.baseUrlOverride() != null) {
+            return ctx.baseUrlOverride();
+        }
+        StoreCredentials c = ctx.credentials();
         String region = c.get("region") == null ? "NA" : c.get("region").toUpperCase();
-        String endpoint = ENDPOINTS.get(region);
+        String endpoint = (ctx.sandbox() ? SANDBOX_ENDPOINTS : ENDPOINTS).get(region);
         if (endpoint == null) {
             throw new BizException("ecom.error.connectorRegionInvalid", region);
         }

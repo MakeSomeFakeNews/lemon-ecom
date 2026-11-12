@@ -26,6 +26,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.lemon.erp.modules.ecom.connector.ConnectorInfo;
+import com.lemon.erp.modules.ecom.entity.EcomSyncLog;
+import com.lemon.erp.modules.ecom.model.SyncType;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -39,6 +46,35 @@ public class EcomStoreController {
 
     private final EcomStoreService storeService;
     private final EcomSyncService syncService;
+
+    /** 后端对外地址（含 /api），平台 OAuth 回调到这里；为空时按当前请求推算（反向代理后应配置） */
+    @Value("${lemon.ecom.public-url:}")
+    private String publicUrl;
+
+    /** 登录即可访问：已有渠道接口的平台、授权方式、授权字段、是否有沙箱、支持的能力 */
+    @GetMapping("/connectors")
+    public R<List<ConnectorInfo>> connectors() {
+        return R.ok(syncService.connectors());
+    }
+
+    /** OAuth 授权页地址（卖家在新窗口打开，同意后平台回调本系统） */
+    @PostMapping("/{id}/authorize-url")
+    @PreAuthorize("@ss.hasPerm('ecom:store:edit')")
+    public R<String> authorizeUrl(@PathVariable Long id, HttpServletRequest request) {
+        EcomStore store = storeService.get(id);
+        String base = publicUrl == null || publicUrl.isBlank()
+                ? ServletUriComponentsBuilder.fromContextPath(request).build().toUriString() : publicUrl.replaceAll("/+$", "");
+        return R.ok(syncService.authorizeUrl(id, base + "/ecom/oauth/callback/" + store.getPlatform().name().toLowerCase()));
+    }
+
+    /** 同步日志 */
+    @GetMapping("/sync-logs")
+    @PreAuthorize("@ss.hasPerm('ecom:store:list')")
+    public R<PageResult<EcomSyncLog>> logs(@RequestParam(defaultValue = "1") long current, @RequestParam(defaultValue = "10") long size,
+                                           @RequestParam(required = false) Long storeId, @RequestParam(required = false) SyncType syncType,
+                                           @RequestParam(required = false) Integer success) {
+        return R.ok(syncService.logs(current, size, storeId, syncType, success));
+    }
 
     @GetMapping
     @PreAuthorize("@ss.hasPerm('ecom:store:list')")

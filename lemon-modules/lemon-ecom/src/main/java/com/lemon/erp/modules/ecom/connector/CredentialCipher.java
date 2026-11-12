@@ -64,6 +64,17 @@ public class CredentialCipher {
         }
     }
 
+    /** 对字符串签名（HMAC-SHA256，Base64URL），用于 OAuth 授权的 state 参数防篡改 */
+    public String sign(String data) {
+        try {
+            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(key.getEncoded(), "HmacSHA256"));
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(mac.doFinal(data.getBytes(StandardCharsets.UTF_8)));
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     /** 解密；无法解密（密钥已更换）时返回 null，视为未配置 */
     public String decrypt(String stored) {
         if (!StringUtils.hasText(stored)) {

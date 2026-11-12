@@ -14,24 +14,24 @@ import java.time.Duration;
 import java.util.Map;
 
 /**
- * 渠道接口的 HTTP + JSON 工具：超时、非 2xx 转为业务异常（包含平台返回的前 300 个字符，便于排查授权问题）
+ * 渠道接口的 HTTP + JSON 工具（各平台连接器共用）：超时、非 2xx 转为业务异常（包含平台返回的前 300 个字符，便于排查授权问题）
  */
-final class HttpJson {
+public final class HttpJson {
 
-    static final ObjectMapper MAPPER = new ObjectMapper();
+    public static final ObjectMapper MAPPER = new ObjectMapper();
     private static final HttpClient CLIENT = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
     private static final Duration TIMEOUT = Duration.ofSeconds(60);
 
     private HttpJson() {
     }
 
-    static JsonNode get(String url, Map<String, String> headers, String platform) {
+    public static JsonNode get(String url, Map<String, String> headers, String platform) {
         HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(url)).timeout(TIMEOUT).GET();
         headers.forEach(b::header);
         return send(b.build(), platform);
     }
 
-    static JsonNode postJson(String url, Map<String, String> headers, Object body, String platform) {
+    public static JsonNode postJson(String url, Map<String, String> headers, Object body, String platform) {
         HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(url)).timeout(TIMEOUT)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(body)));
@@ -39,7 +39,26 @@ final class HttpJson {
         return send(b.build(), platform);
     }
 
-    static JsonNode postForm(String url, Map<String, String> headers, String form, String platform) {
+    public static JsonNode putJson(String url, Map<String, String> headers, Object body, String platform) {
+        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(url)).timeout(TIMEOUT)
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(body)));
+        headers.forEach(b::header);
+        return send(b.build(), platform);
+    }
+
+    /** 任意方法（PATCH、DELETE 等），body 为空时不带请求体 */
+    public static JsonNode request(String method, String url, Map<String, String> headers, Object body, String platform) {
+        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(url)).timeout(TIMEOUT)
+                .method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(body)));
+        if (body != null) {
+            b.header("Content-Type", "application/json");
+        }
+        headers.forEach(b::header);
+        return send(b.build(), platform);
+    }
+
+    public static JsonNode postForm(String url, Map<String, String> headers, String form, String platform) {
         HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(url)).timeout(TIMEOUT)
                 .header("Content-Type", "application/x-www-form-urlencoded;charset=utf-8")
                 .POST(HttpRequest.BodyPublishers.ofString(form));
@@ -62,19 +81,19 @@ final class HttpJson {
         }
     }
 
-    static String abbreviate(String s) {
+    public static String abbreviate(String s) {
         if (s == null) {
             return "";
         }
         return s.length() <= 300 ? s : s.substring(0, 300) + "...";
     }
 
-    static String text(JsonNode node, String field) {
+    public static String text(JsonNode node, String field) {
         JsonNode v = node == null ? null : node.get(field);
         return v == null || v.isNull() ? null : v.asString();
     }
 
-    static BigDecimal decimal(JsonNode node, String... path) {
+    public static BigDecimal decimal(JsonNode node, String... path) {
         JsonNode v = node;
         for (String p : path) {
             v = v == null ? null : v.get(p);

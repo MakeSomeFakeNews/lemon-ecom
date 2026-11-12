@@ -15,6 +15,7 @@ DROP TABLE IF EXISTS ecom_inbound;
 DROP TABLE IF EXISTS ecom_order_item;
 DROP TABLE IF EXISTS ecom_order;
 DROP TABLE IF EXISTS ecom_listing;
+DROP TABLE IF EXISTS ecom_sync_log;
 DROP TABLE IF EXISTS ecom_store;
 DROP TABLE IF EXISTS ai_report;
 DROP TABLE IF EXISTS ai_cleanse_suggestion;
@@ -3328,6 +3329,13 @@ CREATE TABLE ecom_store (
     seller_id     VARCHAR(64)             DEFAULT NULL COMMENT '平台卖家 ID',
     credentials   TEXT COMMENT '渠道接口授权（JSON，加密保存，enc: 前缀）',
     last_sync_time DATETIME               DEFAULT NULL COMMENT '最近一次订单同步时间',
+    sandbox       TINYINT        NOT NULL DEFAULT 0 COMMENT '渠道接口环境 1沙箱 / 测试 0正式',
+    api_base_url  VARCHAR(255)            DEFAULT NULL COMMENT '自定义接口地址（私有网关、测试用模拟服务器），为空按环境取默认地址',
+    order_sync    TINYINT        NOT NULL DEFAULT 1 COMMENT '自动同步订单 1是 0否',
+    inventory_sync TINYINT       NOT NULL DEFAULT 0 COMMENT '自动回传可售库存（自发货） 1是 0否',
+    inventory_buffer DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '回传库存时保留的安全数量（件），回传数 = 可用库存 ÷ 多件装 − 保留',
+    authorized_time DATETIME              DEFAULT NULL COMMENT '最近一次授权（OAuth 回调）时间',
+    last_sync_message VARCHAR(500)        DEFAULT NULL COMMENT '最近一次同步失败的原因，成功为空',
     status        TINYINT        NOT NULL DEFAULT 1 COMMENT '状态 1启用 0停用',
     remark        VARCHAR(255)            DEFAULT NULL COMMENT '备注',
     create_time   DATETIME                DEFAULT NULL COMMENT '创建时间',
@@ -3336,6 +3344,25 @@ CREATE TABLE ecom_store (
     UNIQUE KEY uk_ecom_store_code (code, tenant_id),
     KEY idx_ecom_store_customer (customer_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '平台店铺';
+
+CREATE TABLE ecom_sync_log (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id   BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    store_id    BIGINT       NOT NULL COMMENT '店铺',
+    sync_type   VARCHAR(16)  NOT NULL COMMENT '类型(字典 ecom_sync_type) ORDERS拉取订单 SHIP_CONFIRM回传发货 INVENTORY_PUSH回传库存 LISTINGS拉取商品 PLATFORM_STOCK平台仓库存 AUTH授权',
+    trigger_by  VARCHAR(16)  NOT NULL DEFAULT 'JOB' COMMENT '触发 JOB定时任务 MANUAL手工',
+    success     TINYINT      NOT NULL DEFAULT 1 COMMENT '是否成功',
+    fetched     INT          NOT NULL DEFAULT 0 COMMENT '取到 / 提交的条数',
+    created     INT          NOT NULL DEFAULT 0 COMMENT '新增条数',
+    updated     INT          NOT NULL DEFAULT 0 COMMENT '更新条数',
+    message     VARCHAR(500)          DEFAULT NULL COMMENT '失败原因或说明',
+    start_time  DATETIME     NOT NULL COMMENT '开始时间',
+    end_time    DATETIME              DEFAULT NULL COMMENT '结束时间',
+    create_time DATETIME              DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME              DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_sync_log_store (store_id, start_time)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '渠道同步日志';
 
 CREATE TABLE ecom_listing (
     id               BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
@@ -5378,3 +5405,14 @@ SELECT g.role_id, g.menu_id FROM (
 ) g
 WHERE EXISTS (SELECT 1 FROM sys_role r WHERE r.id = g.role_id)
   AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = g.role_id AND x.menu_id = g.menu_id);
+
+-- 渠道同步日志的类型
+INSERT INTO sys_dict_type (id, name, type, kind, status, remark, create_time, update_time) VALUES
+(225, '渠道同步类型', 'ecom_sync_type', 'SYSTEM', 1, '渠道同步日志的类型', NOW(), NOW());
+INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, builtin, create_time, update_time) VALUES
+('ecom_sync_type', '拉取订单', 'ORDERS', 'blue', 1, 1, 1, NOW(), NOW()),
+('ecom_sync_type', '回传发货', 'SHIP_CONFIRM', 'green', 2, 1, 1, NOW(), NOW()),
+('ecom_sync_type', '回传库存', 'INVENTORY_PUSH', 'cyan', 3, 1, 1, NOW(), NOW()),
+('ecom_sync_type', '拉取商品', 'LISTINGS', 'purple', 4, 1, 1, NOW(), NOW()),
+('ecom_sync_type', '平台仓库存', 'PLATFORM_STOCK', 'orange', 5, 1, 1, NOW(), NOW()),
+('ecom_sync_type', '授权', 'AUTH', 'gold', 6, 1, 1, NOW(), NOW());

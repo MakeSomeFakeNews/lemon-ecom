@@ -40,8 +40,8 @@ public class SecurityConfig {
                         .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                         .requestMatchers("/auth/login", "/auth/config", "/auth/captcha", "/error").permitAll()
                         .requestMatchers(HttpMethod.GET, WebMvcConfig.FILE_URL_PREFIX + "**").permitAll()
-                        // 大屏投屏链接：免登录只读，按链接令牌校验
-                        .requestMatchers(HttpMethod.GET, "/screen-share/**").permitAll()
+                        // 电商平台 OAuth 授权回调：平台浏览器跳转过来，按签名的 state 参数校验
+                        .requestMatchers(HttpMethod.GET, "/ecom/oauth/callback/**").permitAll()
                         // 钉钉、企业微信、飞书授权登录：授权页地址和回调
                         .requestMatchers("/auth/im/**").permitAll()
                         // 微信小程序登录（解除绑定需要登录）
