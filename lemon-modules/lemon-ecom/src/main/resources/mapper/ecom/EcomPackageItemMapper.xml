@@ -13,8 +13,8 @@
     </select>
 
     <select id="selectAllocated" resultType="java.util.Map">
-        SELECT pi.order_item_id AS "orderItemId", SUM(pi.qty) AS "qty",
-               SUM(CASE WHEN p.status IN ('LABELED', 'SHIPPED') THEN pi.qty ELSE 0 END) AS "locked"
+        SELECT pi.order_item_id AS "orderItemId", SUM(CASE WHEN pi.part_main = 1 THEN pi.qty ELSE 0 END) AS "qty",
+               SUM(CASE WHEN pi.part_main = 1 AND p.status IN ('LABELED', 'SHIPPED') THEN pi.qty ELSE 0 END) AS "locked"
         FROM ecom_package_item pi
         JOIN ecom_package p ON p.id = pi.package_id
         WHERE pi.order_id = #{orderId} AND p.status &lt;&gt; 'CANCELLED'
@@ -23,11 +23,11 @@
 
     <insert id="insertBatch">
         INSERT INTO ecom_package_item (package_id, order_id, order_item_id, material_id, qty, material_qty, cost, trade_doc_id, trade_doc_no,
-                                       create_time, update_time)
+                                       part_id, part_main, create_time, update_time)
         VALUES
         <foreach collection="items" item="i" separator=",">
             (#{i.packageId}, #{i.orderId}, #{i.orderItemId}, #{i.materialId}, #{i.qty}, #{i.materialQty}, #{i.cost}, #{i.tradeDocId},
-             #{i.tradeDocNo}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+             #{i.tradeDocNo}, #{i.partId}, COALESCE(#{i.partMain}, 1), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         </foreach>
     </insert>
 

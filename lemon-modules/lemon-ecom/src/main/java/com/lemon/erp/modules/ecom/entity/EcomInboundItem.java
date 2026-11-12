@@ -23,6 +23,19 @@ public class EcomInboundItem extends BaseEntity {
     private BigDecimal receivedQty;
     private BigDecimal unitLanded;
     private String remark;
+    /** 在线商品（由发货计划生成，或按 店铺 + 平台 SKU 识别），没有时为空 */
+    private Long listingId;
+    /** 本行对应的平台 SKU 件数（多件装 = 数量 ÷ 多件装数量；组合商品各组件行相同），装箱、FNSKU 标签按它计 */
+    private BigDecimal skuQty;
+    /** 是否计入平台 SKU 件数 1是（组合商品只有第一个组件行） */
+    private Integer partMain;
+    /** 来源发货计划明细 */
+    private Long planItemId;
+
+    @TableField(exist = false)
+    private String fnsku;
+    @TableField(exist = false)
+    private String title;
 
     @TableField(exist = false)
     private String materialCode;

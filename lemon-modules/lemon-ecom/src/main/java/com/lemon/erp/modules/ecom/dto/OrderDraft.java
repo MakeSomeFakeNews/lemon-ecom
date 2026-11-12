@@ -34,6 +34,10 @@ public class OrderDraft {
     private LocalDateTime shipBy;
     private LocalDateTime deliverBy;
     private String note;
+    /** 订单级运费（平台只给订单合计时填写），有值时订单运费取它而不是明细合计，为空按明细合计 */
+    private BigDecimal shippingAmount;
+    /** 订单级税额，规则同 shippingAmount */
+    private BigDecimal taxAmount;
     private List<Line> lines = new ArrayList<>();
 
     @Data

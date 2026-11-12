@@ -211,6 +211,7 @@ export default {
   },
   // 订单来源
   scm_order_source: {
+    'PURCHASE_PLAN': 'Purchase Plan', // 采购计划
     'MANUAL': 'Manual', // 手工
     'MRP': 'MRP', // MRP
     'KIT': 'Production Shortage', // 生产缺料
@@ -800,5 +801,24 @@ export default {
     'LISTINGS': 'Fetch Listings', // 拉取商品
     'PLATFORM_STOCK': 'Platform Stock', // 平台仓库存
     'AUTH': 'Authorization', // 授权
+  },
+  // 商品组成方式
+  ecom_compose_type: {
+    'SINGLE': 'Single', // 单品
+    'BUNDLE': 'Bundle', // 组合
+  },
+  // 发货计划状态
+  ecom_shipment_plan_status: {
+    'DRAFT': 'Draft', // 草稿
+    'CONFIRMED': 'Confirmed', // 已确认
+    'GENERATED': 'Shipments Generated', // 已生成货件
+    'CANCELLED': 'Cancelled', // 已取消
+  },
+  // 采购计划状态
+  ecom_purchase_plan_status: {
+    'DRAFT': 'Draft', // 草稿
+    'APPROVED': 'Approved', // 已审核
+    'ORDERED': 'Ordered', // 已下单
+    'CLOSED': 'Closed', // 已关闭
   },
 }

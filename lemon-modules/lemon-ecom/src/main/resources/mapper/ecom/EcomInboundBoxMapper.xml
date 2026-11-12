@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomInboundBoxMapper">
+
+    <insert id="insertBatch">
+        INSERT INTO ecom_inbound_box (inbound_id, box_no, length, width, height, weight, remark, create_time, update_time)
+        VALUES
+        <foreach collection="items" item="i" separator=",">
+            (#{i.inboundId}, #{i.boxNo}, #{i.length}, #{i.width}, #{i.height}, #{i.weight}, #{i.remark}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        </foreach>
+    </insert>
+
+</mapper>

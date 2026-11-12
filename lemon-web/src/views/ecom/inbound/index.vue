@@ -141,6 +141,7 @@ const query = reactive(emptyQuery())
 // 从看板、首页待办跳转过来时带上状态（?status=SHIPPED）
 const route = useRoute()
 if (route.query.status) query.status = String(route.query.status)
+if (route.query.keyword) query.keyword = String(route.query.keyword)
 const { list, loading, size, pagination, load, search, onTableChange, exportAll } = useTable(pageEcomInbound, query)
 
 function resetQuery() {

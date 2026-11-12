@@ -43,15 +43,24 @@ import java.util.TreeMap;
  * 地址：店铺填写了自定义地址时，业务接口、令牌接口（{自定义地址}/auth/token/create）和授权页（{自定义地址}/oauth/authorize）都指向它；
  * Lazada 没有公开沙箱，联调用测试店铺（正式环境）。
  * <p>
- * 编码约定：平台商品 ID 为 {@code "itemId:skuId"}（在线商品、订单明细、库存回传一致），订单行 ID 为 order_item_id；
+ * 编码约定：在线商品 platformItemId 为 SkuId、parentItemId 为 item_id；订单明细没有父 ID 字段，平台商品 ID 仍为 {@code "itemId:skuId"}；
+ * 回传库存按 parentItemId（ItemId）+ platformItemId（SkuId），兼容旧编码 {@code "itemId:skuId"}。订单行 ID 为 order_item_id；
  * Lazada 订单明细每行是一件商品（数量 1），同一 SKU 买多件会有多行。卖家 SKU 取 sku（SellerSku），为空取 shop_sku，仍为空取平台商品 ID。
  * 金额：单价 / 商品金额取 item_price，运费 shipping_amount，税 tax_amount，折扣取卖家承担的 voucher_seller；币种取明细的 currency，缺少时按站点。
  * 订单状态由各行状态汇总：任一行待付款为待付款，否则任一行待处理为待发货，其次已发货、已退货、已取消。
  * <p>
  * 发货：Lazada 只能使用平台分配的物流，开放接口不能写入 ERP 的运单号；回传发货按「打包 /order/fulfill/pack → 通知揽收 /order/package/rts」两步，
- * 运单号与承运商由平台分配（结果中返回，当前框架不回写）。自配送（Seller Own Fleet）店铺的妥投回传未实现。
+ * 返回 {@link ShipmentResultStatus#PLATFORM_MANAGED}，带回打包结果 / 订单行中的平台运单号（tracking_number / tracking_code）与承运商
+ * （shipment_provider），由框架写入订单与包裹；订单行都已通知揽收 / 已发货时直接带回运单号。自配送（Seller Own Fleet）店铺的妥投回传未实现。
  * <p>
- * 说明：按开放平台公开文档实现，尚未用真实店铺联调
+ * 说明：按开放平台公开文档实现，尚未用真实店铺联调。需要真实账号联调确认：
+ * <ul>
+ *   <li>pack 接口的 packReq 结构、delivery_type、shipping_allocate_type（TFS / NTFS）对本地 / 跨境店铺的取值</li>
+ *   <li>pack / rts 响应中运单号、承运商的字段名（tracking_number、shipment_provider）与层级</li>
+ *   <li>orders/get 的 update_after 时区格式、countTotal 字段，orders/items/get 一次最多 50 个订单</li>
+ *   <li>price_quantity/update 的 XML 中只填 SellerSku（没有 ItemId / SkuId）时是否能更新</li>
+ *   <li>没有时区的时间（按服务器时区解析）是否出现</li>
+ * </ul>
  */
 @Component
 public class LazadaConnector implements ChannelConnector {
@@ -79,6 +88,8 @@ public class LazadaConnector implements ChannelConnector {
     private static final String OWN_WAREHOUSE = "Own Warehouse";
     private static final Set<String> PACKABLE = Set.of("pending", "repacked");
     private static final String PACKED = "packed";
+    /** 已通知揽收或之后的行状态：不再打包，只带回运单号 */
+    private static final Set<String> SHIPPED_OR_LATER = Set.of("ready_to_ship", "ready_to_ship_pending", "shipped", "delivered");
 
     private static final ConnectorInfo INFO = new ConnectorInfo(EcomPlatform.LAZADA, AuthType.OAUTH, List.of(
             CredentialField.text("appKey", "ecom.label.cred.appKey", true),
@@ -87,12 +98,15 @@ public class LazadaConnector implements ChannelConnector {
             CredentialField.text("shippingAllocateType", "ecom.label.cred.lazada.shippingAllocateType", false),
             CredentialField.token("accessToken", "ecom.label.cred.accessToken"),
             CredentialField.token("refreshToken", "ecom.label.cred.refreshToken"),
-            new CredentialField("expiresAt", "ecom.label.cred.lazada.expiresAt", false, false, true),
-            new CredentialField("sellerId", "ecom.label.cred.lazada.sellerId", false, false, true)),
+            CredentialField.oauthInfo("sellerId", "ecom.label.cred.lazada.sellerId"),
+            CredentialField.cached("expiresAt", false),
+            CredentialField.cached("refreshExpiresAt", false),
+            CredentialField.cached("country", false),
+            CredentialField.cached("account", false)),
             ENDPOINTS.get("SG"), null,
             EnumSet.of(ConnectorCapability.ORDERS, ConnectorCapability.SHIP_CONFIRM, ConnectorCapability.INVENTORY_PUSH,
                     ConnectorCapability.LISTINGS),
-            "https://open.lazada.com/apps/doc/doc");
+            "https://open.lazada.com/apps/doc/doc").withRedirectNote("ecom.text.connector.redirect.lazada");
 
     @Override
     public ConnectorInfo info() {
@@ -195,7 +209,7 @@ public class LazadaConnector implements ChannelConnector {
     @Override
     public void ensureToken(ConnectorContext ctx) {
         StoreCredentials c = ctx.credentials();
-        long expireAt = parseLongOr(c.get("expiresAt"));
+        long expireAt = ConnectorJson.parseLong(c.get("expiresAt"), 0);
         if (c.get("accessToken") != null && expireAt - REFRESH_AHEAD_SECONDS > Instant.now().getEpochSecond()) {
             return;
         }
@@ -238,7 +252,11 @@ public class LazadaConnector implements ChannelConnector {
                 .withNano(0).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
         Map<String, JsonNode> orders = new LinkedHashMap<>();
         int offset = 0;
-        for (int page = 0; page < MAX_PAGES; page++) {
+        for (int page = 0; ; page++) {
+            if (page >= MAX_PAGES) {
+                ConnectorJson.warnPageLimit(PLATFORM, "orders", MAX_PAGES);
+                break;
+            }
             Map<String, String> q = new LinkedHashMap<>();
             q.put("update_after", after);
             q.put("sort_by", "updated_at");
@@ -283,16 +301,16 @@ public class LazadaConnector implements ChannelConnector {
             items.forEach(it -> statuses.add(HttpJson.text(it, "status")));
         }
         d.setStatus(orderStatus(statuses));
-        d.setBuyerName(join(HttpJson.text(o, "customer_first_name"), HttpJson.text(o, "customer_last_name")));
+        d.setBuyerName(ConnectorJson.join(HttpJson.text(o, "customer_first_name"), HttpJson.text(o, "customer_last_name")));
         d.setNote(HttpJson.text(o, "remarks"));
         JsonNode addr = o.path("address_shipping");
-        d.setShipName(join(HttpJson.text(addr, "first_name"), HttpJson.text(addr, "last_name")));
+        d.setShipName(ConnectorJson.join(HttpJson.text(addr, "first_name"), HttpJson.text(addr, "last_name")));
         d.setShipPhone(HttpJson.text(addr, "phone"));
         d.setShipCountry(region != null ? region : HttpJson.text(addr, "country"));
         d.setShipState(HttpJson.text(addr, "address3"));
         d.setShipCity(HttpJson.text(addr, "city"));
         d.setShipPostcode(HttpJson.text(addr, "post_code"));
-        d.setShipAddress(join(HttpJson.text(addr, "address1"), HttpJson.text(addr, "address2"), HttpJson.text(addr, "address5")));
+        d.setShipAddress(ConnectorJson.join(HttpJson.text(addr, "address1"), HttpJson.text(addr, "address2"), HttpJson.text(addr, "address5")));
         boolean platform = false;
         String currency = null;
         for (JsonNode it : items) {
@@ -316,20 +334,18 @@ public class LazadaConnector implements ChannelConnector {
         String productId = HttpJson.text(it, "product_id");
         String skuId = HttpJson.text(it, "sku_id");
         l.setPlatformItemId(productId == null ? skuId : skuId == null ? productId : productId + ":" + skuId);
-        l.setSellerSku(firstNonBlank(HttpJson.text(it, "sku"), HttpJson.text(it, "shop_sku"), l.getPlatformItemId()));
-        String variation = HttpJson.text(it, "variation");
-        String name = HttpJson.text(it, "name");
-        l.setTitle(variation == null || variation.isBlank() ? name : name + " " + variation);
+        l.setSellerSku(ConnectorJson.firstNonBlank(HttpJson.text(it, "sku"), HttpJson.text(it, "shop_sku"), l.getPlatformItemId()));
+        l.setTitle(ConnectorJson.join(HttpJson.text(it, "name"), HttpJson.text(it, "variation")));
         l.setQty(BigDecimal.ONE);
-        BigDecimal price = decimal(it, "item_price");
+        BigDecimal price = ConnectorJson.decimal(it, "item_price");
         if (price == null) {
-            price = decimal(it, "paid_price");
+            price = ConnectorJson.decimal(it, "paid_price");
         }
         l.setPrice(price);
         l.setAmount(price);
-        l.setShipping(decimal(it, "shipping_amount"));
-        l.setTax(decimal(it, "tax_amount"));
-        BigDecimal voucher = decimal(it, "voucher_seller");
+        l.setShipping(ConnectorJson.decimal(it, "shipping_amount"));
+        l.setTax(ConnectorJson.decimal(it, "tax_amount"));
+        BigDecimal voucher = ConnectorJson.decimal(it, "voucher_seller");
         l.setDiscount(voucher != null && voucher.signum() > 0 ? voucher : null);
         return l;
     }
@@ -369,11 +385,11 @@ public class LazadaConnector implements ChannelConnector {
     // ---------------------------------------------------------------- 发货
 
     /**
-     * 打包（pending / repacked 的行）后通知揽收（含已打包的包裹）；ERP 的运单号不会写到平台（Lazada 由平台分配物流单号）。
-     * 明细有订单行 ID 时只处理这些行，否则处理整单
+     * 打包（pending / repacked 的行）后通知揽收（含已打包的包裹）；ERP 的运单号不会写到平台（Lazada 由平台分配物流单号），
+     * 返回平台物流托管与平台运单号。明细有订单行 ID 时只处理这些行，否则处理整单；这些行都已通知揽收 / 已发货时只带回运单号
      */
     @Override
-    public void confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
+    public ShipmentResult confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
         ensureToken(ctx);
         String base = apiBase(ctx);
         StoreCredentials c = ctx.credentials();
@@ -386,16 +402,23 @@ public class LazadaConnector implements ChannelConnector {
         JsonNode remote = get(base, c, "/order/items/get", Map.of("order_id", order.getPlatformOrderNo())).path("data");
         List<Object> toPack = new ArrayList<>();
         Set<String> packages = new LinkedHashSet<>();
+        Tracking tracking = new Tracking();
+        boolean alreadyShipped = false;
         for (JsonNode it : remote) {
             String id = HttpJson.text(it, "order_item_id");
             if (id == null || (!wanted.isEmpty() && !wanted.contains(id))) {
                 continue;
             }
             String status = HttpJson.text(it, "status");
-            if (status != null && PACKABLE.contains(status.toLowerCase())) {
+            String st = status == null ? "" : status.toLowerCase();
+            if (PACKABLE.contains(st)) {
                 toPack.add(idValue(id));
-            } else if (PACKED.equalsIgnoreCase(status) && HttpJson.text(it, "package_id") != null) {
+            } else if (PACKED.equals(st) && HttpJson.text(it, "package_id") != null) {
                 packages.add(HttpJson.text(it, "package_id"));
+                tracking.collect(it);
+            } else if (SHIPPED_OR_LATER.contains(st)) {
+                alreadyShipped = true;
+                tracking.collect(it);
             }
         }
         if (!toPack.isEmpty()) {
@@ -405,27 +428,46 @@ public class LazadaConnector implements ChannelConnector {
             req.put("delivery_type", "dropship");
             req.put("shipping_allocate_type", allocate);
             JsonNode resp = post(base, c, "/order/fulfill/pack", Map.of("packReq", HttpJson.MAPPER.writeValueAsString(req)));
-            collectPackages(resp.path("result"), packages);
+            collectPackages(resp.path("result"), packages, tracking);
         }
         if (packages.isEmpty()) {
+            if (alreadyShipped) {
+                return ShipmentResult.platformManaged(tracking.number, tracking.provider);
+            }
             throw new BizException("ecom.error.connectorCallFailed", PLATFORM, "no pending / packed items in order " + order.getPlatformOrderNo());
         }
         List<Map<String, String>> list = packages.stream().map(p -> Map.of("package_id", p)).toList();
         JsonNode resp = post(base, c, "/order/package/rts", Map.of("readyToShipReq", HttpJson.MAPPER.writeValueAsString(Map.of("packages", list))));
-        collectPackages(resp.path("result"), new LinkedHashSet<>());
+        collectPackages(resp.path("result"), new LinkedHashSet<>(), tracking);
+        return ShipmentResult.platformManaged(tracking.number, tracking.provider);
     }
 
-    /** 检查 result.success 与每个包裹 / 行的 item_err_code，收集 package_id */
-    private static void collectPackages(JsonNode result, Set<String> packages) {
+    /** 平台分配的运单号与承运商（打包结果、订单行中的第一个） */
+    private static final class Tracking {
+        String number;
+        String provider;
+
+        void collect(JsonNode node) {
+            if (number == null) {
+                number = ConnectorJson.firstNonBlank(HttpJson.text(node, "tracking_number"), HttpJson.text(node, "tracking_code"));
+            }
+            if (provider == null) {
+                provider = ConnectorJson.firstNonBlank(HttpJson.text(node, "shipment_provider"));
+            }
+        }
+    }
+
+    /** 检查 result.success 与每个包裹 / 行的 item_err_code，收集 package_id 与运单号 */
+    private static void collectPackages(JsonNode result, Set<String> packages, Tracking tracking) {
         if (result.has("success") && !result.path("success").asBoolean(false)) {
             throw new BizException("ecom.error.connectorCallFailed", PLATFORM, HttpJson.abbreviate(result.toString()));
         }
-        walk(result.path("data"), packages);
+        walk(result.path("data"), packages, tracking);
     }
 
-    private static void walk(JsonNode node, Set<String> packages) {
+    private static void walk(JsonNode node, Set<String> packages, Tracking tracking) {
         if (node.isArray()) {
-            node.forEach(n -> walk(n, packages));
+            node.forEach(n -> walk(n, packages, tracking));
         } else if (node.isObject()) {
             if (node.has("item_err_code") && !"0".equals(node.path("item_err_code").asString())) {
                 throw new BizException("ecom.error.connectorCallFailed", PLATFORM, HttpJson.abbreviate(node.toString()));
@@ -434,9 +476,10 @@ public class LazadaConnector implements ChannelConnector {
             if (pkg != null && !pkg.isBlank()) {
                 packages.add(pkg);
             }
+            tracking.collect(node);
             node.properties().forEach(e -> {
                 if (e.getValue().isContainer()) {
-                    walk(e.getValue(), packages);
+                    walk(e.getValue(), packages, tracking);
                 }
             });
         }
@@ -459,20 +502,17 @@ public class LazadaConnector implements ChannelConnector {
         StringBuilder sb = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Request><Product><Skus>");
         for (InventoryUpdate u : updates) {
             sb.append("<Sku>");
-            String key = u.platformItemId();
-            if (key != null && !key.isBlank()) {
-                int idx = key.indexOf(':');
-                if (idx > 0) {
-                    sb.append("<ItemId>").append(xml(key.substring(0, idx))).append("</ItemId>");
-                    sb.append("<SkuId>").append(xml(key.substring(idx + 1))).append("</SkuId>");
-                } else {
-                    sb.append("<ItemId>").append(xml(key)).append("</ItemId>");
-                }
+            String[] ids = u.parentAndChild();
+            if (ids != null) {
+                sb.append("<ItemId>").append(xml(ids[0])).append("</ItemId>");
+                sb.append("<SkuId>").append(xml(ids[1])).append("</SkuId>");
+            } else if (u.platformItemId() != null && !u.platformItemId().isBlank()) {
+                sb.append("<ItemId>").append(xml(u.platformItemId().trim())).append("</ItemId>");
             }
             if (u.sellerSku() != null) {
                 sb.append("<SellerSku>").append(xml(u.sellerSku())).append("</SellerSku>");
             }
-            sb.append("<Quantity>").append(u.qty() == null ? 0 : Math.max(0, u.qty().intValue())).append("</Quantity>");
+            sb.append("<Quantity>").append(u.intQty()).append("</Quantity>");
             sb.append("</Sku>");
         }
         return sb.append("</Skus></Product></Request>").toString();
@@ -489,7 +529,11 @@ public class LazadaConnector implements ChannelConnector {
         String currency = region == null ? null : CURRENCIES.get(region);
         List<ListingDraft> drafts = new ArrayList<>();
         int offset = 0;
-        for (int page = 0; page < MAX_PAGES; page++) {
+        for (int page = 0; ; page++) {
+            if (page >= MAX_PAGES) {
+                ConnectorJson.warnPageLimit(PLATFORM, "products", MAX_PAGES);
+                break;
+            }
             Map<String, String> q = new LinkedHashMap<>();
             q.put("filter", "all");
             q.put("offset", String.valueOf(offset));
@@ -502,13 +546,12 @@ public class LazadaConnector implements ChannelConnector {
                 String productStatus = HttpJson.text(p, "status");
                 for (JsonNode s : p.path("skus")) {
                     String skuId = HttpJson.text(s, "SkuId");
-                    String key = skuId == null ? itemId : itemId + ":" + skuId;
                     String status = listingStatus(HttpJson.text(s, "Status"), productStatus);
-                    JsonNode images = s.path("Images");
-                    String image = images.path(0).isMissingNode() ? str(p.path("images").path(0)) : str(images.path(0));
-                    drafts.add(new ListingDraft(firstNonBlank(HttpJson.text(s, "SellerSku"), HttpJson.text(s, "ShopSku"), key), key, itemId, title,
-                            variant(s.path("saleProp")), decimal(s, "price"), currency, decimal(s, "quantity"), null, status, image,
-                            HttpJson.text(s, "Url")));
+                    String image = ConnectorJson.firstNonBlank(ConnectorJson.str(s, "Images", "0"), ConnectorJson.str(p, "images", "0"));
+                    drafts.add(new ListingDraft(ConnectorJson.firstNonBlank(HttpJson.text(s, "SellerSku"), HttpJson.text(s, "ShopSku"), skuId, itemId),
+                            skuId != null ? skuId : itemId, skuId != null ? itemId : null, title,
+                            variant(s.path("saleProp")), ConnectorJson.decimal(s, "price"), currency, ConnectorJson.decimal(s, "quantity"), null, status,
+                            image, HttpJson.text(s, "Url")));
                 }
             }
             offset += products.size();
@@ -578,7 +621,7 @@ public class LazadaConnector implements ChannelConnector {
 
     // ---------------------------------------------------------------- 工具
 
-    /** "2014-10-21 12:29:08 +0800" → 系统默认时区；没有时区的按系统默认时区 */
+    /** "2014-10-21 12:29:08 +0800" → 系统默认时区；没有时区的按系统默认时区，ISO 8601 也接受 */
     static LocalDateTime time(String s) {
         if (s == null || s.isBlank()) {
             return null;
@@ -586,24 +629,8 @@ public class LazadaConnector implements ChannelConnector {
         try {
             return OffsetDateTime.parse(s.trim(), LAZADA_TIME).atZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime();
         } catch (RuntimeException e) {
-            try {
-                return LocalDateTime.parse(s.trim(), LAZADA_TIME_NO_ZONE);
-            } catch (RuntimeException e2) {
-                return null;
-            }
-        }
-    }
-
-    /** 金额字符串可能带千分位逗号 */
-    private static BigDecimal decimal(JsonNode node, String field) {
-        String v = HttpJson.text(node, field);
-        if (v == null || v.isBlank()) {
-            return null;
-        }
-        try {
-            return new BigDecimal(v.replace(",", "").trim());
-        } catch (NumberFormatException e) {
-            return null;
+            LocalDateTime local = ConnectorJson.localTime(s, LAZADA_TIME_NO_ZONE, ZoneId.systemDefault());
+            return local != null ? local : ConnectorJson.isoTime(s, ZoneId.systemDefault());
         }
     }
 
@@ -620,38 +647,4 @@ public class LazadaConnector implements ChannelConnector {
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&apos;");
     }
 
-    private static long parseLongOr(String s) {
-        if (s == null) {
-            return 0;
-        }
-        try {
-            return Long.parseLong(s.trim());
-        } catch (NumberFormatException e) {
-            return 0;
-        }
-    }
-
-    private static String str(JsonNode v) {
-        return v == null || v.isMissingNode() || v.isNull() ? null : v.asString();
-    }
-
-    private static String firstNonBlank(String... values) {
-        for (String v : values) {
-            if (v != null && !v.isBlank()) {
-                return v.trim();
-            }
-        }
-        return null;
-    }
-
-    private static String join(String... parts) {
-        StringBuilder sb = new StringBuilder();
-        for (String p : parts) {
-            if (p != null && !p.isBlank()) {
-                if (!sb.isEmpty()) sb.append(' ');
-                sb.append(p.trim());
-            }
-        }
-        return sb.isEmpty() ? null : sb.toString();
-    }
 }

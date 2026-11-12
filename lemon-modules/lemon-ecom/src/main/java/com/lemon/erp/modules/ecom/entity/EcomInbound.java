@@ -52,6 +52,8 @@ public class EcomInbound extends BaseEntity {
     private String transferDocNo;
     private String flowInstanceId;
     private String remark;
+    /** 来源发货计划 */
+    private Long planId;
 
     private Long deptId;
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
@@ -69,4 +71,13 @@ public class EcomInbound extends BaseEntity {
     private String createByName;
     @TableField(exist = false)
     private List<EcomInboundItem> items;
+    /** 来源发货计划号 */
+    @TableField(exist = false)
+    private String planNo;
+    /** 装箱 */
+    @TableField(exist = false)
+    private List<EcomInboundBox> boxes;
+    /** 按平台 SKU 汇总的件数（装箱、FNSKU 标签用）：[{ sellerSku, fnsku, title, listingId, qty, boxedQty }] */
+    @TableField(exist = false)
+    private List<com.lemon.erp.modules.ecom.dto.InboundSkuLine> skuLines;
 }

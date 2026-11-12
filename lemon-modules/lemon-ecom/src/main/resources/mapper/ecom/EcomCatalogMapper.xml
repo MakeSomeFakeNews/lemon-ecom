@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomCatalogMapper">
+
+    <!-- 已配对：单品映射了物料，或组合有组成 -->
+    <sql id="paired">
+        (l.material_id IS NOT NULL OR (l.compose_type = 'BUNDLE' AND EXISTS (SELECT 1 FROM ecom_bundle_item b WHERE b.listing_id = l.id)))
+    </sql>
+
+    <select id="selectSpuPage" resultType="com.lemon.erp.modules.ecom.dto.SpuGroup">
+        SELECT g.store_id, s.name AS store_name, s.platform, g.parent_item_id, CASE WHEN g.variant_count = 1 THEN g.listing_id END AS listing_id,
+               g.title, g.image_url, g.variant_count, g.mapped_count, g.min_price, g.max_price, g.currency
+        FROM (SELECT l.store_id, l.parent_item_id, MIN(l.seller_sku) AS first_sku, COUNT(*) AS variant_count,
+                     SUM(CASE WHEN <include refid="paired"/> THEN 1 ELSE 0 END) AS mapped_count,
+                     MIN(l.title) AS title, MAX(l.image_url) AS image_url, MIN(l.price) AS min_price, MAX(l.price) AS max_price,
+                     MIN(l.currency) AS currency, MIN(l.id) AS listing_id
+              FROM ecom_listing l
+              <where>
+                  <if test="storeId != null">l.store_id = #{storeId}</if>
+                  <if test="keyword != null and keyword != ''">
+                      AND (l.seller_sku LIKE CONCAT('%', #{keyword}, '%') OR l.parent_item_id LIKE CONCAT('%', #{keyword}, '%')
+                           OR l.title LIKE CONCAT('%', #{keyword}, '%'))
+                  </if>
+                  <if test="mapped != null and !mapped">AND NOT <include refid="paired"/></if>
+              </where>
+              GROUP BY l.store_id, l.parent_item_id, CASE WHEN l.parent_item_id IS NULL THEN l.id ELSE 0 END) g
+        JOIN ecom_store s ON s.id = g.store_id
+        ORDER BY g.store_id, g.first_sku
+    </select>
+
+    <select id="selectMaterialPage" resultType="com.lemon.erp.modules.ecom.dto.MaterialPairing">
+        SELECT m.id AS material_id, m.code AS material_code, m.name AS material_name, m.spec AS material_spec, m.unit,
+               COALESCE(ls.cnt, 0) AS listing_count, COALESCE(bs.cnt, 0) AS bundle_count, COALESCE(st.cnt, 0) AS store_count
+        FROM wms_material m
+        LEFT JOIN (SELECT l.material_id, COUNT(*) AS cnt FROM ecom_listing l WHERE l.material_id IS NOT NULL GROUP BY l.material_id) ls
+               ON ls.material_id = m.id
+        LEFT JOIN (SELECT b.material_id, COUNT(DISTINCT b.listing_id) AS cnt FROM ecom_bundle_item b GROUP BY b.material_id) bs ON bs.material_id = m.id
+        LEFT JOIN (SELECT u.material_id, COUNT(DISTINCT u.store_id) AS cnt
+                   FROM (SELECT l.material_id, l.store_id FROM ecom_listing l WHERE l.material_id IS NOT NULL
+                         UNION ALL
+                         SELECT b.material_id, l.store_id FROM ecom_bundle_item b JOIN ecom_listing l ON l.id = b.listing_id) u
+                   GROUP BY u.material_id) st ON st.material_id = m.id
+        WHERE m.is_template = 0
+        <if test="keyword != null and keyword != ''">
+            AND (m.code LIKE CONCAT('%', #{keyword}, '%') OR m.name LIKE CONCAT('%', #{keyword}, '%') OR m.spec LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="pairedOnly != null and pairedOnly">AND (ls.cnt IS NOT NULL OR bs.cnt IS NOT NULL)</if>
+        ORDER BY m.code
+    </select>
+
+    <select id="selectListingsOfMaterial" resultType="com.lemon.erp.modules.ecom.entity.EcomListing">
+        SELECT l.*, s.name AS store_name, s.platform
+        FROM ecom_listing l
+        JOIN ecom_store s ON s.id = l.store_id
+        WHERE l.material_id = #{materialId}
+        ORDER BY l.store_id, l.seller_sku
+    </select>
+
+    <!-- 含有该物料的组合商品，pack_qty 返回组合中的用量 -->
+    <select id="selectBundlesOfMaterial" resultType="com.lemon.erp.modules.ecom.entity.EcomListing">
+        SELECT l.id, l.store_id, l.seller_sku, l.platform_item_id, l.parent_item_id, l.title, l.variant, l.price, l.currency, l.fulfillment,
+               l.status, l.compose_type, l.fnsku, b.qty AS pack_qty, s.name AS store_name, s.platform
+        FROM ecom_bundle_item b
+        JOIN ecom_listing l ON l.id = b.listing_id
+        JOIN ecom_store s ON s.id = l.store_id
+        WHERE b.material_id = #{materialId}
+        ORDER BY l.store_id, l.seller_sku
+    </select>
+
+    <select id="selectUnpaired" resultType="com.lemon.erp.modules.ecom.entity.EcomListing">
+        SELECT l.*, s.name AS store_name, s.platform
+        FROM ecom_listing l
+        JOIN ecom_store s ON s.id = l.store_id
+        WHERE NOT <include refid="paired"/>
+          AND l.status &lt;&gt; 'DELETED'
+          <if test="storeId != null">AND l.store_id = #{storeId}</if>
+          <if test="keyword != null and keyword != ''">
+              AND (l.seller_sku LIKE CONCAT('%', #{keyword}, '%') OR l.title LIKE CONCAT('%', #{keyword}, '%')
+                   OR l.platform_item_id LIKE CONCAT('%', #{keyword}, '%'))
+          </if>
+        ORDER BY l.store_id, l.seller_sku
+    </select>
+
+    <select id="selectMaterialsByCodes" resultType="java.util.Map">
+        SELECT m.id AS "id", m.code AS "code", m.name AS "name", m.spec AS "spec"
+        FROM wms_material m
+        WHERE m.code IN <foreach collection="codes" item="c" open="(" separator="," close=")">#{c}</foreach>
+          AND m.is_template = 0 AND m.status = 1
+    </select>
+
+    <select id="selectExceptionOrderIds" resultType="java.lang.Long">
+        SELECT o.id FROM ecom_order o
+        WHERE o.local_status = 'EXCEPTION'
+        <if test="storeId != null">AND o.store_id = #{storeId}</if>
+        ORDER BY o.id
+        LIMIT #{limit}
+    </select>
+
+</mapper>

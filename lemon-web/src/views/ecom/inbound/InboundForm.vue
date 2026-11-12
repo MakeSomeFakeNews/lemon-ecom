@@ -104,7 +104,7 @@
               <span v-else>{{ record.materialLabel }}</span>
             </template>
             <template v-else-if="column.key === 'sellerSku'">
-              <a-input v-if="!costsMode" v-model:value="record.sellerSku" :maxlength="64" />
+              <a-input v-if="!costsMode" v-model:value="record.sellerSku" :maxlength="64" @change="record.listingId = undefined" />
               <span v-else>{{ record.sellerSku || '-' }}</span>
             </template>
             <template v-else-if="column.key === 'qty'">
@@ -197,7 +197,9 @@ const drawer = useFormDrawer({
           unit: i.unit,
           sellerSku: i.sellerSku,
           qty: Number(i.qty),
-          remark: i.remark
+          remark: i.remark,
+          listingId: i.listingId,
+          planItemId: i.planItemId
         })
       )
     }
@@ -221,7 +223,9 @@ const drawer = useFormDrawer({
     duty: f.duty ?? null,
     otherCost: f.otherCost ?? null,
     remark: f.remark || null,
-    items: f.items.map((i) => ({ materialId: i.materialId, sellerSku: i.sellerSku || null, qty: i.qty, remark: i.remark || null }))
+    // 由发货计划生成的明细带着在线商品与计划明细，原样提交（改了平台 SKU 的行清空在线商品，后端按新 SKU 识别）
+    items: f.items.map((i) => ({ materialId: i.materialId, sellerSku: i.sellerSku || null, qty: i.qty, remark: i.remark || null,
+      listingId: i.listingId ?? null, planItemId: i.planItemId ?? null }))
   }),
   onSuccess: () => emit('success')
 })

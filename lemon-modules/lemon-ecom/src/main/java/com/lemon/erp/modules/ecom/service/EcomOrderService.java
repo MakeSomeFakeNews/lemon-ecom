@@ -114,7 +114,7 @@ public class EcomOrderService {
 
     public EcomOrder detail(Long id) {
         EcomOrder o = DataScopes.require(EcomConstants.ORDER_RULE, () -> orderMapper.selectDetail(id), "ecom.error.orderNotFound");
-        List<EcomOrderItem> items = itemMapper.selectByOrderId(id);
+        List<EcomOrderItem> items = outboundSupport.attachParts(itemMapper.selectByOrderId(id));
         Map<Long, Map<String, Object>> alloc = new HashMap<>();
         packageItemMapper.selectAllocated(id).forEach(r -> alloc.put(((Number) r.get("orderItemId")).longValue(), r));
         for (EcomOrderItem it : items) {
@@ -294,6 +294,13 @@ public class EcomOrderService {
             tax = tax.add(it.getTax());
             discount = discount.add(it.getDiscount());
         }
+        // 平台只给订单级运费 / 税时用订单级金额（明细上为 0）
+        if (d.getShippingAmount() != null) {
+            shipping = Decimals.money(d.getShippingAmount());
+        }
+        if (d.getTaxAmount() != null) {
+            tax = Decimals.money(d.getTaxAmount());
+        }
         o.setItemAmount(item);
         o.setShippingAmount(shipping);
         o.setTaxAmount(tax);
@@ -320,6 +327,7 @@ public class EcomOrderService {
         orderMapper.insert(o);
         items.forEach(i -> i.setOrderId(o.getId()));
         itemMapper.insertBatch(items);
+        outboundSupport.saveParts(o.getId(), items);
         // 审单规则（同一事务中同步执行，规则出错不影响写入）
         eventPublisher.publishEvent(new OrderSavedEvent(o.getId()));
         return true;
@@ -381,10 +389,15 @@ public class EcomOrderService {
             throw new BizException("ecom.error.orderStatusNotAllow", o.getPlatformOrderNo());
         }
         List<EcomOrderItem> items = itemMapper.selectByOrderId(id);
-        String exception = outboundSupport.match(o.getStoreId(), items);
-        items.forEach(itemMapper::updateById);
+        String exception = outboundSupport.matchAndSave(o.getStoreId(), items);
         orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getException, exception)
                 .set(EcomOrder::getLocalStatus, exception == null ? EcomLocalStatus.PENDING : EcomLocalStatus.EXCEPTION).eq(EcomOrder::getId, id));
+    }
+
+    /** 订单是否已全部匹配物料（不是异常） */
+    public boolean isMatched(Long id) {
+        EcomOrder o = orderMapper.selectById(id);
+        return o != null && o.getLocalStatus() != EcomLocalStatus.EXCEPTION;
     }
 
     /**
@@ -431,7 +444,7 @@ public class EcomOrderService {
         }
         EcomStore store = storeService.requireEnabled(o.getStoreId());
         List<EcomOrderItem> items = itemMapper.selectByOrderId(id);
-        String exception = outboundSupport.match(store.getId(), items);
+        String exception = outboundSupport.matchAndSave(store.getId(), items);
         if (exception != null) {
             throw new BizException("ecom.error.orderSkuUnmapped", exception);
         }
@@ -442,14 +455,16 @@ public class EcomOrderService {
             throw new BizException("ecom.error.storePlatformWarehouseMissing", store.getName());
         }
         LocalDate date = bizDate == null ? LocalDate.now() : bizDate;
-        List<EcomOutboundSupport.Line> lines = items.stream().map(EcomOutboundSupport.Line::whole).toList();
+        // 组合商品每个组件一行出库
+        List<EcomOutboundSupport.Line> lines = items.stream().flatMap(it -> EcomOutboundSupport.Line.wholeExpanded(it).stream()).toList();
         EcomOutboundSupport.Result r = outboundSupport.outbound(o, store, wh, date, lines,
                 Messages.get("ecom.text.outboundRemark", store.getName(), o.getPlatformOrderNo()));
-        for (int i = 0; i < items.size(); i++) {
-            EcomOrderItem it = items.get(i);
-            it.setCost(r.costs().get(i));
+        Map<Long, BigDecimal> itemCosts = EcomOutboundSupport.costByItem(lines, r);
+        for (EcomOrderItem it : items) {
+            it.setCost(itemCosts.getOrDefault(it.getId(), BigDecimal.ZERO));
             itemMapper.updateById(it);
         }
+        EcomOutboundSupport.costByPart(lines, r).forEach(outboundSupport::addPartCost);
         BigDecimal shippingCost = o.getFulfillment() == FulfillmentType.PLATFORM ? landedCost(store.getId(), items) : Decimals.nz(o.getShippingCost());
         o.setTradeDocId(r.docId());
         o.setTradeDocNo(r.docNo());
@@ -470,9 +485,11 @@ public class EcomOrderService {
     private BigDecimal landedCost(Long storeId, List<EcomOrderItem> items) {
         BigDecimal total = BigDecimal.ZERO;
         for (EcomOrderItem it : items) {
-            BigDecimal unit = inboundItemMapper.selectLatestUnitLanded(storeId, it.getMaterialId());
-            if (unit != null) {
-                total = total.add(unit.multiply(it.getMaterialQty()));
+            for (EcomOutboundSupport.Line l : EcomOutboundSupport.Line.wholeExpanded(it)) {
+                BigDecimal unit = inboundItemMapper.selectLatestUnitLanded(storeId, l.materialId());
+                if (unit != null) {
+                    total = total.add(unit.multiply(l.materialQty()));
+                }
             }
         }
         return Decimals.money(total);
@@ -600,7 +617,7 @@ public class EcomOrderService {
     /** 店铺的已出库 / 已发货订单明细中各物料已退货数量之外可退的行（退货退款校验用） */
     public EcomOrder getForReturn(Long orderId) {
         EcomOrder o = require(orderId);
-        o.setItems(itemMapper.selectByOrderId(orderId));
+        o.setItems(outboundSupport.attachParts(itemMapper.selectByOrderId(orderId)));
         return o;
     }
 

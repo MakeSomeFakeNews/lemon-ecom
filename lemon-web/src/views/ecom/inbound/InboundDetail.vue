@@ -11,6 +11,7 @@
           <a-descriptions-item :label="$t('ecomOrder.common.store')">{{ detail.storeName || '-' }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOrder.inbound.shipmentId')">{{ detail.shipmentId || '-' }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOrder.inbound.transferDoc')">{{ detail.transferDocNo || '-' }}</a-descriptions-item>
+          <a-descriptions-item v-if="detail.planNo" :label="$t('ecomCatalog.plan.planNo')">{{ detail.planNo }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOrder.inbound.fromWarehouse')">{{ detail.fromWarehouseName || '-' }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOrder.inbound.toWarehouse')">{{ detail.toWarehouseName || '-' }}</a-descriptions-item>
           <a-descriptions-item :label="$t('ecomOrder.common.channel')">{{ detail.channelName || '-' }}</a-descriptions-item>
@@ -48,6 +49,8 @@
             <template v-else-if="column.key === 'unitLanded'">{{ record.unitLanded != null ? `¥${price(record.unitLanded)}` : '-' }}</template>
           </template>
         </a-table>
+
+        <InboundBoxes :detail="detail" @changed="load(currentId)" />
       </template>
     </a-spin>
 
@@ -73,6 +76,7 @@ import { useUserStore } from '@/store/user'
 import { price, qty } from '@/utils/number'
 import { baseMoney } from '../order/order'
 import { canCancel, canDelete, canEditCosts, canReceive, isDraft, totalCost, unitLandedOf } from './inbound'
+import InboundBoxes from './InboundBoxes.vue'
 
 /**
  * 头程货件详情子页：提交发运、取消、删除在本组件内完成（触发 changed）；编辑、补录费用、签收交给页面打开表单 / 日期弹窗（事件带单据）。

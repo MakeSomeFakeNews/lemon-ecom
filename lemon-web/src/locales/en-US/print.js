@@ -121,7 +121,20 @@ export default {
     packageCount: 'Packages',
     packageNos: 'Package Nos.',
     sellerSku: 'Seller SKU',
-    picker: 'Picker'
+    picker: 'Picker',
+    packingList: 'Packing List',
+    cartonLabel: 'Carton Label',
+    boxNo: 'Box No.',
+    boxSize: 'Dimensions (cm)',
+    grossWeight: 'Gross Weight (kg)',
+    fnsku: 'FNSKU',
+    shipmentId: 'Shipment ID',
+    store: 'Store',
+    shipFrom: 'Ship From',
+    shipTo: 'Ship To',
+    boxCount: 'Boxes',
+    productTitle: 'Product Title',
+    packer: 'Packed By'
   },
   paper: {
     size: '{name} ({size})',

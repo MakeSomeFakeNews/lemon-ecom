@@ -17,7 +17,11 @@ import java.util.Map;
  * 新增平台：实现本接口，{@link #info()} 声明授权方式、授权字段、接口地址与能力，按能力实现对应方法；
  * 不需要改动订单、库存、店铺等服务。OAuth 平台还要实现 {@link #authorizeUrl} 与 {@link #exchangeCode}，
  * 令牌会过期的在每次调用前用 {@link #ensureToken} 刷新（刷新后调用 {@link ConnectorContext#updateCredentials} 保存）。
- * 平台接口返回错误时抛出 {@code BizException}（ecom.error.connector*），错误信息会显示在同步日志和店铺页面
+ * 平台接口返回错误时抛出 {@code BizException}（ecom.error.connector*），错误信息会显示在同步日志和店铺页面。
+ * <p>
+ * HTTP 调用统一用 {@link HttpJson}（非 2xx 抛 {@link ConnectorHttpException}，可按状态码判断；429 / 503 自动重试），
+ * 取值与时间换算用 {@link ConnectorJson}；时间一律换算为服务器默认时区。错误信息、日志中不要带令牌、密钥与签名
+ * （{@link HttpJson#abbreviate} 会遮盖常见的键）。连接器自己缓存的令牌、过期时间在 {@link CredentialField#cached} 中声明
  */
 public interface ChannelConnector {
 
@@ -61,8 +65,12 @@ public interface ChannelConnector {
     /** 拉取 since 之后创建或更新的订单（含明细），能力 ORDERS */
     List<OrderDraft> fetchOrders(ConnectorContext ctx, LocalDateTime since);
 
-    /** 回传发货（承运商、运单号），能力 SHIP_CONFIRM */
-    default void confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
+    /**
+     * 回传发货（承运商、运单号），能力 SHIP_CONFIRM。
+     * 平台物流托管（运单号由平台分配）时返回 {@link ShipmentResult#platformManaged}，尽量带回平台运单号与承运商，
+     * 框架会写入订单（以及还没有运单号的包裹）；没有需要回传的内容时返回 {@link ShipmentResult#skipped}。失败时抛出异常
+     */
+    default ShipmentResult confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
         throw new BizException("ecom.error.connectorNoCapability", platform().name(), ConnectorCapability.SHIP_CONFIRM.name());
     }
 

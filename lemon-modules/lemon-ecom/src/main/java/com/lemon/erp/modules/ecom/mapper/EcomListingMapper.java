@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.lemon.erp.modules.ecom.entity.EcomListing;
 import com.lemon.erp.modules.ecom.model.FulfillmentType;
+import com.lemon.erp.modules.ecom.model.ListingComposeType;
 import com.lemon.erp.modules.ecom.model.ListingStatus;
 import org.apache.ibatis.annotations.Param;
 
@@ -17,7 +18,8 @@ public interface EcomListingMapper extends BaseMapper<EcomListing> {
      */
     IPage<EcomListing> selectPageList(IPage<EcomListing> page, @Param("storeId") Long storeId, @Param("keyword") String keyword,
                                       @Param("status") ListingStatus status, @Param("fulfillment") FulfillmentType fulfillment,
-                                      @Param("mapped") Boolean mapped, @Param("materialId") Long materialId);
+                                      @Param("mapped") Boolean mapped, @Param("materialId") Long materialId,
+                                      @Param("composeType") ListingComposeType composeType, @Param("parentItemId") String parentItemId);
 
     EcomListing selectDetail(@Param("id") Long id);
 

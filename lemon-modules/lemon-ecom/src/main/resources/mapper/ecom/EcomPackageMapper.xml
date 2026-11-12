@@ -9,7 +9,7 @@
         CASE WHEN p.label_file IS NULL THEN 0 ELSE 1 END AS has_label,
         s.name AS store_name, w.name AS warehouse_name, ch.name AS channel_name,
         (SELECT COUNT(DISTINCT pi.order_id) FROM ecom_package_item pi WHERE pi.package_id = p.id) AS order_count,
-        (SELECT SUM(pi.qty) FROM ecom_package_item pi WHERE pi.package_id = p.id) AS total_qty
+        (SELECT SUM(CASE WHEN pi.part_main = 1 THEN pi.qty ELSE 0 END) FROM ecom_package_item pi WHERE pi.package_id = p.id) AS total_qty
     </sql>
 
     <sql id="joins">

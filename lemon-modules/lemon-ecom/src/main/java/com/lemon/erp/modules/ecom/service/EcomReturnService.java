@@ -155,21 +155,46 @@ public class EcomReturnService {
             throw new BizException("ecom.error.orderNotOutbound", order.getPlatformOrderNo());
         }
         ScmTradeDoc out = tradeDocService.detail(TradeKind.SALES_OUT, order.getTradeDocId());
-        Map<Long, ScmTradeDocItem> outLines = new HashMap<>();
+        Map<Long, List<ScmTradeDocItem>> outLines = new HashMap<>();
         for (ScmTradeDocItem line : out.getItems()) {
-            outLines.putIfAbsent(line.getMaterialId(), line);
+            outLines.computeIfAbsent(line.getMaterialId(), k -> new ArrayList<>()).add(line);
         }
         Map<Long, EcomOrderItem> orderItems = order.getItems().stream().collect(Collectors.toMap(EcomOrderItem::getId, Function.identity()));
-        List<TradeDocItemRequest> lines = new ArrayList<>();
+        // 退回的物料数量：单品 = 件数 × 多件装；组合商品按组成比例退回各组件 = 件数 × 用量
+        Map<Long, BigDecimal> need = new java.util.LinkedHashMap<>();
+        Map<Long, String> skuOf = new HashMap<>();
         for (EcomReturnItem it : itemMapper.selectByReturnId(id)) {
             EcomOrderItem oi = orderItems.get(it.getOrderItemId());
-            ScmTradeDocItem line = oi == null ? null : outLines.get(oi.getMaterialId());
-            if (line == null) {
+            if (oi == null || !EcomOutboundSupport.mapped(oi)) {
                 throw new BizException("ecom.error.returnLineNotInOutbound", it.getSellerSku());
             }
-            BigDecimal pack = oi.getQty().signum() > 0 ? oi.getMaterialQty().divide(oi.getQty(), 4, java.math.RoundingMode.HALF_UP) : BigDecimal.ONE;
-            BigDecimal qty = Decimals.qty(it.getQty().multiply(pack));
-            lines.add(new TradeDocItemRequest(line.getOrderItemId(), null, null, null, null, qty, null, it.getSellerSku()));
+            if (EcomOutboundSupport.isBundle(oi)) {
+                for (var part : oi.getParts()) {
+                    need.merge(part.getMaterialId(), Decimals.qty(it.getQty().multiply(part.getUnitQty())), BigDecimal::add);
+                    skuOf.putIfAbsent(part.getMaterialId(), it.getSellerSku());
+                }
+            } else {
+                BigDecimal pack = oi.getQty().signum() > 0 ? oi.getMaterialQty().divide(oi.getQty(), 4, java.math.RoundingMode.HALF_UP) : BigDecimal.ONE;
+                need.merge(oi.getMaterialId(), Decimals.qty(it.getQty().multiply(pack)), BigDecimal::add);
+                skuOf.putIfAbsent(oi.getMaterialId(), it.getSellerSku());
+            }
+        }
+        // 同一物料在出库单上有多行（单品与组合的组件）时依次分到各行，最后一行取余数
+        List<TradeDocItemRequest> lines = new ArrayList<>();
+        for (Map.Entry<Long, BigDecimal> e : need.entrySet()) {
+            List<ScmTradeDocItem> cands = outLines.get(e.getKey());
+            if (cands == null || cands.isEmpty()) {
+                throw new BizException("ecom.error.returnLineNotInOutbound", skuOf.get(e.getKey()));
+            }
+            BigDecimal rest = e.getValue();
+            for (int i = 0; i < cands.size() && rest.signum() > 0; i++) {
+                ScmTradeDocItem line = cands.get(i);
+                BigDecimal q = i == cands.size() - 1 ? rest : rest.min(Decimals.nz(line.getQty()));
+                if (q.signum() > 0) {
+                    lines.add(new TradeDocItemRequest(line.getOrderItemId(), null, null, null, null, q, null, skuOf.get(e.getKey())));
+                    rest = rest.subtract(q);
+                }
+            }
         }
         LocalDate bizDate = date == null ? LocalDate.now() : date;
         TradeDocRequest req = new TradeDocRequest(out.getOrderId(), r.getWarehouseId(), bizDate,

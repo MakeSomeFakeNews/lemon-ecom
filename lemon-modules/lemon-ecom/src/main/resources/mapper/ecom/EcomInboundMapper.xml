@@ -3,7 +3,8 @@
 <mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomInboundMapper">
 
     <sql id="columns">
-        i.*, s.name AS store_name, fw.name AS from_warehouse_name, tw.name AS to_warehouse_name, ch.name AS channel_name, u.nickname AS create_by_name
+        i.*, s.name AS store_name, fw.name AS from_warehouse_name, tw.name AS to_warehouse_name, ch.name AS channel_name, u.nickname AS create_by_name,
+        sp.plan_no
     </sql>
 
     <sql id="joins">
@@ -13,6 +14,7 @@
         LEFT JOIN wms_warehouse tw ON tw.id = i.to_warehouse_id
         LEFT JOIN ecom_logistics_channel ch ON ch.id = i.channel_id
         LEFT JOIN sys_user u ON u.id = i.create_by
+        LEFT JOIN ecom_shipment_plan sp ON sp.id = i.plan_id
     </sql>
 
     <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.entity.EcomInbound">

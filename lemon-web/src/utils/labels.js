@@ -36,6 +36,19 @@ export const LABEL_TYPES = [
     ],
     value: (d) => d.code,
     sample: { code: 'A-01-02', name: $t('wms.label.location.sampleName'), zone: $t('wms.label.location.sampleZone'), warehouse: $t('wms.label.location.sampleWarehouse') }
+  },
+  {
+    // 平台仓商品标签（亚马逊 FNSKU）：条码为 FNSKU，下方标题与状态（New）
+    key: 'label.fnsku',
+    name: $t('ecomCatalog.fnsku.labelName'),
+    codeType: 'CODE128',
+    fields: [
+      { key: 'title', label: $t('ecomCatalog.common.title') },
+      { key: 'condition', label: $t('ecomCatalog.fnsku.condition') },
+      { key: 'sku', label: $t('ecomCatalog.common.sellerSku') }
+    ],
+    value: (d) => d.fnsku,
+    sample: { fnsku: 'X00ABCDE12', title: 'Wireless Earbuds Pro, Black', condition: 'New', sku: 'EB-PRO-BK' }
   }
 ]
 export const LABEL_TYPE_MAP = Object.fromEntries(LABEL_TYPES.map((t) => [t.key, t]))

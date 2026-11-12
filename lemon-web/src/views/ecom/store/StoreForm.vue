@@ -91,6 +91,18 @@
             <span class="meta-label">{{ $t('ecom.hub.form.docs') }}</span>
             <a :href="connector.docUrl" target="_blank" rel="noopener noreferrer">{{ connector.docUrl }}</a>
           </div>
+          <div v-if="connector.perStoreBaseUrl">
+            <span class="meta-label">{{ $t('ecom.hub.form.perStoreBaseUrl') }}</span>
+            <span class="sub-text">{{ $t('ecom.hub.form.perStoreBaseUrlTip') }}</span>
+          </div>
+          <div v-if="connector.redirectNote">
+            <span class="meta-label">{{ $t('ecom.hub.form.redirectNote') }}</span>
+            <span class="sub-text">{{ connector.redirectNote }}</span>
+          </div>
+          <div v-if="connector.orderWindowNote">
+            <span class="meta-label">{{ $t('ecom.hub.form.orderWindowNote') }}</span>
+            <span class="sub-text">{{ connector.orderWindowNote }}</span>
+          </div>
         </div>
         <a-alert v-if="isEdit && form.hasCredentials" type="success" show-icon class="cred-alert">
           <template #message>

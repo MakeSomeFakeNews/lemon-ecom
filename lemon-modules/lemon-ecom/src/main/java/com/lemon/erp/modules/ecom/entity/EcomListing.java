@@ -5,7 +5,9 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import com.lemon.erp.common.base.BaseEntity;
 import com.lemon.erp.modules.ecom.model.EcomPlatform;
 import com.lemon.erp.modules.ecom.model.FulfillmentType;
+import com.lemon.erp.modules.ecom.model.ListingComposeType;
 import com.lemon.erp.modules.ecom.model.ListingStatus;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
@@ -15,6 +17,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * 在线商品（Listing）：店铺中的一个平台 SKU，映射到本地物料（一个平台 SKU = packQty 个物料，支持多件装）。
@@ -71,6 +74,13 @@ public class EcomListing extends BaseEntity {
     @Digits(integer = 14, fraction = 4, message = "{ecom.valid.qtyDecimals}")
     private BigDecimal packQty;
 
+    /** 组成方式：单品（materialId × packQty）或组合（bundleItems），为空按单品 */
+    private ListingComposeType composeType;
+
+    /** FNSKU（亚马逊等平台仓的商品标签条码） */
+    @Size(max = 32, message = "{ecom.valid.catalog.fnskuCannotExceedCharacters}")
+    private String fnsku;
+
     @Size(max = 255, message = "{ecom.valid.urlCannotExceedCharacters}")
     private String imageUrl;
 
@@ -98,6 +108,11 @@ public class EcomListing extends BaseEntity {
     /** 导入时用店铺编码定位店铺 */
     @TableField(exist = false)
     private String storeCode;
+    /** 组合商品的组成（组成方式为组合时保存、详情与列表返回） */
+    @Valid
+    @Size(max = 50, message = "{ecom.valid.catalog.bundleTooManyItems}")
+    @TableField(exist = false)
+    private List<EcomBundleItem> bundleItems;
 
     /** 最近一次回传给平台的可售数量（渠道同步中心只回传和上次不同的） */
     @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
@@ -105,4 +120,7 @@ public class EcomListing extends BaseEntity {
     /** 最近一次回传库存的时间 */
     @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
     private java.time.LocalDateTime lastPushedTime;
+    /** 平台附加 ID（JSON 对象，如 Shopify 变体 ID / 库存项 ID、平台仓库 ID），由拉取在线商品写入，回传库存时交给连接器 */
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private String platformExtra;
 }

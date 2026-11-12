@@ -12,6 +12,11 @@
         LEFT JOIN wms_material m ON m.id = l.material_id
     </sql>
 
+    <!-- 已映射：单品映射了物料，或组合有组成 -->
+    <sql id="paired">
+        (l.material_id IS NOT NULL OR (l.compose_type = 'BUNDLE' AND EXISTS (SELECT 1 FROM ecom_bundle_item b WHERE b.listing_id = l.id)))
+    </sql>
+
     <select id="selectPageList" resultType="com.lemon.erp.modules.ecom.entity.EcomListing">
         SELECT <include refid="columns"/>
         <include refid="joins"/>
@@ -23,9 +28,13 @@
             </if>
             <if test="status != null">AND l.status = #{status}</if>
             <if test="fulfillment != null">AND l.fulfillment = #{fulfillment}</if>
-            <if test="mapped != null and mapped">AND l.material_id IS NOT NULL</if>
-            <if test="mapped != null and !mapped">AND l.material_id IS NULL</if>
-            <if test="materialId != null">AND l.material_id = #{materialId}</if>
+            <if test="mapped != null and mapped">AND <include refid="paired"/></if>
+            <if test="mapped != null and !mapped">AND NOT <include refid="paired"/></if>
+            <if test="materialId != null">
+                AND (l.material_id = #{materialId} OR EXISTS (SELECT 1 FROM ecom_bundle_item b WHERE b.listing_id = l.id AND b.material_id = #{materialId}))
+            </if>
+            <if test="composeType != null">AND l.compose_type = #{composeType}</if>
+            <if test="parentItemId != null and parentItemId != ''">AND l.parent_item_id = #{parentItemId}</if>
         </where>
         ORDER BY l.store_id, l.seller_sku
     </select>

@@ -15,7 +15,6 @@ import tools.jackson.databind.JsonNode;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
@@ -41,18 +40,27 @@ import java.util.Set;
  * <p>
  * 编码约定：
  * <ul>
- *   <li>平台商品 ID（在线商品、订单明细、库存回传的 platformItemId）：无规格的商品为 {@code "itemId"}，
- *       有规格（model）的为 {@code "itemId:modelId"}；回传库存时无规格按 model_id = 0 更新</li>
+ *   <li>在线商品：无规格的商品 platformItemId 为 itemId（parentItemId 为空）；有规格（model）的 platformItemId 为 modelId、parentItemId 为 itemId。
+ *       订单明细没有父 ID 字段，平台商品 ID 仍为 {@code "itemId"} / {@code "itemId:modelId"}；回传库存按 parentItemId + platformItemId，
+ *       兼容旧编码 {@code "itemId:modelId"}，无规格按 model_id = 0 更新</li>
  *   <li>订单行 ID：{@code "order_item_id:model_id"}</li>
  *   <li>卖家 SKU：取 model_sku，为空取 item_sku，仍为空取平台商品 ID</li>
  * </ul>
  * 金额：单价取 model_original_price，商品金额 = 原价 × 数量，折扣 = (原价 − 折后价) × 数量；
  * 买家支付的运费只在结算（escrow）接口中，订单同步不写运费。
  * <p>
- * 发货：只实现非集成物流（non_integrated，填写运单号）的 {@code logistics/ship_order}；
- * 虾皮多数站点要求使用平台物流（SLS），需要先取运单号 / 打印面单（get_shipping_parameter、get_tracking_number、面单接口），本连接器未实现。
+ * 发货：先查 {@code logistics/get_shipping_parameter}：物流渠道需要非集成物流信息（info_needed 含 non_integrated）时，
+ * 用 {@code logistics/ship_order} 回传 ERP 的运单号；平台物流（SLS，info_needed 为 pickup / dropoff）的运单号由平台分配，
+ * 本连接器不代为安排揽收 / 寄件（需要选择地址与时间段，在虾皮卖家中心操作），只用 {@code logistics/get_tracking_number}
+ * 取平台运单号，返回 {@link ShipmentResultStatus#PLATFORM_MANAGED}（还没有安排时运单号为空）。虾皮仓配送（fulfilled_by_shopee）的订单跳过。
  * <p>
- * 说明：按开放平台公开文档实现，尚未用真实店铺联调
+ * 说明：按开放平台公开文档实现，尚未用真实店铺联调。需要真实账号联调确认：
+ * <ul>
+ *   <li>get_shipping_parameter 的 info_needed 结构，以及已发货订单调用时的返回</li>
+ *   <li>SLS 订单是否需要由 ERP 安排揽收（ship_order 的 pickup / dropoff 参数与地址、时间段），面单下载接口未实现</li>
+ *   <li>买家支付的运费只在结算（escrow）接口中，订单同步没有运费</li>
+ *   <li>update_stock 的 seller_stock 是否需要 location_id（多仓店铺）</li>
+ * </ul>
  */
 @Component
 public class ShopeeConnector implements ChannelConnector {
@@ -86,14 +94,15 @@ public class ShopeeConnector implements ChannelConnector {
             CredentialField.text("partnerId", "ecom.label.cred.shopee.partnerId", true),
             CredentialField.secret("partnerKey", "ecom.label.cred.shopee.partnerKey"),
             CredentialField.text("region", "ecom.label.cred.shopee.region", false),
-            new CredentialField("shopId", "ecom.label.cred.shopee.shopId", false, false, true),
+            CredentialField.oauthInfo("shopId", "ecom.label.cred.shopee.shopId"),
             CredentialField.token("accessToken", "ecom.label.cred.accessToken"),
             CredentialField.token("refreshToken", "ecom.label.cred.refreshToken"),
-            new CredentialField("tokenExpireAt", "ecom.label.cred.shopee.tokenExpireAt", false, false, true)),
+            CredentialField.cached("tokenExpireAt", false)),
             PRODUCTION, SANDBOX,
             EnumSet.of(ConnectorCapability.ORDERS, ConnectorCapability.SHIP_CONFIRM, ConnectorCapability.INVENTORY_PUSH,
                     ConnectorCapability.LISTINGS),
-            "https://open.shopee.com/documents");
+            "https://open.shopee.com/documents")
+            .withRedirectNote("ecom.text.connector.redirect.shopee").withOrderWindowNote("ecom.text.connector.window.shopee");
 
     @Override
     public ConnectorInfo info() {
@@ -158,7 +167,7 @@ public class ShopeeConnector implements ChannelConnector {
     @Override
     public void ensureToken(ConnectorContext ctx) {
         StoreCredentials c = ctx.credentials();
-        long expireAt = parseLongOr(c.get("tokenExpireAt"), 0);
+        long expireAt = ConnectorJson.parseLong(c.get("tokenExpireAt"), 0);
         if (c.get("accessToken") != null && expireAt - REFRESH_AHEAD_SECONDS > nowSeconds()) {
             return;
         }
@@ -199,7 +208,7 @@ public class ShopeeConnector implements ChannelConnector {
         String base = ctx.baseUrl(INFO);
         StoreCredentials c = ctx.credentials();
         long now = nowSeconds();
-        long from = (since == null ? LocalDateTime.now().minusDays(3) : since).atZone(ZoneId.systemDefault()).toEpochSecond();
+        long from = ConnectorJson.toUnixSeconds(since == null ? LocalDateTime.now().minusDays(3) : since);
         Set<String> orderSns = new LinkedHashSet<>();
         int pages = 0;
         for (long start = from; start < now && pages < MAX_PAGES; start += WINDOW_SECONDS) {
@@ -225,6 +234,9 @@ public class ShopeeConnector implements ChannelConnector {
                 cursor = HttpJson.text(resp, "next_cursor");
                 pages++;
             } while (more && cursor != null && !cursor.isEmpty() && pages < MAX_PAGES);
+        }
+        if (pages >= MAX_PAGES) {
+            ConnectorJson.warnPageLimit(PLATFORM, "orders", MAX_PAGES);
         }
         List<OrderDraft> drafts = new ArrayList<>();
         List<String> all = new ArrayList<>(orderSns);
@@ -259,7 +271,7 @@ public class ShopeeConnector implements ChannelConnector {
         d.setShipCity(HttpJson.text(addr, "city"));
         d.setShipPostcode(HttpJson.text(addr, "zipcode"));
         String full = HttpJson.text(addr, "full_address");
-        d.setShipAddress(full != null ? full : join(HttpJson.text(addr, "town"), HttpJson.text(addr, "district")));
+        d.setShipAddress(full != null ? full : ConnectorJson.join(HttpJson.text(addr, "town"), HttpJson.text(addr, "district")));
         for (JsonNode it : o.path("item_list")) {
             d.getLines().add(toLine(it));
         }
@@ -273,12 +285,10 @@ public class ShopeeConnector implements ChannelConnector {
         String orderItemId = HttpJson.text(it, "order_item_id");
         l.setPlatformItemId(itemKey(itemId, modelId));
         l.setPlatformLineId((orderItemId == null ? itemId : orderItemId) + ":" + modelId);
-        l.setSellerSku(firstNonBlank(HttpJson.text(it, "model_sku"), HttpJson.text(it, "item_sku"), l.getPlatformItemId()));
-        String modelName = HttpJson.text(it, "model_name");
-        String itemName = HttpJson.text(it, "item_name");
-        l.setTitle(modelName == null || modelName.isBlank() ? itemName : itemName + " " + modelName);
+        l.setSellerSku(ConnectorJson.firstNonBlank(HttpJson.text(it, "model_sku"), HttpJson.text(it, "item_sku"), l.getPlatformItemId()));
+        l.setTitle(ConnectorJson.join(HttpJson.text(it, "item_name"), HttpJson.text(it, "model_name")));
         BigDecimal qty = HttpJson.decimal(it, "model_quantity_purchased");
-        l.setQty(qty == null ? BigDecimal.ONE : qty);
+        l.setQty(qty == null || qty.signum() <= 0 ? BigDecimal.ONE : qty);
         BigDecimal original = HttpJson.decimal(it, "model_original_price");
         BigDecimal discounted = HttpJson.decimal(it, "model_discounted_price");
         if (original == null) {
@@ -310,14 +320,34 @@ public class ShopeeConnector implements ChannelConnector {
 
     // ---------------------------------------------------------------- 发货
 
-    /** 非集成物流：order_sn + non_integrated.tracking_number（平台物流 SLS 的订单会被平台拒绝） */
+    /**
+     * 物流渠道需要非集成物流信息时 ship_order 回传运单号（CONFIRMED）；平台物流（SLS）只取平台运单号（PLATFORM_MANAGED），不代为安排揽收
+     */
     @Override
-    public void confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
+    public ShipmentResult confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
+        if (order.getFulfillment() == FulfillmentType.PLATFORM) {
+            return ShipmentResult.skipped(FULFILLED_BY_SHOPEE);
+        }
         ensureToken(ctx);
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("order_sn", order.getPlatformOrderNo());
-        body.put("non_integrated", Map.of("tracking_number", order.getTrackingNo() == null ? "" : order.getTrackingNo()));
-        post(ctx.baseUrl(INFO), ctx.credentials(), "/api/v2/logistics/ship_order", body);
+        String base = ctx.baseUrl(INFO);
+        String sn = ConnectorSigns.enc(order.getPlatformOrderNo());
+        JsonNode param = get(base, ctx.credentials(), "/api/v2/logistics/get_shipping_parameter", "order_sn=" + sn);
+        JsonNode needed = param.path("info_needed");
+        boolean nonIntegrated = needed.has("non_integrated") || (!needed.has("pickup") && !needed.has("dropoff"));
+        if (nonIntegrated) {
+            if (order.getTrackingNo() == null || order.getTrackingNo().isBlank()) {
+                throw new BizException("ecom.error.connectorCallFailed", PLATFORM, "tracking number missing");
+            }
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("order_sn", order.getPlatformOrderNo());
+            body.put("non_integrated", Map.of("tracking_number", order.getTrackingNo()));
+            post(base, ctx.credentials(), "/api/v2/logistics/ship_order", body);
+            return ShipmentResult.confirmed(order.getTrackingNo(), order.getCarrier());
+        }
+        JsonNode tn = get(base, ctx.credentials(), "/api/v2/logistics/get_tracking_number", "order_sn=" + sn);
+        String tracking = HttpJson.text(tn, "tracking_number");
+        ShipmentResult r = ShipmentResult.platformManaged(tracking, null);
+        return tracking == null || tracking.isBlank() ? r.withMessage("SLS: arrange pickup / drop-off in Shopee Seller Center") : r;
     }
 
     // ---------------------------------------------------------------- 库存
@@ -331,8 +361,9 @@ public class ShopeeConnector implements ChannelConnector {
             if (u.platformItemId() == null || u.platformItemId().isBlank()) {
                 throw new BizException("ecom.error.connectorPlatformItemIdRequired", PLATFORM, u.sellerSku());
             }
-            long[] ids = parseItemKey(u.platformItemId());
-            int stock = u.qty() == null ? 0 : Math.max(0, u.qty().intValue());
+            String[] pc = u.parentAndChild();
+            long[] ids = pc != null ? new long[]{parseLong(pc[0]), parseLong(pc[1])} : parseItemKey(u.platformItemId());
+            int stock = u.intQty();
             Map<String, Object> model = new LinkedHashMap<>();
             model.put("model_id", ids[1]);
             model.put("seller_stock", List.of(Map.of("stock", stock)));
@@ -363,7 +394,11 @@ public class ShopeeConnector implements ChannelConnector {
         StoreCredentials c = ctx.credentials();
         List<String> itemIds = new ArrayList<>();
         int offset = 0;
-        for (int page = 0; page < MAX_PAGES; page++) {
+        for (int page = 0; ; page++) {
+            if (page >= MAX_PAGES) {
+                ConnectorJson.warnPageLimit(PLATFORM, "items", MAX_PAGES);
+                break;
+            }
             String q = "offset=" + offset + "&page_size=" + ITEM_PAGE_SIZE
                     + "&item_status=NORMAL&item_status=UNLIST&item_status=BANNED&item_status=REVIEWING";
             JsonNode resp = get(base, c, "/api/v2/product/get_item_list", q);
@@ -388,7 +423,7 @@ public class ShopeeConnector implements ChannelConnector {
                 String itemId = HttpJson.text(item, "item_id");
                 String title = HttpJson.text(item, "item_name");
                 String status = listingStatus(HttpJson.text(item, "item_status"));
-                String image = str(item.path("image").path("image_url_list").path(0));
+                String image = ConnectorJson.str(item, "image", "image_url_list", "0");
                 String url = domain == null ? null : "https://" + domain + "/product/" + c.get("shopId") + "/" + itemId;
                 if (item.path("has_model").asBoolean(false)) {
                     JsonNode models = get(base, c, "/api/v2/product/get_model_list", "item_id=" + ConnectorSigns.enc(itemId));
@@ -397,13 +432,14 @@ public class ShopeeConnector implements ChannelConnector {
                         long modelId = m.path("model_id").asLong(0);
                         String key = itemKey(itemId, modelId);
                         JsonNode price = m.path("price_info").path(0);
-                        drafts.add(new ListingDraft(firstNonBlank(HttpJson.text(m, "model_sku"), HttpJson.text(item, "item_sku"), key), key, itemId,
+                        drafts.add(new ListingDraft(ConnectorJson.firstNonBlank(HttpJson.text(m, "model_sku"), HttpJson.text(item, "item_sku"), key),
+                                modelId == 0 ? itemId : String.valueOf(modelId), modelId == 0 ? null : itemId,
                                 title, variant(m, tiers), HttpJson.decimal(price, "current_price"), HttpJson.text(price, "currency"),
                                 HttpJson.decimal(m, "stock_info_v2", "summary_info", "total_available_stock"), null, status, image, url));
                     }
                 } else {
                     JsonNode price = item.path("price_info").path(0);
-                    drafts.add(new ListingDraft(firstNonBlank(HttpJson.text(item, "item_sku"), itemId), itemId, null, title, null,
+                    drafts.add(new ListingDraft(ConnectorJson.firstNonBlank(HttpJson.text(item, "item_sku"), itemId), itemId, null, title, null,
                             HttpJson.decimal(price, "current_price"), HttpJson.text(price, "currency"),
                             HttpJson.decimal(item, "stock_info_v2", "summary_info", "total_available_stock"), null, status, image, url));
                 }
@@ -486,48 +522,13 @@ public class ShopeeConnector implements ChannelConnector {
         }
     }
 
-    private static long parseLongOr(String s, long def) {
-        if (s == null) {
-            return def;
-        }
-        try {
-            return Long.parseLong(s.trim());
-        } catch (NumberFormatException e) {
-            return def;
-        }
-    }
-
     private static long nowSeconds() {
         return Instant.now().getEpochSecond();
     }
 
     /** Unix 秒 → 系统默认时区的本地时间，0 或缺失为 null */
     static LocalDateTime epochSeconds(JsonNode v) {
-        long s = v == null || v.isMissingNode() || v.isNull() ? 0 : v.asLong(0);
-        return s <= 0 ? null : LocalDateTime.ofInstant(Instant.ofEpochSecond(s), ZoneId.systemDefault());
+        return ConnectorJson.unixSeconds(v);
     }
 
-    private static String str(JsonNode v) {
-        return v == null || v.isMissingNode() || v.isNull() ? null : v.asString();
-    }
-
-    private static String firstNonBlank(String... values) {
-        for (String v : values) {
-            if (v != null && !v.isBlank()) {
-                return v.trim();
-            }
-        }
-        return null;
-    }
-
-    private static String join(String... parts) {
-        StringBuilder sb = new StringBuilder();
-        for (String p : parts) {
-            if (p != null && !p.isBlank()) {
-                if (!sb.isEmpty()) sb.append(' ');
-                sb.append(p.trim());
-            }
-        }
-        return sb.isEmpty() ? null : sb.toString();
-    }
 }

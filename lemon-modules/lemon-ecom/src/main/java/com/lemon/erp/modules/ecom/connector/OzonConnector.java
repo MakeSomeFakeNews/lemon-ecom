@@ -14,12 +14,7 @@ import tools.jackson.databind.JsonNode;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
@@ -33,30 +28,39 @@ import java.util.Map;
  *   <li>订单：FBS / rFBS（卖家仓发货）POST /v3/posting/fbs/list，FBO（Ozon 仓配送，映射为 PLATFORM）POST /v2/posting/fbo/list，
  *       按 since / to 过滤、offset 分页。一个 Ozon 订单可能拆成多个货件（posting），本连接器以货件号 posting_number 作为平台订单号，
  *       发货、取消都按货件进行</li>
- *   <li>发货：POST /v4/posting/fbs/ship 备货（装箱）；Ozon 物流的运单与面单由平台生成，不需要回传运单号。
- *       自配送（rFBS、卖家自己的物流）在订单上有运单号时再调用 POST /v2/fbs/posting/tracking-number/set 回传</li>
- *   <li>库存：POST /v2/products/stocks（offer_id + warehouse_id，每次最多 100 条）</li>
+ *   <li>发货：POST /v4/posting/fbs/ship 备货（装箱）；Ozon 物流的运单与面单由平台生成，不需要回传运单号，返回平台物流托管
+ *       （货件号即平台跟踪号，不回写为运单号）。自配送（rFBS、卖家自己的物流）在订单上有运单号时再调用
+ *       POST /v2/fbs/posting/tracking-number/set 回传，返回已回传。FBO 货件跳过</li>
+ *   <li>库存：POST /v2/products/stocks（offer_id + warehouse_id，每次最多 100 条），仓库取在线商品附加 ID 的 warehouseId，其次授权信息 warehouseId</li>
  *   <li>在线商品：POST /v3/product/list（last_id 分页）+ POST /v3/product/info/list（按 product_id 批量取详情）</li>
  * </ul>
  * 编码约定：明细 sellerSku 为卖家货号 offer_id（Ozon 必填，无退路）；platformItemId 与 platformLineId 均为 Ozon SKU（products[].sku，
  * 备货接口按它指定商品；货件中没有独立的行 ID）；在线商品的 platformItemId 为 Ozon SKU、parentItemId 为 product_id。回传库存只按 offer_id。
  * <p>
  * 金额为商品单价（products[].price）× 数量，币种取商品的 currency_code（跨境店铺通常为 CNY 或 USD，本土店铺为 RUB）；时间为 UTC。
- * 注意：posting 列表按货件创建 / 开始处理时间过滤，不按更新时间，已拉过的货件状态变化只有落在同步时间窗内才会更新。
+ * 注意：posting 列表按货件创建 / 开始处理时间过滤，不按更新时间，已拉过的货件状态变化只有落在同步时间窗内才会更新——
+ * 因此声明回看 {@value #LOOKBACK_HOURS} 小时（{@link ConnectorInfo#lookbackHours()}），定时同步时多取最近 7 天创建的货件以更新状态。
  * <p>
  * 沙箱：Ozon Seller API 没有公开的沙箱环境，联调用真实店铺（或 Ozon 提供的测试账号），因此沙箱地址为空。
- * 说明：按 Ozon Seller API 公开文档实现，尚未用真实店铺联调；Ozon 经常升级接口版本（如 v2 → v3），上线前按最新文档核对
+ * 说明：按 Ozon Seller API 公开文档实现，尚未用真实店铺联调；Ozon 经常升级接口版本（如 v2 → v3），上线前按最新文档核对。需要真实账号联调确认：
+ * <ul>
+ *   <li>/v3/posting/fbs/list、/v2/posting/fbo/list、/v4/posting/fbs/ship、/v2/products/stocks、/v3/product/info/list 的版本是否仍可用</li>
+ *   <li>备货接口 products[].product_id 填 Ozon SKU 是否正确；部分商品已备货时的返回</li>
+ *   <li>7 天回看是否覆盖大多数货件的状态变化（交付期较长的跨境 rFBS 可能需要更长）</li>
+ *   <li>跨境店铺价格的币种（currency_code）与金额精度</li>
+ * </ul>
  */
 @Component
 public class OzonConnector implements ChannelConnector {
 
     static final String PLATFORM = "Ozon";
     private static final String GATEWAY = "https://api-seller.ozon.ru";
-    private static final DateTimeFormatter ISO = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
     private static final int POSTING_PAGE_SIZE = 500;
     private static final int LISTING_PAGE_SIZE = 500;
     private static final int STOCK_BATCH = 100;
     private static final int MAX_PAGES = 20;
+    /** 定时同步额外回看的小时数（货件列表只能按创建时间过滤） */
+    static final int LOOKBACK_HOURS = 168;
     private static final ConnectorInfo INFO = new ConnectorInfo(EcomPlatform.OZON, AuthType.KEYS, List.of(
             CredentialField.text("clientId", "ecom.label.cred.ozonClientId", true),
             CredentialField.secret("apiKey", "ecom.label.cred.ozonApiKey"),
@@ -64,7 +68,8 @@ public class OzonConnector implements ChannelConnector {
             GATEWAY, null,
             EnumSet.of(ConnectorCapability.ORDERS, ConnectorCapability.SHIP_CONFIRM, ConnectorCapability.INVENTORY_PUSH,
                     ConnectorCapability.LISTINGS),
-            "https://docs.ozon.ru/api/seller/");
+            "https://docs.ozon.ru/api/seller/")
+            .withOrderWindowNote("ecom.text.connector.window.ozon").withLookbackHours(LOOKBACK_HOURS);
 
     @Override
     public ConnectorInfo info() {
@@ -82,7 +87,11 @@ public class OzonConnector implements ChannelConnector {
         List<OrderDraft> drafts = new ArrayList<>();
         // FBS / rFBS：result.postings + has_next
         int offset = 0;
-        for (int page = 0; page < MAX_PAGES; page++) {
+        for (int page = 0; ; page++) {
+            if (page >= MAX_PAGES) {
+                ConnectorJson.warnPageLimit(PLATFORM, "fbs postings", MAX_PAGES);
+                break;
+            }
             Map<String, Object> body = listBody(from, to, offset);
             JsonNode result = HttpJson.postJson(base + "/v3/posting/fbs/list", headers, body, PLATFORM).path("result");
             JsonNode postings = result.path("postings");
@@ -96,7 +105,11 @@ public class OzonConnector implements ChannelConnector {
         }
         // FBO：result 为数组，不足一页即结束
         offset = 0;
-        for (int page = 0; page < MAX_PAGES; page++) {
+        for (int page = 0; ; page++) {
+            if (page >= MAX_PAGES) {
+                ConnectorJson.warnPageLimit(PLATFORM, "fbo postings", MAX_PAGES);
+                break;
+            }
             Map<String, Object> body = listBody(from, to, offset);
             body.put("translit", true);
             JsonNode result = HttpJson.postJson(base + "/v2/posting/fbo/list", headers, body, PLATFORM).path("result");
@@ -136,14 +149,14 @@ public class OzonConnector implements ChannelConnector {
         d.setShipBy(time(HttpJson.text(p, "shipment_date")));
         JsonNode addressee = p.path("addressee");
         JsonNode customer = p.path("customer");
-        d.setShipName(first(HttpJson.text(addressee, "name"), HttpJson.text(customer, "name")));
-        d.setShipPhone(first(HttpJson.text(addressee, "phone"), HttpJson.text(customer, "phone")));
+        d.setShipName(ConnectorJson.firstNonBlank(HttpJson.text(addressee, "name"), HttpJson.text(customer, "name")));
+        d.setShipPhone(ConnectorJson.firstNonBlank(HttpJson.text(addressee, "phone"), HttpJson.text(customer, "phone")));
         d.setBuyerName(HttpJson.text(customer, "name"));
         JsonNode address = customer.path("address");
         JsonNode analytics = p.path("analytics_data");
-        d.setShipCountry(first(HttpJson.text(address, "country"), "RU"));
-        d.setShipState(first(HttpJson.text(address, "region"), HttpJson.text(analytics, "region")));
-        d.setShipCity(first(HttpJson.text(address, "city"), HttpJson.text(analytics, "city")));
+        d.setShipCountry(ConnectorJson.firstNonBlank(HttpJson.text(address, "country"), "RU"));
+        d.setShipState(ConnectorJson.firstNonBlank(HttpJson.text(address, "region"), HttpJson.text(analytics, "region")));
+        d.setShipCity(ConnectorJson.firstNonBlank(HttpJson.text(address, "city"), HttpJson.text(analytics, "city")));
         d.setShipPostcode(HttpJson.text(address, "zip_code"));
         d.setShipAddress(HttpJson.text(address, "address_tail"));
         d.setNote(HttpJson.text(p, "order_number"));
@@ -155,7 +168,7 @@ public class OzonConnector implements ChannelConnector {
             l.setSellerSku(HttpJson.text(it, "offer_id"));
             l.setTitle(HttpJson.text(it, "name"));
             BigDecimal qty = HttpJson.decimal(it, "quantity");
-            l.setQty(qty == null ? BigDecimal.ONE : qty);
+            l.setQty(qty == null || qty.signum() <= 0 ? BigDecimal.ONE : qty);
             BigDecimal price = HttpJson.decimal(it, "price");
             l.setPrice(price == null ? BigDecimal.ZERO : price);
             l.setAmount(l.getPrice().multiply(l.getQty()).setScale(2, RoundingMode.HALF_UP));
@@ -191,7 +204,10 @@ public class OzonConnector implements ChannelConnector {
      * 商品按 Ozon SKU 指定：取明细的 platformItemId，为空取 platformLineId
      */
     @Override
-    public void confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
+    public ShipmentResult confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
+        if (order.getFulfillment() == FulfillmentType.PLATFORM) {
+            return ShipmentResult.skipped("FBO");
+        }
         String base = ctx.baseUrl(INFO);
         Map<String, String> headers = headers(ctx.credentials());
         List<Map<String, Object>> products = new ArrayList<>();
@@ -206,7 +222,7 @@ public class OzonConnector implements ChannelConnector {
             } catch (NumberFormatException e) {
                 throw new BizException("ecom.error.connectorLineIdMissing", order.getPlatformOrderNo());
             }
-            products.add(Map.of("product_id", ozonSku, "quantity", it.getQty() == null ? 1 : it.getQty().intValue()));
+            products.add(Map.of("product_id", ozonSku, "quantity", it.getQty() == null ? 1 : Math.max(1, it.getQty().intValue())));
         }
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("packages", List.of(Map.of("products", products)));
@@ -222,7 +238,9 @@ public class OzonConnector implements ChannelConnector {
                     throw new BizException("ecom.error.connectorCallFailed", PLATFORM, HttpJson.abbreviate(r.toString()));
                 }
             }
+            return ShipmentResult.confirmed(order.getTrackingNo(), order.getCarrier());
         }
+        return ShipmentResult.platformManaged(null, null);
     }
 
     // ---------------------------------------------------------------- 库存
@@ -234,15 +252,15 @@ public class OzonConnector implements ChannelConnector {
         }
         String base = ctx.baseUrl(INFO);
         Map<String, String> headers = headers(ctx.credentials());
-        long warehouse = Long.parseLong(ctx.credentials().require("warehouseId"));
+        String defaultWarehouse = ctx.credentials().get("warehouseId");
         List<String> failures = new ArrayList<>();
         for (int i = 0; i < updates.size(); i += STOCK_BATCH) {
             List<Map<String, Object>> stocks = new ArrayList<>();
             for (InventoryUpdate u : updates.subList(i, Math.min(updates.size(), i + STOCK_BATCH))) {
                 Map<String, Object> s = new LinkedHashMap<>();
                 s.put("offer_id", u.sellerSku());
-                s.put("stock", u.qty() == null ? 0 : Math.max(0, u.qty().longValue()));
-                s.put("warehouse_id", warehouse);
+                s.put("stock", u.intQty());
+                s.put("warehouse_id", warehouseId(u.platformWarehouseId() != null ? u.platformWarehouseId() : defaultWarehouse));
                 stocks.add(s);
             }
             JsonNode resp = HttpJson.postJson(base + "/v2/products/stocks", headers, Map.of("stocks", stocks), PLATFORM);
@@ -352,30 +370,27 @@ public class OzonConnector implements ChannelConnector {
 
     // ---------------------------------------------------------------- 工具
 
+    /** FBS 仓库 ID（数字），没有时提示在授权信息中填写 */
+    private static long warehouseId(String v) {
+        if (v == null || v.isBlank()) {
+            throw new BizException("ecom.error.credentialMissing", "warehouseId");
+        }
+        try {
+            return Long.parseLong(v.trim());
+        } catch (NumberFormatException e) {
+            throw new BizException("ecom.error.connectorCallFailed", PLATFORM, "warehouseId must be numeric: " + v);
+        }
+    }
+
     private static Map<String, String> headers(StoreCredentials c) {
         return Map.of("Client-Id", c.require("clientId"), "Api-Key", c.require("apiKey"), "Accept", "application/json");
     }
 
     private static String utc(LocalDateTime t) {
-        return t.atZone(ZoneId.systemDefault()).withZoneSameInstant(ZoneOffset.UTC).toOffsetDateTime().format(ISO);
+        return ConnectorJson.toUtcIso(t);
     }
 
     private static LocalDateTime time(String iso) {
-        if (iso == null || iso.isBlank()) {
-            return null;
-        }
-        try {
-            return OffsetDateTime.parse(iso).atZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime();
-        } catch (RuntimeException e) {
-            try {
-                return LocalDateTime.ofInstant(Instant.parse(iso), ZoneId.systemDefault());
-            } catch (RuntimeException ignored) {
-                return null;
-            }
-        }
-    }
-
-    private static String first(String a, String b) {
-        return a != null && !a.isBlank() ? a : b;
+        return ConnectorJson.isoTime(iso);
     }
 }

@@ -13,10 +13,8 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -46,12 +44,20 @@ import java.util.TreeMap;
  *   <li>发货 bg.logistics.shipment.v2.confirm（物流公司 ID 由 bg.logistics.companies.get 按名称匹配，订单承运商填数字时直接作为 ID）</li>
  *   <li>库存 bg.goods.quantity.update（全量覆盖），商品 bg.local.goods.list.query（本土店铺；半托管店铺的商品列表接口不同）</li>
  * </ul>
- * 编码约定：platformItemId = {@code goodsId:skuId}（库存更新需要同时提供商品 ID 与 SKU ID，不含冒号时视为 skuId，
- * 此时不能回传库存）；sellerSku 取卖家自定义 SKU 编码（outSkuSn / extCode），取不到时退回平台 skuId。
+ * 编码约定：在线商品 platformItemId = skuId、parentItemId = goodsId（库存更新需要同时提供商品 ID 与 SKU ID）；
+ * 订单明细没有父 ID 字段，platformItemId 仍为 {@code goodsId:skuId}（发货回传按它带上 goodsId / skuId）。
+ * 回传库存按 parentItemId + platformItemId，兼容旧编码 {@code goodsId:skuId}；sellerSku 取卖家自定义 SKU 编码（outSkuSn / extCode），取不到时退回平台 skuId。
  * 订单行 platformLineId 为子订单号 orderSn，平台订单号为父订单号 parentOrderSn。
  * <p>
  * 沙箱：Temu 没有公开的沙箱网关，联调使用开放平台提供的测试店铺（测试店铺的令牌直接调正式网关），因此 sandboxBaseUrl 为空。
- * 说明：按公开资料实现，尚未用真实店铺联调
+ * 说明：按公开资料实现，尚未用真实店铺联调。需要真实账号联调确认：
+ * <ul>
+ *   <li>各接口名（type）与版本、签名是否包含 data_type / version、嵌套参数按 JSON 串参与签名</li>
+ *   <li>订单列表的时间字段（updateAtStart / updateAtEnd）为秒还是毫秒；订单时间字段的单位（已按大小自动区分秒 / 毫秒）</li>
+ *   <li>bg.order.amount.query 的金额字段名与单位（元还是分）、运费是子订单级还是父订单级</li>
+ *   <li>bg.logistics.shipment.v2.confirm 的 sendType、物流公司字段，以及半托管店铺是否需要先在线下单获取运单</li>
+ *   <li>半托管店铺的商品列表接口（当前用本土店铺的 bg.local.goods.list.query）与商品状态取值</li>
+ * </ul>
  */
 @Component
 public class TemuConnector implements ChannelConnector {
@@ -85,10 +91,14 @@ public class TemuConnector implements ChannelConnector {
     public List<OrderDraft> fetchOrders(ConnectorContext ctx, LocalDateTime since) {
         EcomStore store = ctx.store();
         String gateway = gateway(ctx);
-        long start = since.atZone(ZoneId.systemDefault()).toEpochSecond();
+        long start = ConnectorJson.toUnixSeconds(since);
         long end = Instant.now().getEpochSecond();
         List<OrderDraft> drafts = new ArrayList<>();
-        for (int page = 1; page <= MAX_PAGES; page++) {
+        for (int page = 1; ; page++) {
+            if (page > MAX_PAGES) {
+                ConnectorJson.warnPageLimit(PLATFORM, "orders", MAX_PAGES);
+                break;
+            }
             Map<String, Object> biz = new LinkedHashMap<>();
             biz.put("pageNumber", page);
             biz.put("pageSize", PAGE_SIZE);
@@ -121,10 +131,10 @@ public class TemuConnector implements ChannelConnector {
         OrderDraft d = new OrderDraft();
         d.setStoreId(store.getId());
         d.setPlatformOrderNo(HttpJson.text(parent, "parentOrderSn"));
-        d.setOrderTime(epoch(parent.get("parentOrderTime")));
-        d.setPaidTime(epoch(parent.get("parentOrderPayTime")));
-        d.setShipBy(epoch(parent.get("expectShipLatestTime")));
-        d.setDeliverBy(epoch(parent.get("latestDeliveryTime")));
+        d.setOrderTime(ConnectorJson.unixAuto(parent.get("parentOrderTime")));
+        d.setPaidTime(ConnectorJson.unixAuto(parent.get("parentOrderPayTime")));
+        d.setShipBy(ConnectorJson.unixAuto(parent.get("expectShipLatestTime")));
+        d.setDeliverBy(ConnectorJson.unixAuto(parent.get("latestDeliveryTime")));
         d.setStatus(status(parent.path("parentOrderStatus").asInt(0)));
         d.setFulfillment(FulfillmentType.SELLER);
         d.setShipCountry(HttpJson.text(parent, "regionName1"));
@@ -134,13 +144,13 @@ public class TemuConnector implements ChannelConnector {
             String goodsId = HttpJson.text(o, "goodsId");
             String skuId = HttpJson.text(o, "skuId");
             l.setPlatformItemId(itemId(goodsId, skuId));
-            l.setSellerSku(firstNonBlank(HttpJson.text(o, "outSkuSn"), HttpJson.text(o, "extCode"), skuId));
-            l.setTitle(join(HttpJson.text(o, "goodsName"), HttpJson.text(o, "spec")));
+            l.setSellerSku(ConnectorJson.firstNonBlank(HttpJson.text(o, "outSkuSn"), HttpJson.text(o, "extCode"), skuId, goodsId));
+            l.setTitle(ConnectorJson.join(HttpJson.text(o, "goodsName"), HttpJson.text(o, "spec")));
             BigDecimal qty = HttpJson.decimal(o, "quantity");
             if (qty == null) {
                 qty = HttpJson.decimal(o, "originalOrderQuantity");
             }
-            l.setQty(qty == null ? BigDecimal.ONE : qty);
+            l.setQty(qty == null || qty.signum() <= 0 ? BigDecimal.ONE : qty);
             d.getLines().add(l);
         }
         return d;
@@ -148,7 +158,7 @@ public class TemuConnector implements ChannelConnector {
 
     private static void fillShipping(OrderDraft d, JsonNode r) {
         d.setShipName(HttpJson.text(r, "receiptName"));
-        d.setShipPhone(firstNonBlank(HttpJson.text(r, "mobile"), HttpJson.text(r, "backupMobile")));
+        d.setShipPhone(ConnectorJson.firstNonBlank(HttpJson.text(r, "mobile"), HttpJson.text(r, "backupMobile")));
         d.setBuyerEmail(HttpJson.text(r, "mail"));
         d.setBuyerName(d.getShipName());
         String country = HttpJson.text(r, "regionName1");
@@ -158,7 +168,7 @@ public class TemuConnector implements ChannelConnector {
         d.setShipState(HttpJson.text(r, "regionName2"));
         d.setShipCity(HttpJson.text(r, "regionName3"));
         d.setShipPostcode(HttpJson.text(r, "postCode"));
-        d.setShipAddress(join(HttpJson.text(r, "addressLine1"), HttpJson.text(r, "addressLine2"), HttpJson.text(r, "addressLine3")));
+        d.setShipAddress(ConnectorJson.join(HttpJson.text(r, "addressLine1"), HttpJson.text(r, "addressLine2"), HttpJson.text(r, "addressLine3")));
     }
 
     /**
@@ -197,7 +207,10 @@ public class TemuConnector implements ChannelConnector {
     // ---------------------------------------------------------------- 发货
 
     @Override
-    public void confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
+    public ShipmentResult confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
+        if (order.getTrackingNo() == null || order.getTrackingNo().isBlank()) {
+            throw new BizException("ecom.error.connectorCallFailed", PLATFORM, "tracking number missing");
+        }
         String gateway = gateway(ctx);
         Long companyId = shipCompanyId(gateway, ctx.credentials(), order.getCarrier());
         List<Map<String, Object>> lines = new ArrayList<>();
@@ -209,10 +222,10 @@ public class TemuConnector implements ChannelConnector {
             line.put("orderSn", it.getPlatformLineId());
             String[] ids = splitItemId(it.getPlatformItemId());
             if (ids != null) {
-                line.put("goodsId", Long.valueOf(ids[0]));
-                line.put("skuId", Long.valueOf(ids[1]));
+                line.put("goodsId", idValue(ids[0]));
+                line.put("skuId", idValue(ids[1]));
             }
-            line.put("quantity", it.getQty().intValue());
+            line.put("quantity", it.getQty() == null ? 1 : Math.max(1, it.getQty().intValue()));
             lines.add(line);
         }
         Map<String, Object> req = new LinkedHashMap<>();
@@ -224,6 +237,7 @@ public class TemuConnector implements ChannelConnector {
         biz.put("sendType", 0);
         biz.put("sendRequestList", List.of(req));
         call(gateway, ctx.credentials(), "bg.logistics.shipment.v2.confirm", biz);
+        return ShipmentResult.confirmed(order.getTrackingNo(), order.getCarrier());
     }
 
     /** 承运商：填数字时直接作为 Temu 物流公司 ID，否则在 bg.logistics.companies.get 中按名称（忽略大小写）匹配 */
@@ -251,24 +265,27 @@ public class TemuConnector implements ChannelConnector {
 
     // ---------------------------------------------------------------- 库存与商品
 
-    /** 按商品分组，每个商品一次 bg.goods.quantity.update（全量覆盖 SKU 可售数量） */
+    /**
+     * 按商品分组，每个商品一次 bg.goods.quantity.update（全量覆盖 SKU 可售数量）：商品 ID 取 parentItemId、SKU ID 取 platformItemId，
+     * 兼容旧编码 goodsId:skuId
+     */
     @Override
     public void pushInventory(ConnectorContext ctx, List<InventoryUpdate> updates) {
         String gateway = gateway(ctx);
         Map<String, List<Map<String, Object>>> byGoods = new LinkedHashMap<>();
         for (InventoryUpdate u : updates) {
-            String[] ids = splitItemId(u.platformItemId());
+            String[] ids = u.parentAndChild();
             if (ids == null) {
-                throw new BizException("ecom.error.connectorCallFailed", PLATFORM, "platformItemId must be goodsId:skuId, sku " + u.sellerSku());
+                throw new BizException("ecom.error.connectorPlatformItemIdRequired", PLATFORM, u.sellerSku());
             }
             Map<String, Object> sku = new LinkedHashMap<>();
-            sku.put("skuId", Long.valueOf(ids[1]));
-            sku.put("targetQuantity", Math.max(0, u.qty().setScale(0, RoundingMode.DOWN).intValue()));
+            sku.put("skuId", idValue(ids[1]));
+            sku.put("targetQuantity", u.intQty());
             byGoods.computeIfAbsent(ids[0], k -> new ArrayList<>()).add(sku);
         }
         for (Map.Entry<String, List<Map<String, Object>>> e : byGoods.entrySet()) {
             Map<String, Object> biz = new LinkedHashMap<>();
-            biz.put("goodsId", Long.valueOf(e.getKey()));
+            biz.put("goodsId", idValue(e.getKey()));
             biz.put("quantityChangeType", 2);
             biz.put("skuStockChangeList", e.getValue());
             call(gateway, ctx.credentials(), "bg.goods.quantity.update", biz);
@@ -279,7 +296,11 @@ public class TemuConnector implements ChannelConnector {
     public List<ListingDraft> fetchListings(ConnectorContext ctx) {
         String gateway = gateway(ctx);
         List<ListingDraft> list = new ArrayList<>();
-        for (int page = 1; page <= MAX_PAGES; page++) {
+        for (int page = 1; ; page++) {
+            if (page > MAX_PAGES) {
+                ConnectorJson.warnPageLimit(PLATFORM, "goods", MAX_PAGES);
+                break;
+            }
             Map<String, Object> biz = new LinkedHashMap<>();
             biz.put("pageNo", page);
             biz.put("pageSize", PAGE_SIZE);
@@ -294,8 +315,8 @@ public class TemuConnector implements ChannelConnector {
                 for (JsonNode s : g.path("skuInfoList")) {
                     String skuId = HttpJson.text(s, "skuId");
                     JsonNode price = s.path("price");
-                    list.add(new ListingDraft(firstNonBlank(HttpJson.text(s, "outSkuSn"), HttpJson.text(s, "extCode"), skuId),
-                            itemId(goodsId, skuId), goodsId, HttpJson.text(g, "goodsName"), HttpJson.text(s, "specName"),
+                    list.add(new ListingDraft(ConnectorJson.firstNonBlank(HttpJson.text(s, "outSkuSn"), HttpJson.text(s, "extCode"), skuId),
+                            skuId != null ? skuId : goodsId, skuId != null ? goodsId : null, HttpJson.text(g, "goodsName"), HttpJson.text(s, "specName"),
                             money(price), upper(HttpJson.text(price, "currency")), HttpJson.decimal(s, "quantity"),
                             FulfillmentType.SELLER.name(), status, HttpJson.text(s, "thumbUrl"), null));
                 }
@@ -391,60 +412,24 @@ public class TemuConnector implements ChannelConnector {
         return new String[]{platformItemId.substring(0, i), platformItemId.substring(i + 1)};
     }
 
+    /** 数字 ID 按数字传（Temu 示例中 goodsId、skuId 是数字），非数字原样传 */
+    private static Object idValue(String s) {
+        try {
+            return Long.valueOf(s.trim());
+        } catch (NumberFormatException e) {
+            return s.trim();
+        }
+    }
+
+    /** 金额：{amount, currency} 对象或直接数值 */
     private static BigDecimal money(JsonNode node) {
         if (node == null || node.isMissingNode() || node.isNull()) {
             return null;
         }
-        JsonNode v = node.isObject() ? node.get("amount") : node;
-        if (v == null || v.isNull()) {
-            return null;
-        }
-        try {
-            return new BigDecimal(v.asString());
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-
-    /** 秒级时间戳（大于 10^12 视为毫秒）转为服务器时区 */
-    private static LocalDateTime epoch(JsonNode v) {
-        if (v == null || v.isNull() || !v.canConvertToLong() && !v.isString()) {
-            return null;
-        }
-        long n;
-        try {
-            n = v.isString() ? Long.parseLong(v.asString()) : v.asLong();
-        } catch (NumberFormatException e) {
-            return null;
-        }
-        if (n <= 0) {
-            return null;
-        }
-        Instant instant = n > 1_000_000_000_000L ? Instant.ofEpochMilli(n) : Instant.ofEpochSecond(n);
-        return LocalDateTime.ofInstant(instant, ZoneId.systemDefault());
+        return node.isObject() ? ConnectorJson.decimal(node, "amount") : ConnectorJson.decimal(node);
     }
 
     private static String upper(String s) {
         return s == null ? null : s.toUpperCase(Locale.ROOT);
-    }
-
-    private static String firstNonBlank(String... values) {
-        for (String v : values) {
-            if (v != null && !v.isBlank()) {
-                return v.trim();
-            }
-        }
-        return null;
-    }
-
-    private static String join(String... parts) {
-        StringBuilder sb = new StringBuilder();
-        for (String p : parts) {
-            if (p != null && !p.isBlank()) {
-                if (!sb.isEmpty()) sb.append(' ');
-                sb.append(p.trim());
-            }
-        }
-        return sb.isEmpty() ? null : sb.toString();
     }
 }

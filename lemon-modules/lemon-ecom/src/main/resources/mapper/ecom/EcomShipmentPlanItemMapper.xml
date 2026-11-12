@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomShipmentPlanItemMapper">
+
+    <select id="selectByPlanId" resultType="com.lemon.erp.modules.ecom.entity.EcomShipmentPlanItem">
+        SELECT pi.*, l.title, l.fnsku, l.compose_type, l.material_id, l.pack_qty, m.code AS material_code, m.name AS material_name,
+               COALESCE((SELECT SUM(it.sku_qty) FROM ecom_inbound_item it JOIN ecom_inbound i ON i.id = it.inbound_id
+                         WHERE it.plan_item_id = pi.id AND i.status &lt;&gt; 'CANCELLED' AND it.part_main = 1), 0) AS shipped_qty
+        FROM ecom_shipment_plan_item pi
+        LEFT JOIN ecom_listing l ON l.id = pi.listing_id
+        LEFT JOIN wms_material m ON m.id = l.material_id
+        WHERE pi.plan_id = #{planId}
+        ORDER BY pi.id
+    </select>
+
+    <insert id="insertBatch">
+        INSERT INTO ecom_shipment_plan_item (plan_id, listing_id, seller_sku, qty, remark, create_time, update_time)
+        VALUES
+        <foreach collection="items" item="i" separator=",">
+            (#{i.planId}, #{i.listingId}, #{i.sellerSku}, #{i.qty}, #{i.remark}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        </foreach>
+    </insert>
+
+</mapper>

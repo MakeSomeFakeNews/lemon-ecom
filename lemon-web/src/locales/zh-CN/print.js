@@ -121,7 +121,20 @@ export default {
     packageCount: '包裹数',
     packageNos: '包裹号',
     sellerSku: '平台 SKU',
-    picker: '拣货人'
+    picker: '拣货人',
+    packingList: '装箱单',
+    cartonLabel: '箱唛',
+    boxNo: '箱号',
+    boxSize: '尺寸（cm）',
+    grossWeight: '毛重（kg）',
+    fnsku: 'FNSKU',
+    shipmentId: '货件号',
+    store: '店铺',
+    shipFrom: '发货仓',
+    shipTo: '收货仓',
+    boxCount: '箱数',
+    productTitle: '商品标题',
+    packer: '装箱人'
   },
   paper: {
     size: '{name}（{size}）',

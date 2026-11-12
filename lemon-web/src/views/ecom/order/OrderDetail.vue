@@ -87,13 +87,22 @@
             <template v-else-if="column.key === 'price'">{{ price(record.price) }}</template>
             <template v-else-if="['amount', 'shipping', 'tax', 'discount'].includes(column.key)">{{ money(record[column.key]) }}</template>
             <template v-else-if="column.key === 'material'">
-              <template v-if="record.materialId">
+              <template v-if="record.bundle === 1 && record.parts?.length">
+                <a-tag color="purple" :bordered="false">{{ $t('ecomCatalog.listing.bundle') }}</a-tag>
+                <div v-for="p in record.parts" :key="p.id" class="sub-text">{{ p.materialCode }} {{ p.materialName }} × {{ qty(p.unitQty) }}</div>
+              </template>
+              <template v-else-if="record.materialId">
                 <div>{{ record.materialCode }} {{ record.materialName }}</div>
                 <div class="sub-text">{{ record.materialSpec }}</div>
               </template>
               <a-tag v-else color="error" :bordered="false">{{ $t('ecomOrder.common.unmapped') }}</a-tag>
             </template>
-            <template v-else-if="column.key === 'materialQty'">{{ record.materialId ? `${qty(record.materialQty)} ${record.unit || ''}` : '-' }}</template>
+            <template v-else-if="column.key === 'materialQty'">
+              <template v-if="record.bundle === 1 && record.parts?.length">
+                <div v-for="p in record.parts" :key="p.id">{{ qty(p.materialQty) }} {{ p.unit || '' }}</div>
+              </template>
+              <template v-else>{{ record.materialId ? `${qty(record.materialQty)} ${record.unit || ''}` : '-' }}</template>
+            </template>
             <template v-else-if="column.key === 'allocatedQty'">{{ qty(record.allocatedQty) }}</template>
             <template v-else-if="column.key === 'cost'">{{ record.cost != null ? baseMoney(record.cost) : '-' }}</template>
           </template>

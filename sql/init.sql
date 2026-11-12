@@ -5587,3 +5587,262 @@ SELECT g.role_id, g.menu_id FROM (
 ) g
 WHERE EXISTS (SELECT 1 FROM sys_role r WHERE r.id = g.role_id)
   AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = g.role_id AND x.menu_id = g.menu_id);
+
+-- 渠道接入：在线商品的平台附加 ID（Shopify 变体 ID / 库存项 ID、平台仓库 ID 等，JSON 对象），拉取在线商品时写入，回传库存时交给连接器
+ALTER TABLE ecom_listing ADD COLUMN platform_extra VARCHAR(1000) DEFAULT NULL COMMENT '平台附加 ID（JSON）';
+
+-- ---------------------------------------------------------------- 电商：补货建议 → 采购计划 → 采购订单
+
+CREATE TABLE ecom_replenish_setting (
+    id            BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id     BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    scope         VARCHAR(16)    NOT NULL COMMENT '级别 LISTING在线商品 MATERIAL物料',
+    listing_id    BIGINT                  DEFAULT NULL COMMENT '在线商品（在线商品级）',
+    material_id   BIGINT                  DEFAULT NULL COMMENT '物料（物料级）',
+    lead_days     INT                     DEFAULT NULL COMMENT '平台仓补货周期（天），为空取店铺设置',
+    safety_days   INT                     DEFAULT NULL COMMENT '安全天数，为空取店铺设置',
+    purchase_days INT                     DEFAULT NULL COMMENT '采购周期（天，物料级），为空取默认供应商的提前期，再取店铺补货周期',
+    daily_sales   DECIMAL(18, 4)          DEFAULT NULL COMMENT '手工日均销量（在线商品级为平台 SKU 件数，物料级为物料数量），为空按销量计算',
+    factor        DECIMAL(8, 4)           DEFAULT NULL COMMENT '季节 / 活动系数，乘在按销量计算的日均上，为空为 1',
+    disabled      TINYINT        NOT NULL DEFAULT 0 COMMENT '不补货 1是 0否',
+    remark        VARCHAR(255)            DEFAULT NULL COMMENT '备注',
+    create_time   DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time   DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_replenish_listing (listing_id, tenant_id),
+    UNIQUE KEY uk_ecom_replenish_material (material_id, tenant_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '补货设置（在线商品级 / 物料级）';
+
+CREATE TABLE ecom_purchase_plan (
+    id           BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id    BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    doc_no       VARCHAR(32)    NOT NULL COMMENT '计划单号',
+    plan_date    DATE           NOT NULL COMMENT '计划日期',
+    status       VARCHAR(16)    NOT NULL DEFAULT 'DRAFT' COMMENT '状态(字典 ecom_purchase_plan_status) DRAFT草稿 APPROVED已审核 ORDERED已下单 CLOSED已关闭',
+    warehouse_id BIGINT                  DEFAULT NULL COMMENT '收货仓库（生成的采购订单的默认收货仓）',
+    total_qty    DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '计划采购数量合计',
+    remark       VARCHAR(255)            DEFAULT NULL COMMENT '备注',
+    dept_id      BIGINT                  DEFAULT NULL COMMENT '制单人部门（数据权限）',
+    create_by    BIGINT                  DEFAULT NULL COMMENT '制单人',
+    approve_by   BIGINT                  DEFAULT NULL COMMENT '审核人',
+    approve_time DATETIME                DEFAULT NULL COMMENT '审核时间',
+    create_time  DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time  DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_purchase_plan_no (doc_no, tenant_id),
+    KEY idx_ecom_purchase_plan_status (status),
+    KEY idx_ecom_purchase_plan_dept (dept_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '采购计划（由补货建议生成，按供应商拆单生成采购订单）';
+
+CREATE TABLE ecom_purchase_plan_item (
+    id           BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id    BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    plan_id      BIGINT         NOT NULL COMMENT '采购计划',
+    material_id  BIGINT         NOT NULL COMMENT '物料',
+    suggest_qty  DECIMAL(18, 4)          DEFAULT NULL COMMENT '生成时的建议采购量',
+    qty          DECIMAL(18, 4) NOT NULL COMMENT '计划采购量',
+    supplier_id  BIGINT                  DEFAULT NULL COMMENT '供应商（生成时取默认供应商）',
+    price        DECIMAL(18, 4)          DEFAULT NULL COMMENT '含税单价，为空时生成订单取供应商价格 / 默认采购价',
+    tax_rate     DECIMAL(5, 2)           DEFAULT NULL COMMENT '税率（%），为空取默认',
+    arrival_date DATE                    DEFAULT NULL COMMENT '要求到货日期',
+    demand       VARCHAR(2000)           DEFAULT NULL COMMENT '各店铺的需求构成（JSON：storeId storeName sellerSku qty）',
+    order_id     BIGINT                  DEFAULT NULL COMMENT '生成的采购订单(scm_order)',
+    order_no     VARCHAR(32)             DEFAULT NULL COMMENT '采购订单号',
+    remark       VARCHAR(255)            DEFAULT NULL COMMENT '备注',
+    create_time  DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time  DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_purchase_plan_item_plan (plan_id),
+    KEY idx_ecom_purchase_plan_item_material (material_id),
+    KEY idx_ecom_purchase_plan_item_order (order_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '采购计划明细';
+
+INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time) VALUES
+(460, 983, '采购计划', 'C', 'purchase-plan', 'ecom/purchase-plan/index', 'ecom:purchasePlan:list', 'ScheduleOutlined', 3, 1, 1, NOW(), NOW()),
+(4600, 460, '采购计划新增', 'F', NULL, NULL, 'ecom:purchasePlan:add', NULL, 1, 1, 1, NOW(), NOW()),
+(4601, 460, '采购计划修改', 'F', NULL, NULL, 'ecom:purchasePlan:edit', NULL, 2, 1, 1, NOW(), NOW()),
+(4602, 460, '采购计划删除', 'F', NULL, NULL, 'ecom:purchasePlan:remove', NULL, 3, 1, 1, NOW(), NOW()),
+(4603, 460, '采购计划审核', 'F', NULL, NULL, 'ecom:purchasePlan:approve', NULL, 4, 1, 1, NOW(), NOW()),
+(4604, 460, '生成采购订单', 'F', NULL, NULL, 'ecom:purchasePlan:order', NULL, 5, 1, 1, NOW(), NOW()),
+(4605, 427, '补货设置', 'F', NULL, NULL, 'ecom:replenish:setting', NULL, 1, 1, 1, NOW(), NOW());
+
+INSERT INTO sys_dict_type (id, name, type, kind, status, remark, create_time, update_time) VALUES
+(260, '采购计划状态', 'ecom_purchase_plan_status', 'SYSTEM', 1, '电商采购计划的状态', NOW(), NOW());
+INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, builtin, create_time, update_time) VALUES
+('ecom_purchase_plan_status', '草稿', 'DRAFT', 'default', 1, 1, 1, NOW(), NOW()),
+('ecom_purchase_plan_status', '已审核', 'APPROVED', 'processing', 2, 1, 1, NOW(), NOW()),
+('ecom_purchase_plan_status', '已下单', 'ORDERED', 'green', 3, 1, 1, NOW(), NOW()),
+('ecom_purchase_plan_status', '已关闭', 'CLOSED', 'default', 4, 1, 1, NOW(), NOW()),
+('scm_order_source', '采购计划', 'PURCHASE_PLAN', 'gold', 11, 1, 1, NOW(), NOW());
+
+-- 内置角色：电商运营、采购员全部；总经理查看与审核；普通用户只读
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT g.role_id, g.menu_id FROM (
+    SELECT 5 AS role_id, 460 AS menu_id UNION ALL SELECT 5, 4600 UNION ALL SELECT 5, 4601 UNION ALL SELECT 5, 4602 UNION ALL SELECT 5, 4603
+    UNION ALL SELECT 5, 4604 UNION ALL SELECT 5, 4605
+    UNION ALL SELECT 4, 17 UNION ALL SELECT 4, 983 UNION ALL SELECT 4, 427 UNION ALL SELECT 4, 460 UNION ALL SELECT 4, 4600 UNION ALL SELECT 4, 4601
+    UNION ALL SELECT 4, 4602 UNION ALL SELECT 4, 4603 UNION ALL SELECT 4, 4604 UNION ALL SELECT 4, 4605
+    UNION ALL SELECT 3, 460 UNION ALL SELECT 3, 4603
+    UNION ALL SELECT 2, 460
+) g
+WHERE EXISTS (SELECT 1 FROM sys_role r WHERE r.id = g.role_id)
+  AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = g.role_id AND x.menu_id = g.menu_id);
+
+-- ---------------------------------------------------------------- 跨境电商：商品体系（组合商品、SPU / 变体、SKU 配对中心、发货计划、货件装箱与 FNSKU 标签）
+
+-- 在线商品：组成方式（单品 / 组合）、FNSKU
+ALTER TABLE ecom_listing ADD COLUMN compose_type VARCHAR(16) NOT NULL DEFAULT 'SINGLE' COMMENT '组成方式(字典 ecom_compose_type) SINGLE单品（物料 × 多件装） BUNDLE组合（ecom_bundle_item）';
+ALTER TABLE ecom_listing ADD COLUMN fnsku VARCHAR(32) DEFAULT NULL COMMENT 'FNSKU（平台仓商品标签条码）';
+CREATE INDEX idx_ecom_listing_parent ON ecom_listing (store_id, parent_item_id);
+
+CREATE TABLE ecom_bundle_item (
+    id          BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id   BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    listing_id  BIGINT         NOT NULL COMMENT '在线商品（组成方式为组合）',
+    material_id BIGINT         NOT NULL COMMENT '物料',
+    qty         DECIMAL(18, 4) NOT NULL COMMENT '一件平台 SKU 包含的物料数量',
+    sort        INT            NOT NULL DEFAULT 0 COMMENT '顺序',
+    create_time DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_bundle_item (listing_id, material_id, tenant_id),
+    KEY idx_ecom_bundle_item_material (material_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '组合商品的组成（一个平台 SKU 由多个物料组成）';
+
+-- 平台订单明细：组合商品展开的物料
+ALTER TABLE ecom_order_item ADD COLUMN bundle TINYINT NOT NULL DEFAULT 0 COMMENT '是否组合商品 1是（物料见 ecom_order_item_part，material_id / material_qty 为空）';
+
+CREATE TABLE ecom_order_item_part (
+    id            BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id     BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    order_id      BIGINT         NOT NULL COMMENT '平台订单',
+    order_item_id BIGINT         NOT NULL COMMENT '平台订单明细',
+    material_id   BIGINT         NOT NULL COMMENT '物料',
+    unit_qty      DECIMAL(18, 4) NOT NULL COMMENT '每件平台 SKU 含的物料数量',
+    material_qty  DECIMAL(18, 4) NOT NULL COMMENT '物料数量 = 件数 × unit_qty',
+    share         DECIMAL(10, 6) NOT NULL DEFAULT 1 COMMENT '收入分摊比例（各组件合计为 1，按 用量 × 参考成本）',
+    cost          DECIMAL(18, 2)          DEFAULT NULL COMMENT '出库成本（本位币）',
+    sort          INT            NOT NULL DEFAULT 0 COMMENT '顺序',
+    create_time   DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time   DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_order_item_part_item (order_item_id),
+    KEY idx_ecom_order_item_part_order (order_id),
+    KEY idx_ecom_order_item_part_material (material_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '平台订单明细的组合商品展开（匹配时按组成记录）';
+
+-- 包裹明细：组合商品按组件拆成多行
+ALTER TABLE ecom_package_item ADD COLUMN part_id BIGINT DEFAULT NULL COMMENT '组合商品的组件(ecom_order_item_part)，单品为空';
+ALTER TABLE ecom_package_item ADD COLUMN part_main TINYINT NOT NULL DEFAULT 1 COMMENT '计入订单行已分配件数 1是（组合商品只有第一个组件行）';
+
+-- 发货计划
+CREATE TABLE ecom_shipment_plan (
+    id                BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id         BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    plan_no           VARCHAR(32)    NOT NULL COMMENT '计划号（编码规则 FP）',
+    store_id          BIGINT         NOT NULL COMMENT '店铺',
+    from_warehouse_id BIGINT         NOT NULL COMMENT '发货仓（本地仓）',
+    to_warehouse_id   BIGINT         NOT NULL COMMENT '目标平台仓 / 海外仓',
+    plan_date         DATE                    DEFAULT NULL COMMENT '计划发货日期',
+    total_qty         DECIMAL(18, 4) NOT NULL DEFAULT 0 COMMENT '计划件数合计（平台 SKU）',
+    status            VARCHAR(16)    NOT NULL DEFAULT 'DRAFT' COMMENT '状态(字典 ecom_shipment_plan_status) DRAFT草稿 CONFIRMED已确认 GENERATED已生成货件 CANCELLED已取消',
+    remark            VARCHAR(255)            DEFAULT NULL COMMENT '备注',
+    dept_id           BIGINT                  DEFAULT NULL COMMENT '制单人部门（数据权限）',
+    create_by         BIGINT                  DEFAULT NULL COMMENT '制单人',
+    create_time       DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time       DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_shipment_plan_no (plan_no, tenant_id),
+    KEY idx_ecom_shipment_plan_store (store_id, status),
+    KEY idx_ecom_shipment_plan_dept (dept_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '发货计划（FBA / 平台仓补货计划）';
+
+CREATE TABLE ecom_shipment_plan_item (
+    id          BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id   BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    plan_id     BIGINT         NOT NULL COMMENT '发货计划',
+    listing_id  BIGINT         NOT NULL COMMENT '在线商品',
+    seller_sku  VARCHAR(64)    NOT NULL COMMENT '平台 SKU',
+    qty         DECIMAL(18, 4) NOT NULL COMMENT '计划件数（平台 SKU）',
+    remark      VARCHAR(255)            DEFAULT NULL COMMENT '备注',
+    create_time DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_shipment_plan_item_plan (plan_id),
+    KEY idx_ecom_shipment_plan_item_listing (listing_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '发货计划明细';
+
+-- 头程货件：来源发货计划；明细按平台 SKU 计件数（装箱、FNSKU 标签）
+ALTER TABLE ecom_inbound ADD COLUMN plan_id BIGINT DEFAULT NULL COMMENT '来源发货计划';
+CREATE INDEX idx_ecom_inbound_plan ON ecom_inbound (plan_id);
+ALTER TABLE ecom_inbound_item ADD COLUMN listing_id BIGINT DEFAULT NULL COMMENT '在线商品（发货计划生成或按 店铺 + 平台 SKU 识别）';
+ALTER TABLE ecom_inbound_item ADD COLUMN sku_qty DECIMAL(18, 4) DEFAULT NULL COMMENT '本行对应的平台 SKU 件数（单品 = 数量 ÷ 多件装，组合 = 数量 ÷ 组件用量）';
+ALTER TABLE ecom_inbound_item ADD COLUMN part_main TINYINT NOT NULL DEFAULT 1 COMMENT '计入平台 SKU 件数 1是（组合商品只有第一个组件行）';
+ALTER TABLE ecom_inbound_item ADD COLUMN plan_item_id BIGINT DEFAULT NULL COMMENT '来源发货计划明细';
+CREATE INDEX idx_ecom_inbound_item_plan ON ecom_inbound_item (plan_item_id);
+
+CREATE TABLE ecom_inbound_box (
+    id          BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id   BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    inbound_id  BIGINT         NOT NULL COMMENT '头程货件',
+    box_no      INT            NOT NULL COMMENT '箱号（货件内从 1 开始）',
+    length      DECIMAL(10, 2)          DEFAULT NULL COMMENT '长（cm）',
+    width       DECIMAL(10, 2)          DEFAULT NULL COMMENT '宽（cm）',
+    height      DECIMAL(10, 2)          DEFAULT NULL COMMENT '高（cm）',
+    weight      DECIMAL(18, 3)          DEFAULT NULL COMMENT '毛重（kg）',
+    remark      VARCHAR(255)            DEFAULT NULL COMMENT '备注',
+    create_time DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ecom_inbound_box (inbound_id, box_no, tenant_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '头程货件的箱子';
+
+CREATE TABLE ecom_inbound_box_item (
+    id          BIGINT         NOT NULL AUTO_INCREMENT COMMENT '主键',
+    tenant_id   BIGINT NOT NULL DEFAULT 1 COMMENT '租户ID',
+    inbound_id  BIGINT         NOT NULL COMMENT '头程货件',
+    box_no      INT            NOT NULL COMMENT '箱号',
+    seller_sku  VARCHAR(64)    NOT NULL COMMENT '平台 SKU（没有平台 SKU 的明细为物料编码）',
+    qty         DECIMAL(18, 4) NOT NULL COMMENT '件数（平台 SKU）',
+    create_time DATETIME                DEFAULT NULL COMMENT '创建时间',
+    update_time DATETIME                DEFAULT NULL COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ecom_inbound_box_item (inbound_id, box_no)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '头程货件箱内的平台 SKU 与件数';
+
+-- 菜单：店铺与商品下的 SKU 配对，库存与物流下的发货计划；头程货件的装箱按钮
+INSERT INTO sys_menu (id, parent_id, name, type, path, component, perms, icon, sort, visible, status, create_time, update_time) VALUES
+(450, 981, 'SKU 配对', 'C', 'sku-pairing', 'ecom/sku-pairing/index', 'ecom:pairing:list', 'ApartmentOutlined', 4, 1, 1, NOW(), NOW()),
+(451, 983, '发货计划', 'C', 'shipment-plan', 'ecom/shipment-plan/index', 'ecom:shipmentPlan:list', 'ScheduleOutlined', 1, 1, 1, NOW(), NOW()),
+(4500, 450, '确认 / 解除配对', 'F', NULL, NULL, 'ecom:pairing:edit', NULL, 1, 1, 1, NOW(), NOW()),
+(4501, 450, '导入配对', 'F', NULL, NULL, 'ecom:pairing:import', NULL, 2, 1, 1, NOW(), NOW()),
+(4510, 451, '计划新增', 'F', NULL, NULL, 'ecom:shipmentPlan:add', NULL, 1, 1, 1, NOW(), NOW()),
+(4511, 451, '计划修改', 'F', NULL, NULL, 'ecom:shipmentPlan:edit', NULL, 2, 1, 1, NOW(), NOW()),
+(4512, 451, '计划删除', 'F', NULL, NULL, 'ecom:shipmentPlan:remove', NULL, 3, 1, 1, NOW(), NOW()),
+(4513, 451, '计划确认 / 取消', 'F', NULL, NULL, 'ecom:shipmentPlan:confirm', NULL, 4, 1, 1, NOW(), NOW()),
+(4514, 451, '生成货件', 'F', NULL, NULL, 'ecom:shipmentPlan:generate', NULL, 5, 1, 1, NOW(), NOW()),
+(4520, 425, '货件装箱', 'F', NULL, NULL, 'ecom:inbound:box', NULL, 6, 1, 1, NOW(), NOW());
+
+-- 系统字典：组成方式、发货计划状态
+INSERT INTO sys_dict_type (id, name, type, kind, status, remark, create_time, update_time) VALUES
+(250, '商品组成方式', 'ecom_compose_type', 'SYSTEM', 1, '在线商品是单品还是组合商品', NOW(), NOW()),
+(251, '发货计划状态', 'ecom_shipment_plan_status', 'SYSTEM', 1, '发货计划的状态', NOW(), NOW());
+INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, tag_color, sort, status, builtin, create_time, update_time) VALUES
+('ecom_compose_type', '单品', 'SINGLE', 'default', 1, 1, 1, NOW(), NOW()),
+('ecom_compose_type', '组合', 'BUNDLE', 'purple', 2, 1, 1, NOW(), NOW()),
+('ecom_shipment_plan_status', '草稿', 'DRAFT', 'default', 1, 1, 1, NOW(), NOW()),
+('ecom_shipment_plan_status', '已确认', 'CONFIRMED', 'processing', 2, 1, 1, NOW(), NOW()),
+('ecom_shipment_plan_status', '已生成货件', 'GENERATED', 'green', 3, 1, 1, NOW(), NOW()),
+('ecom_shipment_plan_status', '已取消', 'CANCELLED', 'red', 4, 1, 1, NOW(), NOW());
+
+-- 内置角色：电商运营全部；仓库管理员发货计划与装箱；普通用户、总经理只读
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT g.role_id, g.menu_id FROM (
+    SELECT 5 AS role_id, 450 AS menu_id UNION ALL SELECT 5, 4500 UNION ALL SELECT 5, 4501 UNION ALL SELECT 5, 451 UNION ALL SELECT 5, 4510
+    UNION ALL SELECT 5, 4511 UNION ALL SELECT 5, 4512 UNION ALL SELECT 5, 4513 UNION ALL SELECT 5, 4514 UNION ALL SELECT 5, 4520
+    UNION ALL SELECT 6, 17 UNION ALL SELECT 6, 983 UNION ALL SELECT 6, 451 UNION ALL SELECT 6, 4510 UNION ALL SELECT 6, 4511 UNION ALL SELECT 6, 4512
+    UNION ALL SELECT 6, 4513 UNION ALL SELECT 6, 4514 UNION ALL SELECT 6, 425 UNION ALL SELECT 6, 4520
+    UNION ALL SELECT 2, 450 UNION ALL SELECT 2, 451 UNION ALL SELECT 3, 450 UNION ALL SELECT 3, 451
+) g
+WHERE EXISTS (SELECT 1 FROM sys_role r WHERE r.id = g.role_id)
+  AND NOT EXISTS (SELECT 1 FROM sys_role_menu x WHERE x.role_id = g.role_id AND x.menu_id = g.menu_id);

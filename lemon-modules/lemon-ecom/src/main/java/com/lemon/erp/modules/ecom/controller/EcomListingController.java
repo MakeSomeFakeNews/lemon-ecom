@@ -9,10 +9,16 @@ import com.lemon.erp.framework.excel.ImportRequest;
 import com.lemon.erp.framework.excel.ImportResult;
 import com.lemon.erp.framework.log.OperLog;
 import com.lemon.erp.framework.log.OperType;
+import com.lemon.erp.modules.ecom.dto.ListingPairsRequest;
+import com.lemon.erp.modules.ecom.dto.SpuGroup;
+import com.lemon.erp.modules.ecom.dto.StyleMatchRequest;
+import com.lemon.erp.modules.ecom.dto.StyleMatchRow;
 import com.lemon.erp.modules.ecom.entity.EcomListing;
 import com.lemon.erp.modules.ecom.model.FulfillmentType;
+import com.lemon.erp.modules.ecom.model.ListingComposeType;
 import com.lemon.erp.modules.ecom.model.ListingStatus;
 import com.lemon.erp.modules.ecom.service.EcomListingService;
+import com.lemon.erp.modules.ecom.service.EcomPairingService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -39,6 +45,7 @@ import java.util.List;
 public class EcomListingController {
 
     private final EcomListingService listingService;
+    private final EcomPairingService pairingService;
     private final ImportExecutor importExecutor;
 
     @GetMapping
@@ -46,8 +53,34 @@ public class EcomListingController {
     public R<PageResult<EcomListing>> page(@RequestParam(defaultValue = "1") long current, @RequestParam(defaultValue = "10") long size,
                                            @RequestParam(required = false) Long storeId, @RequestParam(required = false) String keyword,
                                            @RequestParam(required = false) ListingStatus status, @RequestParam(required = false) FulfillmentType fulfillment,
-                                           @RequestParam(required = false) Boolean mapped, @RequestParam(required = false) Long materialId) {
-        return R.ok(listingService.page(current, size, storeId, keyword, status, fulfillment, mapped, materialId));
+                                           @RequestParam(required = false) Boolean mapped, @RequestParam(required = false) Long materialId,
+                                           @RequestParam(required = false) ListingComposeType composeType,
+                                           @RequestParam(required = false) String parentItemId) {
+        return R.ok(listingService.page(current, size, storeId, keyword, status, fulfillment, mapped, materialId, composeType, parentItemId));
+    }
+
+    /** SPU 视图：店铺 + 父商品 ID 分组，展开时按 parentItemId 查询变体 */
+    @GetMapping("/spu")
+    @PreAuthorize("@ss.hasPerm('ecom:listing:list')")
+    public R<PageResult<SpuGroup>> spu(@RequestParam(defaultValue = "1") long current, @RequestParam(defaultValue = "10") long size,
+                                       @RequestParam(required = false) Long storeId, @RequestParam(required = false) String keyword,
+                                       @RequestParam(required = false) Boolean mapped) {
+        return R.ok(pairingService.spuPage(current, size, storeId, keyword, mapped));
+    }
+
+    /** 按款式批量映射：预览配对结果（不保存），确认后调用 map-batch */
+    @PostMapping("/map-style/preview")
+    @PreAuthorize("@ss.hasPerm('ecom:listing:edit')")
+    public R<List<StyleMatchRow>> previewStyle(@Validated @RequestBody StyleMatchRequest req) {
+        return R.ok(pairingService.previewStyle(req));
+    }
+
+    /** 批量映射为单品（按款式批量映射确认） */
+    @PostMapping("/map-batch")
+    @PreAuthorize("@ss.hasPerm('ecom:listing:edit')")
+    @OperLog(title = "在线商品", type = OperType.UPDATE) // i18n-ignore 操作日志标题存库
+    public R<Integer> mapBatch(@Validated @RequestBody ListingPairsRequest req) {
+        return R.ok(listingService.mapAll(req.pairs()));
     }
 
     @GetMapping("/{id}")

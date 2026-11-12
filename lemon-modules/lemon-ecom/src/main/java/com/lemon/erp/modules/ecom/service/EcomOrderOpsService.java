@@ -106,7 +106,7 @@ public class EcomOrderOpsService {
             return null;
         }
         EcomStore store = storeService.get(o.getStoreId());
-        List<EcomOrderItem> items = itemMapper.selectByOrderId(o.getId());
+        List<EcomOrderItem> items = outboundSupport.attachParts(itemMapper.selectByOrderId(o.getId()));
         EcomOrderRuleService.Outcome r = ruleService.evaluate(o, store.getPlatform(), items);
         LambdaUpdateWrapper<EcomOrder> u = Wrappers.<EcomOrder>lambdaUpdate().eq(EcomOrder::getId, o.getId())
                 .set(EcomOrder::getMatchedRules, r.matched().isEmpty() ? null : abbreviate(String.join(", ", r.matched())))
@@ -182,8 +182,7 @@ public class EcomOrderOpsService {
     private String auditInternal(EcomOrder o) {
         EcomStore store = storeService.requireEnabled(o.getStoreId());
         List<EcomOrderItem> items = itemMapper.selectByOrderId(o.getId());
-        String exception = outboundSupport.match(store.getId(), items);
-        items.forEach(itemMapper::updateById);
+        String exception = outboundSupport.matchAndSave(store.getId(), items);
         if (exception != null) {
             orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getLocalStatus, EcomLocalStatus.EXCEPTION)
                     .set(EcomOrder::getException, exception).eq(EcomOrder::getId, o.getId()));

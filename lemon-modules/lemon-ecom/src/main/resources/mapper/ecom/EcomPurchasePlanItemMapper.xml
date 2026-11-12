@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomPurchasePlanItemMapper">
+
+    <!-- 已到货数量 = 生成的采购订单中本物料明细的已入库数量（只读引用供应链的订单表；订单被删除时 order_status 为空） -->
+    <select id="selectByPlanId" resultType="com.lemon.erp.modules.ecom.entity.EcomPurchasePlanItem">
+        SELECT it.*, m.code AS material_code, m.name AS material_name, m.spec AS material_spec, m.unit,
+               sp.name AS supplier_name, o.status AS order_status, COALESCE(arr.qty, 0) AS arrived_qty
+        FROM ecom_purchase_plan_item it
+        LEFT JOIN wms_material m ON m.id = it.material_id
+        LEFT JOIN scm_supplier sp ON sp.id = it.supplier_id
+        LEFT JOIN scm_order o ON o.id = it.order_id
+        LEFT JOIN (SELECT oi.order_id, oi.material_id, SUM(oi.done_qty) AS qty FROM scm_order_item oi
+                   WHERE oi.order_id IN (SELECT x.order_id FROM ecom_purchase_plan_item x WHERE x.plan_id = #{planId} AND x.order_id IS NOT NULL)
+                   GROUP BY oi.order_id, oi.material_id) arr ON arr.order_id = it.order_id AND arr.material_id = it.material_id
+        WHERE it.plan_id = #{planId}
+        ORDER BY it.id
+    </select>
+
+    <insert id="insertBatch">
+        INSERT INTO ecom_purchase_plan_item (plan_id, material_id, suggest_qty, qty, supplier_id, price, tax_rate, arrival_date, demand,
+                                             order_id, order_no, remark, create_time, update_time)
+        VALUES
+        <foreach collection="items" item="i" separator=",">
+            (#{i.planId}, #{i.materialId}, #{i.suggestQty}, #{i.qty}, #{i.supplierId}, #{i.price}, #{i.taxRate}, #{i.arrivalDate}, #{i.demand},
+             #{i.orderId}, #{i.orderNo}, #{i.remark}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        </foreach>
+    </insert>
+
+</mapper>

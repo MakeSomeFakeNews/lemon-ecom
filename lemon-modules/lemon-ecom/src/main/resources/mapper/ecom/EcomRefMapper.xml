@@ -7,6 +7,8 @@
             SELECT 'ecom.label.listing' AS label, 1 AS ord FROM ecom_listing WHERE material_id = #{id}
             UNION ALL SELECT 'ecom.label.inbound', 2 FROM ecom_inbound_item WHERE material_id = #{id}
             UNION ALL SELECT 'ecom.label.platformOrder', 3 FROM ecom_order_item WHERE material_id = #{id}
+            UNION ALL SELECT 'ecom.label.catalog.bundle', 4 FROM ecom_bundle_item WHERE material_id = #{id}
+            UNION ALL SELECT 'ecom.label.platformOrder', 5 FROM ecom_order_item_part WHERE material_id = #{id}
         ) t ORDER BY t.ord LIMIT 1
     </select>
 

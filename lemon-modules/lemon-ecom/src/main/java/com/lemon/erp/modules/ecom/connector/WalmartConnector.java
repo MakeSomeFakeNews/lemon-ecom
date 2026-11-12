@@ -15,7 +15,6 @@ import tools.jackson.databind.JsonNode;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
@@ -49,7 +48,15 @@ import java.util.function.Function;
  * 编码约定：平台订单号为 purchaseOrderId，订单行 platformLineId 为 lineNumber，sellerSku 取 item.sku（沃尔玛订单行只有卖家 SKU，
  * 没有退路），订单行 platformItemId 为空；在线商品 platformItemId 为 wpid（沃尔玛商品 ID），库存只按 sellerSku 回传。
  * 金额：订单行 charges 中 PRODUCT 计为商品金额（行合计，单价 = 金额 / 数量）、SHIPPING 计为运费，税额为各项 tax 之和。
- * 说明：按公开文档实现，尚未用真实卖家账号联调
+ * 访问令牌 accessToken / accessTokenExpiresAt 是连接器自己缓存的（{@link CredentialField#cached}），店铺表单不显示。WFS 订单回传发货时跳过。
+ * <p>
+ * 说明：按公开文档实现，尚未用真实卖家账号联调。需要真实账号联调确认：
+ * <ul>
+ *   <li>订单列表默认只返回自发货订单、shipNodeType=WFSFulfilled 的取值，以及 nextCursor 的格式（是否以 ? 开头）</li>
+ *   <li>承运商枚举（carrierName.carrier）与 otherCarrier 的使用条件，methodCode 是否需要按订单的 shippingInfo.methodCode</li>
+ *   <li>商品列表 /v3/items 的 offset 上限（大目录可能需要改用 nextCursor）与 limit 上限</li>
+ *   <li>逐个 SKU 的 PUT /v3/inventory 限速；SKU 多时应改为 feeds 批量</li>
+ * </ul>
  */
 @Component
 public class WalmartConnector implements ChannelConnector {
@@ -60,6 +67,7 @@ public class WalmartConnector implements ChannelConnector {
     private static final int ORDER_LIMIT = 100;
     private static final int ITEM_LIMIT = 50;
     private static final int MAX_PAGES = 50;
+    private static final int MAX_ITEM_PAGES = 200;
     private static final List<String> SHIP_NODE_TYPES = List.of("SellerFulfilled", "WFSFulfilled");
     /** 沃尔玛承运商枚举中的常见值，其他承运商按 otherCarrier 传 */
     private static final Set<String> CARRIERS = Set.of("UPS", "USPS", "FedEx", "Airborne", "OnTrac", "DHL", "LS", "UDS", "UPSMI", "FDX",
@@ -68,7 +76,9 @@ public class WalmartConnector implements ChannelConnector {
     private static final ConnectorInfo INFO = new ConnectorInfo(EcomPlatform.WALMART, AuthType.KEYS, List.of(
             CredentialField.text("clientId", "ecom.label.cred.walmartClientId", true),
             CredentialField.secret("clientSecret", "ecom.label.cred.walmartClientSecret"),
-            CredentialField.text("shipNode", "ecom.label.cred.walmartShipNode", false)),
+            CredentialField.text("shipNode", "ecom.label.cred.walmartShipNode", false),
+            CredentialField.cached("accessToken", true),
+            CredentialField.cached("accessTokenExpiresAt", false)),
             "https://marketplace.walmartapis.com", "https://sandbox.walmartapis.com",
             EnumSet.of(ConnectorCapability.ORDERS, ConnectorCapability.SHIP_CONFIRM, ConnectorCapability.INVENTORY_PUSH,
                     ConnectorCapability.LISTINGS),
@@ -129,9 +139,7 @@ public class WalmartConnector implements ChannelConnector {
     }
 
     private static boolean isUnauthorized(BizException e) {
-        Object[] args = e.getArgs();
-        return "ecom.error.connectorHttpError".equals(e.getMessageKey()) && args != null && args.length > 1
-                && Integer.valueOf(401).equals(args[1]);
+        return ConnectorHttpException.is(e, 401);
     }
 
     private static Map<String, String> headers(ConnectorContext ctx) {
@@ -158,7 +166,11 @@ public class WalmartConnector implements ChannelConnector {
         for (String nodeType : SHIP_NODE_TYPES) {
             String query = "?lastModifiedStartDate=" + ConnectorSigns.enc(after) + "&limit=" + ORDER_LIMIT
                     + "&shipNodeType=" + nodeType + "&productInfo=false";
-            for (int page = 0; page < MAX_PAGES && query != null; page++) {
+            for (int page = 0; query != null; page++) {
+                if (page >= MAX_PAGES) {
+                    ConnectorJson.warnPageLimit(PLATFORM, "orders " + nodeType, MAX_PAGES);
+                    break;
+                }
                 String url = base + "/v3/orders" + query;
                 JsonNode list = exec(ctx, h -> HttpJson.get(url, h, PLATFORM)).path("list");
                 for (JsonNode o : list.path("elements").path("order")) {
@@ -175,7 +187,7 @@ public class WalmartConnector implements ChannelConnector {
         OrderDraft d = new OrderDraft();
         d.setStoreId(store.getId());
         d.setPlatformOrderNo(HttpJson.text(o, "purchaseOrderId"));
-        d.setOrderTime(epochMillis(o.get("orderDate")));
+        d.setOrderTime(ConnectorJson.unixMillis(o.get("orderDate")));
         d.setPaidTime(d.getOrderTime());
         d.setBuyerEmail(HttpJson.text(o, "customerEmailId"));
         String nodeType = HttpJson.text(o.path("shipNode"), "type");
@@ -185,12 +197,12 @@ public class WalmartConnector implements ChannelConnector {
         d.setFulfillment("WFSFulfilled".equals(nodeType) ? FulfillmentType.PLATFORM : FulfillmentType.SELLER);
         JsonNode ship = o.path("shippingInfo");
         d.setShipPhone(HttpJson.text(ship, "phone"));
-        d.setShipBy(epochMillis(ship.get("estimatedShipDate")));
-        d.setDeliverBy(epochMillis(ship.get("estimatedDeliveryDate")));
+        d.setShipBy(ConnectorJson.unixMillis(ship.get("estimatedShipDate")));
+        d.setDeliverBy(ConnectorJson.unixMillis(ship.get("estimatedDeliveryDate")));
         JsonNode addr = ship.path("postalAddress");
         d.setShipName(HttpJson.text(addr, "name"));
         d.setBuyerName(d.getShipName());
-        d.setShipAddress(join(HttpJson.text(addr, "address1"), HttpJson.text(addr, "address2")));
+        d.setShipAddress(ConnectorJson.join(HttpJson.text(addr, "address1"), HttpJson.text(addr, "address2")));
         d.setShipCity(HttpJson.text(addr, "city"));
         d.setShipState(HttpJson.text(addr, "state"));
         d.setShipPostcode(HttpJson.text(addr, "postalCode"));
@@ -211,11 +223,11 @@ public class WalmartConnector implements ChannelConnector {
                 BigDecimal amount = HttpJson.decimal(ch, "chargeAmount", "amount");
                 String type = HttpJson.text(ch, "chargeType");
                 if ("PRODUCT".equals(type)) {
-                    product = add(product, amount);
+                    product = ConnectorJson.add(product, amount);
                 } else if ("SHIPPING".equals(type)) {
-                    shipping = add(shipping, amount);
+                    shipping = ConnectorJson.add(shipping, amount);
                 }
-                tax = add(tax, HttpJson.decimal(ch, "tax", "taxAmount", "amount"));
+                tax = ConnectorJson.add(tax, HttpJson.decimal(ch, "tax", "taxAmount", "amount"));
                 if (d.getCurrency() == null) {
                     d.setCurrency(HttpJson.text(ch.path("chargeAmount"), "currency"));
                 }
@@ -266,7 +278,13 @@ public class WalmartConnector implements ChannelConnector {
     // ---------------------------------------------------------------- 发货
 
     @Override
-    public void confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
+    public ShipmentResult confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
+        if (order.getFulfillment() == FulfillmentType.PLATFORM) {
+            return ShipmentResult.skipped("WFS");
+        }
+        if (order.getTrackingNo() == null || order.getTrackingNo().isBlank()) {
+            throw new BizException("ecom.error.connectorCallFailed", PLATFORM, "tracking number missing");
+        }
         long shipTime = (order.getShipTime() == null ? LocalDateTime.now() : order.getShipTime())
                 .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
         Map<String, Object> carrierName = new LinkedHashMap<>();
@@ -289,7 +307,8 @@ public class WalmartConnector implements ChannelConnector {
             tracking.put("trackingNumber", order.getTrackingNo());
             Map<String, Object> st = new LinkedHashMap<>();
             st.put("status", "Shipped");
-            st.put("statusQuantity", Map.of("unitOfMeasurement", "EACH", "amount", it.getQty().stripTrailingZeros().toPlainString()));
+            BigDecimal qty = it.getQty() == null || it.getQty().signum() <= 0 ? BigDecimal.ONE : it.getQty();
+            st.put("statusQuantity", Map.of("unitOfMeasurement", "EACH", "amount", qty.stripTrailingZeros().toPlainString()));
             st.put("trackingInfo", tracking);
             Map<String, Object> line = new LinkedHashMap<>();
             line.put("lineNumber", it.getPlatformLineId());
@@ -299,6 +318,7 @@ public class WalmartConnector implements ChannelConnector {
         Map<String, Object> body = Map.of("orderShipment", Map.of("orderLines", Map.of("orderLine", lines)));
         String url = ctx.baseUrl(INFO) + "/v3/orders/" + ConnectorSigns.enc(order.getPlatformOrderNo()) + "/shipping";
         exec(ctx, h -> HttpJson.postJson(url, h, body, PLATFORM));
+        return ShipmentResult.confirmed(order.getTrackingNo(), order.getCarrier());
     }
 
     // ---------------------------------------------------------------- 库存与商品
@@ -308,7 +328,7 @@ public class WalmartConnector implements ChannelConnector {
         String base = ctx.baseUrl(INFO);
         String shipNode = ctx.credentials().get("shipNode");
         for (InventoryUpdate u : updates) {
-            int qty = Math.max(0, u.qty().setScale(0, RoundingMode.DOWN).intValue());
+            int qty = u.intQty();
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("sku", u.sellerSku());
             body.put("quantity", Map.of("unit", "EACH", "amount", qty));
@@ -322,7 +342,11 @@ public class WalmartConnector implements ChannelConnector {
     public List<ListingDraft> fetchListings(ConnectorContext ctx) {
         String base = ctx.baseUrl(INFO);
         List<ListingDraft> list = new ArrayList<>();
-        for (int page = 0; page < MAX_PAGES; page++) {
+        for (int page = 0; ; page++) {
+            if (page >= MAX_ITEM_PAGES) {
+                ConnectorJson.warnPageLimit(PLATFORM, "items", MAX_ITEM_PAGES);
+                break;
+            }
             String url = base + "/v3/items?limit=" + ITEM_LIMIT + "&offset=" + (page * ITEM_LIMIT);
             JsonNode resp = exec(ctx, h -> HttpJson.get(url, h, PLATFORM));
             JsonNode items = resp.path("ItemResponse");
@@ -362,32 +386,5 @@ public class WalmartConnector implements ChannelConnector {
             return null;
         }
         return "USA".equalsIgnoreCase(c) ? "US" : c.toUpperCase(Locale.ROOT);
-    }
-
-    private static BigDecimal add(BigDecimal a, BigDecimal b) {
-        return a == null ? b : b == null ? a : a.add(b);
-    }
-
-    private static LocalDateTime epochMillis(JsonNode v) {
-        if (v == null || v.isNull()) {
-            return null;
-        }
-        try {
-            long n = v.isString() ? Long.parseLong(v.asString()) : v.asLong();
-            return n <= 0 ? null : LocalDateTime.ofInstant(Instant.ofEpochMilli(n), ZoneId.systemDefault());
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-
-    private static String join(String... parts) {
-        StringBuilder sb = new StringBuilder();
-        for (String p : parts) {
-            if (p != null && !p.isBlank()) {
-                if (!sb.isEmpty()) sb.append(' ');
-                sb.append(p.trim());
-            }
-        }
-        return sb.isEmpty() ? null : sb.toString();
     }
 }

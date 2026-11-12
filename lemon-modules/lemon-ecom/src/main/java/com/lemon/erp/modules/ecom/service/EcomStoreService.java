@@ -7,6 +7,7 @@ import com.lemon.erp.common.exception.BizException;
 import com.lemon.erp.common.result.PageResult;
 import com.lemon.erp.framework.dict.DictLookup;
 import com.lemon.erp.modules.ecom.connector.ConnectorContext;
+import com.lemon.erp.modules.ecom.connector.ConnectorRegistry;
 import com.lemon.erp.modules.ecom.connector.CredentialCipher;
 import com.lemon.erp.modules.ecom.connector.StoreCredentials;
 import com.lemon.erp.modules.ecom.entity.EcomListing;
@@ -29,7 +30,6 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -55,6 +55,7 @@ public class EcomStoreService {
     private final FinCurrencyService currencyService;
     private final DictLookup dictLookup;
     private final CredentialCipher cipher;
+    private final ConnectorRegistry connectorRegistry;
 
     public PageResult<EcomStore> page(long current, long size, String keyword, EcomPlatform platform, EnableStatus status) {
         Page<EcomStore> page = Page.of(current, size);
@@ -180,17 +181,12 @@ public class EcomStoreService {
     }
 
     /**
-     * 修改店铺时提交的授权 JSON 与已保存的合并：提交的键覆盖原值，值为空串的键删除，没提交的键（如 OAuth 换来的令牌）保留
+     * 修改店铺时提交的授权 JSON 与已保存的合并：提交的键覆盖原值，值为空串的键删除，没提交的键（如 OAuth 换来的令牌）保留，
+     * 连接器缓存的字段（CredentialField.cached）始终保留
      */
     private String mergeCredentials(EcomStore old, String submitted) {
-        Map<String, String> merged = new HashMap<>(credentials(old).values());
-        StoreCredentials.parse(submitted).values().forEach((k, v) -> {
-            if (v == null || v.isBlank()) {
-                merged.remove(k);
-            } else {
-                merged.put(k, v);
-            }
-        });
+        java.util.Set<String> cached = connectorRegistry.find(old.getPlatform()).map(c -> c.info().cachedKeys()).orElse(java.util.Set.of());
+        Map<String, String> merged = StoreCredentials.merge(credentials(old).values(), StoreCredentials.parse(submitted).values(), cached);
         return merged.isEmpty() ? null : HttpJsonHolder.write(merged);
     }
 

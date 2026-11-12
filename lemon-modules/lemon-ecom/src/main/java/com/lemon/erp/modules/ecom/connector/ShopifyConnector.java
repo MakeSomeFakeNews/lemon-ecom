@@ -15,10 +15,6 @@ import tools.jackson.databind.JsonNode;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -39,15 +35,23 @@ import java.util.Map;
  * 编码约定：
  * <ul>
  *   <li>platformOrderNo 为订单的数字 ID（legacyResourceId，回传发货时拼成 gid://shopify/Order/{id}）；订单名称（如 #1001）写入备注开头</li>
- *   <li>明细 platformLineId 为订单行（LineItem）的数字 ID</li>
- *   <li>platformItemId 为库存项（InventoryItem）的数字 ID —— 回传库存的 inventorySetQuantities 需要它；在线商品的 parentItemId 为商品（Product）数字 ID。
- *       回传库存时 platformItemId 也接受完整 gid；为空时按 sellerSku 查询变体（productVariants sku:xxx）取库存项</li>
+ *   <li>明细 platformLineId 为订单行（LineItem）的数字 ID，platformItemId 为变体（ProductVariant）数字 ID</li>
+ *   <li>在线商品 platformItemId 为变体数字 ID、parentItemId 为商品（Product）数字 ID，附加 ID（extra）中保存
+ *       variantId 与 inventoryItemId（回传库存的 inventorySetQuantities 需要库存项）。回传库存时按 extra.inventoryItemId；
+ *       没有附加 ID 的旧在线商品沿用旧编码（platformItemId 即库存项 ID，也接受完整 gid）；都没有时按 sellerSku 查询变体取库存项</li>
  *   <li>sellerSku 取订单行 / 变体的 SKU；变体没有填 SKU 时退为变体数字 ID（在线商品与订单两边一致，便于在 ERP 中映射）</li>
- *   <li>订单运费（totalShippingPriceSet）在 GraphQL 中只有订单级金额，记在第一行明细上</li>
+ *   <li>订单运费（totalShippingPriceSet）在 GraphQL 中只有订单级金额，写入订单级运费 {@link OrderDraft#setShippingAmount}；税按订单行 taxLines</li>
+ *   <li>回传库存的地点：在线商品附加 ID 中的 warehouseId（没有时）→ 授权信息 locationId → 店铺主地点</li>
  * </ul>
- * GraphQL 返回的 errors（含限流 THROTTLED）与 mutation 的 userErrors 都转为业务异常。
+ * GraphQL 返回的 errors（含限流 THROTTLED）与 mutation 的 userErrors 都转为业务异常；HTTP 429 由 {@link HttpJson} 自动重试。
  * <p>
- * 说明：按 Shopify 公开文档实现，尚未用真实开发商店联调
+ * 说明：按 Shopify 公开文档实现，尚未用真实开发商店联调。需要真实账号联调确认：
+ * <ul>
+ *   <li>Admin API 版本 {@value #API_VERSION} 的字段（displayFinancialStatus、fulfillmentOrders、inventorySetQuantities 的 ignoreCompareQuantity）仍可用，版本过期前升级</li>
+ *   <li>订单查询 25 条 × 每单 20 行的查询成本不超过单次 1000 点；大店铺 THROTTLED 时是否需要按 extensions.cost 主动降速</li>
+ *   <li>fulfillmentCreate 对第三方配送地点（fulfillment service）的配送单是否需要先 accept；notifyCustomer 是否符合卖家习惯</li>
+ *   <li>多地点库存：每个 SKU 只回传一个地点，多仓卖家需要为在线商品指定地点（附加 ID warehouseId）</li>
+ * </ul>
  */
 @Component
 public class ShopifyConnector implements ChannelConnector {
@@ -55,10 +59,14 @@ public class ShopifyConnector implements ChannelConnector {
     static final String PLATFORM = "Shopify";
     /** Admin API 版本（Shopify 每季度发布一个版本，每个版本至少支持 12 个月） */
     static final String API_VERSION = "2025-01";
-    private static final int ORDER_PAGE_SIZE = 10;
+    /** 每页订单数：25 单 × 每单 20 行的查询成本约 525 点，低于单次查询上限 1000 */
+    private static final int ORDER_PAGE_SIZE = 25;
     private static final int LINE_PAGE_SIZE = 20;
     private static final int LISTING_PAGE_SIZE = 100;
-    private static final int MAX_PAGES = 50;
+    private static final int MAX_PAGES = 200;
+    /** 在线商品附加 ID：变体与库存项的数字 ID */
+    static final String EXTRA_VARIANT_ID = "variantId";
+    static final String EXTRA_INVENTORY_ITEM_ID = "inventoryItemId";
     private static final int INVENTORY_BATCH = 100;
     private static final ConnectorInfo INFO = new ConnectorInfo(EcomPlatform.SHOPIFY, AuthType.KEYS, List.of(
             CredentialField.text("shopDomain", "ecom.label.cred.shopifyShopDomain", true),
@@ -67,7 +75,7 @@ public class ShopifyConnector implements ChannelConnector {
             "https://{shopDomain}", null,
             EnumSet.of(ConnectorCapability.ORDERS, ConnectorCapability.SHIP_CONFIRM, ConnectorCapability.INVENTORY_PUSH,
                     ConnectorCapability.LISTINGS),
-            "https://shopify.dev/docs/api/admin-graphql");
+            "https://shopify.dev/docs/api/admin-graphql").withPerStoreBaseUrl();
 
     private static final String LINE_FIELDS = """
             pageInfo { hasNextPage endCursor }
@@ -158,8 +166,7 @@ public class ShopifyConnector implements ChannelConnector {
     @Override
     public List<OrderDraft> fetchOrders(ConnectorContext ctx, LocalDateTime since) {
         Api api = api(ctx);
-        String filter = "updated_at:>='" + since.atZone(ZoneId.systemDefault()).withZoneSameInstant(ZoneOffset.UTC)
-                .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME) + "'";
+        String filter = "updated_at:>='" + ConnectorJson.toUtcIso(since) + "'";
         List<OrderDraft> drafts = new ArrayList<>();
         String after = null;
         int pages = 0;
@@ -186,16 +193,16 @@ public class ShopifyConnector implements ChannelConnector {
                 for (JsonNode li : lines) {
                     d.getLines().add(toLine(li));
                 }
-                BigDecimal shipping = HttpJson.decimal(o, "totalShippingPriceSet", "shopMoney", "amount");
-                if (shipping != null && shipping.signum() != 0 && !d.getLines().isEmpty()) {
-                    d.getLines().get(0).setShipping(shipping);
-                }
+                d.setShippingAmount(ConnectorJson.decimal(o, "totalShippingPriceSet", "shopMoney", "amount"));
                 drafts.add(d);
             }
             JsonNode pageInfo = orders.path("pageInfo");
             after = pageInfo.path("hasNextPage").asBoolean(false) ? HttpJson.text(pageInfo, "endCursor") : null;
             pages++;
         } while (after != null && pages < MAX_PAGES);
+        if (after != null) {
+            ConnectorJson.warnPageLimit(PLATFORM, "orders", MAX_PAGES);
+        }
         return drafts;
     }
 
@@ -222,11 +229,11 @@ public class ShopifyConnector implements ChannelConnector {
         d.setShipState(HttpJson.text(addr, "province"));
         d.setShipCity(HttpJson.text(addr, "city"));
         d.setShipPostcode(HttpJson.text(addr, "zip"));
-        d.setShipAddress(join(HttpJson.text(addr, "address1"), HttpJson.text(addr, "address2")));
+        d.setShipAddress(ConnectorJson.join(HttpJson.text(addr, "address1"), HttpJson.text(addr, "address2")));
         if (d.getBuyerName() == null) {
             d.setBuyerName(d.getShipName());
         }
-        d.setNote(join(HttpJson.text(o, "name"), HttpJson.text(o, "note")));
+        d.setNote(ConnectorJson.join(HttpJson.text(o, "name"), HttpJson.text(o, "note")));
         return d;
     }
 
@@ -234,22 +241,20 @@ public class ShopifyConnector implements ChannelConnector {
         OrderDraft.Line l = new OrderDraft.Line();
         l.setPlatformLineId(numericId(HttpJson.text(li, "id")));
         JsonNode variant = li.path("variant");
-        l.setSellerSku(sku(HttpJson.text(li, "sku"), HttpJson.text(variant, "sku"), numericId(HttpJson.text(variant, "id"))));
-        l.setPlatformItemId(numericId(HttpJson.text(variant.path("inventoryItem"), "id")));
+        String variantId = numericId(HttpJson.text(variant, "id"));
+        l.setSellerSku(sku(HttpJson.text(li, "sku"), HttpJson.text(variant, "sku"), variantId));
+        l.setPlatformItemId(variantId);
         String variantTitle = HttpJson.text(li, "variantTitle");
         l.setTitle(HttpJson.text(li, "name") == null ? variantTitle : HttpJson.text(li, "name"));
         BigDecimal qty = HttpJson.decimal(li, "quantity");
-        l.setQty(qty == null ? BigDecimal.ONE : qty);
+        l.setQty(qty == null || qty.signum() <= 0 ? BigDecimal.ONE : qty);
         BigDecimal price = HttpJson.decimal(li, "originalUnitPriceSet", "shopMoney", "amount");
         l.setPrice(price == null ? BigDecimal.ZERO : price);
         l.setAmount(l.getPrice().multiply(l.getQty()).setScale(2, RoundingMode.HALF_UP));
         l.setDiscount(HttpJson.decimal(li, "totalDiscountSet", "shopMoney", "amount"));
         BigDecimal tax = null;
         for (JsonNode t : li.path("taxLines")) {
-            BigDecimal v = HttpJson.decimal(t, "priceSet", "shopMoney", "amount");
-            if (v != null) {
-                tax = tax == null ? v : tax.add(v);
-            }
+            tax = ConnectorJson.add(tax, HttpJson.decimal(t, "priceSet", "shopMoney", "amount"));
         }
         l.setTax(tax);
         return l;
@@ -280,10 +285,11 @@ public class ShopifyConnector implements ChannelConnector {
 
     /**
      * 回传发货：查询订单的配送单（fulfillmentOrders），对状态为 OPEN / IN_PROGRESS 的配送单调用 fulfillmentCreate 并带上运单号。
-     * 明细带 platformLineId 时只发这些订单行（数量取明细数量与剩余数量的较小值），否则发全部剩余数量
+     * 明细带 platformLineId 时只发这些订单行（数量取明细数量与剩余数量的较小值），否则发全部剩余数量。
+     * 配送单都已关闭（在 Shopify 后台已发货）时跳过
      */
     @Override
-    public void confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
+    public ShipmentResult confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
         Api api = api(ctx);
         Map<String, BigDecimal> wanted = new LinkedHashMap<>();
         if (items != null) {
@@ -296,11 +302,13 @@ public class ShopifyConnector implements ChannelConnector {
         JsonNode fos = api.call(FULFILLMENT_ORDERS_QUERY, Map.of("id", gid("Order", order.getPlatformOrderNo())))
                 .path("order").path("fulfillmentOrders").path("nodes");
         List<Map<String, Object>> groups = new ArrayList<>();
+        boolean anyOpen = false;
         for (JsonNode fo : fos) {
             String st = HttpJson.text(fo, "status");
             if (!"OPEN".equals(st) && !"IN_PROGRESS".equals(st)) {
                 continue;
             }
+            anyOpen = true;
             Map<String, Object> group = new LinkedHashMap<>();
             group.put("fulfillmentOrderId", HttpJson.text(fo, "id"));
             if (!wanted.isEmpty()) {
@@ -326,6 +334,9 @@ public class ShopifyConnector implements ChannelConnector {
             groups.add(group);
         }
         if (groups.isEmpty()) {
+            if (!anyOpen && !fos.isEmpty()) {
+                return ShipmentResult.skipped("fulfillment orders already closed");
+            }
             throw new BizException("ecom.error.connectorCallFailed", PLATFORM, "no open fulfillment order for " + order.getPlatformOrderNo());
         }
         Map<String, Object> tracking = new LinkedHashMap<>();
@@ -341,13 +352,14 @@ public class ShopifyConnector implements ChannelConnector {
         fulfillment.put("notifyCustomer", true);
         JsonNode payload = api.call(FULFILLMENT_CREATE, Map.of("fulfillment", fulfillment)).path("fulfillmentCreate");
         checkUserErrors(payload);
+        return ShipmentResult.confirmed(order.getTrackingNo(), order.getCarrier());
     }
 
     // ---------------------------------------------------------------- 库存
 
     /**
      * 回传可售库存：inventorySetQuantities（name = available，忽略比较数量），每批 100 个库存项；
-     * 地点取授权信息中的 locationId，没有填时用店铺的主地点
+     * 地点取在线商品附加 ID 的 warehouseId，其次授权信息中的 locationId，都没有时用店铺的主地点
      */
     @Override
     public void pushInventory(ConnectorContext ctx, List<InventoryUpdate> updates) {
@@ -355,24 +367,25 @@ public class ShopifyConnector implements ChannelConnector {
             return;
         }
         Api api = api(ctx);
-        String location = ctx.credentials().get("locationId");
-        if (location == null) {
-            location = HttpJson.text(api.call(PRIMARY_LOCATION, Map.of()).path("location"), "id");
-            if (location == null) {
-                throw new BizException("ecom.error.connectorCallFailed", PLATFORM, "primary location not found");
-            }
-        }
-        String locationGid = gid("Location", location);
+        String defaultLocation = ctx.credentials().get("locationId");
         List<Map<String, Object>> quantities = new ArrayList<>();
         for (InventoryUpdate u : updates) {
-            String item = u.platformItemId();
+            String location = u.platformWarehouseId() != null ? u.platformWarehouseId() : defaultLocation;
+            if (location == null) {
+                location = HttpJson.text(api.call(PRIMARY_LOCATION, Map.of()).path("location"), "id");
+                if (location == null) {
+                    throw new BizException("ecom.error.connectorCallFailed", PLATFORM, "primary location not found");
+                }
+                defaultLocation = location;
+            }
+            String item = inventoryItemId(u);
             if (item == null) {
                 item = inventoryItemBySku(api, u.sellerSku());
             }
             Map<String, Object> q = new LinkedHashMap<>();
             q.put("inventoryItemId", gid("InventoryItem", item));
-            q.put("locationId", locationGid);
-            q.put("quantity", u.qty() == null ? 0 : Math.max(0, u.qty().intValue()));
+            q.put("locationId", gid("Location", location));
+            q.put("quantity", u.intQty());
             quantities.add(q);
         }
         for (int i = 0; i < quantities.size(); i += INVENTORY_BATCH) {
@@ -383,6 +396,25 @@ public class ShopifyConnector implements ChannelConnector {
             input.put("quantities", quantities.subList(i, Math.min(quantities.size(), i + INVENTORY_BATCH)));
             checkUserErrors(api.call(INVENTORY_SET, Map.of("input", input)).path("inventorySetQuantities"));
         }
+    }
+
+    /**
+     * 库存项 ID：附加 ID 中的 inventoryItemId；没有附加 ID 的旧在线商品 platformItemId 即库存项 ID（或完整 gid）；
+     * 有附加 ID 但没有库存项时返回 null（按 SKU 查询）
+     */
+    static String inventoryItemId(InventoryUpdate u) {
+        String item = u.extra(EXTRA_INVENTORY_ITEM_ID);
+        if (item != null) {
+            return item;
+        }
+        String id = u.platformItemId();
+        if (id == null || id.isBlank()) {
+            return null;
+        }
+        if (id.startsWith("gid://")) {
+            return id.contains("/InventoryItem/") ? id : null;
+        }
+        return u.extra().containsKey(EXTRA_VARIANT_ID) ? null : id.trim();
     }
 
     private static String inventoryItemBySku(Api api, String sku) {
@@ -423,6 +455,9 @@ public class ShopifyConnector implements ChannelConnector {
             after = pageInfo.path("hasNextPage").asBoolean(false) ? HttpJson.text(pageInfo, "endCursor") : null;
             pages++;
         } while (after != null && pages < MAX_PAGES);
+        if (after != null) {
+            ConnectorJson.warnPageLimit(PLATFORM, "listings", MAX_PAGES);
+        }
         return list;
     }
 
@@ -446,11 +481,13 @@ public class ShopifyConnector implements ChannelConnector {
             url = "https://" + domain + "/admin/products/" + productId + (variantId == null ? "" : "/variants/" + variantId);
         }
         BigDecimal qty = HttpJson.decimal(v, "inventoryQuantity");
-        return new ListingDraft(sku(HttpJson.text(v, "sku"), null, variantId),
-                numericId(HttpJson.text(v.path("inventoryItem"), "id")), productId,
+        Map<String, String> extra = new LinkedHashMap<>();
+        extra.put(EXTRA_VARIANT_ID, variantId);
+        extra.put(EXTRA_INVENTORY_ITEM_ID, numericId(HttpJson.text(v.path("inventoryItem"), "id")));
+        return new ListingDraft(sku(HttpJson.text(v, "sku"), null, variantId), variantId, productId,
                 HttpJson.text(product, "title"), "Default Title".equals(variantTitle) ? null : variantTitle,
                 HttpJson.decimal(v, "price"), currency, qty, FulfillmentType.SELLER.name(),
-                listingStatus(HttpJson.text(product, "status")), image, url);
+                listingStatus(HttpJson.text(product, "status")), image, url, extra);
     }
 
     /** 商品状态 ACTIVE 在售，ARCHIVED / DRAFT 下架 */
@@ -531,34 +568,11 @@ public class ShopifyConnector implements ChannelConnector {
     }
 
     private static String sku(String lineSku, String variantSku, String variantId) {
-        if (lineSku != null && !lineSku.isBlank()) {
-            return lineSku.trim();
-        }
-        if (variantSku != null && !variantSku.isBlank()) {
-            return variantSku.trim();
-        }
-        return variantId;
+        String s = ConnectorJson.firstNonBlank(lineSku, variantSku);
+        return s != null ? s : variantId;
     }
 
     private static LocalDateTime time(String iso) {
-        if (iso == null) {
-            return null;
-        }
-        try {
-            return OffsetDateTime.parse(iso).atZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime();
-        } catch (RuntimeException e) {
-            return null;
-        }
-    }
-
-    private static String join(String... parts) {
-        StringBuilder sb = new StringBuilder();
-        for (String p : parts) {
-            if (p != null && !p.isBlank()) {
-                if (!sb.isEmpty()) sb.append(' ');
-                sb.append(p.trim());
-            }
-        }
-        return sb.isEmpty() ? null : sb.toString();
+        return ConnectorJson.isoTime(iso);
     }
 }

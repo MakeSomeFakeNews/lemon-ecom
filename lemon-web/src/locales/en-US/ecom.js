@@ -221,6 +221,10 @@ export default {
       MANUAL: 'Manual'
     },
     form: {
+      perStoreBaseUrl: 'API Address',
+      perStoreBaseUrlTip: 'The API address of each store is built from the shop domain in the credentials; no custom address is needed',
+      redirectNote: 'Redirect URL',
+      orderWindowNote: 'Order Sync',
       authSection: 'Channel API',
       authType: 'Authorization Type',
       authTypeName: {

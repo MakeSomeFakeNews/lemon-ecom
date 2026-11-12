@@ -19,3 +19,5 @@ export const submitEcomInbound = (id) => request.post(`/ecom/inbound/${id}/submi
 export const receiveEcomInbound = (id, receiveDate) => request.post(`/ecom/inbound/${id}/receive`, null, { params: { receiveDate } })
 /** 取消草稿 / 审批中的货件 */
 export const cancelEcomInbound = (id) => request.post(`/ecom/inbound/${id}/cancel`)
+/** 装箱（整体替换）：{ boxes: [{ length, width, height, weight, remark, items: [{ sellerSku, qty }] }] } */
+export const saveEcomInboundBoxes = (id, boxes) => request.put(`/ecom/inbound/${id}/boxes`, { boxes })

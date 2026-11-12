@@ -41,7 +41,8 @@ public record InboundRequest(
         @NotEmpty(message = "{ecom.valid.addLineItems}") @Size(max = 500, message = "{ecom.valid.lineItemsCannotExceed}") List<@Valid @NotNull Item> items) {
 
     /**
-     * 明细：物料（必填）与平台 SKU（可空，用于对照平台货件）
+     * 明细：物料（必填）与平台 SKU（可空，用于对照平台货件）；listingId（可空，没有时按 店铺 + 平台 SKU 识别）用于按平台 SKU 计件数，
+     * planItemId 为来源发货计划明细（由发货计划生成时带入，修改草稿时原样提交）
      */
     public record Item(
             @NotNull(message = "{ecom.valid.selectMaterial}") Long materialId,
@@ -49,6 +50,12 @@ public record InboundRequest(
             @NotNull(message = "{ecom.valid.enterQuantity}")
             @DecimalMin(value = "0", inclusive = false, message = "{ecom.valid.quantityMustGreater}")
             @Digits(integer = 14, fraction = 4, message = "{ecom.valid.qtyDecimals}") BigDecimal qty,
-            @Size(max = 255, message = "{ecom.valid.remarkCannotExceedCharacters}") String remark) {
+            @Size(max = 255, message = "{ecom.valid.remarkCannotExceedCharacters}") String remark,
+            Long listingId,
+            Long planItemId) {
+
+        public Item(Long materialId, String sellerSku, BigDecimal qty, String remark) {
+            this(materialId, sellerSku, qty, remark, null, null);
+        }
     }
 }

@@ -1,5 +1,6 @@
 package com.lemon.erp.modules.ecom.service;
 
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.lemon.erp.common.exception.BizException;
 import com.lemon.erp.common.i18n.Messages;
@@ -14,6 +15,8 @@ import com.lemon.erp.modules.ecom.connector.ConnectorRegistry;
 import com.lemon.erp.modules.ecom.connector.CredentialField;
 import com.lemon.erp.modules.ecom.connector.OAuthResult;
 import com.lemon.erp.modules.ecom.connector.OAuthState;
+import com.lemon.erp.modules.ecom.connector.ShipmentResult;
+import com.lemon.erp.modules.ecom.connector.ShipmentResultStatus;
 import com.lemon.erp.modules.ecom.connector.StoreCredentials;
 import com.lemon.erp.modules.ecom.dto.ChannelHubViews.LogStat;
 import com.lemon.erp.modules.ecom.dto.ConnectorView;
@@ -23,6 +26,7 @@ import com.lemon.erp.modules.ecom.entity.EcomOrder;
 import com.lemon.erp.modules.ecom.entity.EcomStore;
 import com.lemon.erp.modules.ecom.entity.EcomSyncLog;
 import com.lemon.erp.modules.ecom.mapper.EcomChannelMapper;
+import com.lemon.erp.modules.ecom.mapper.EcomOrderMapper;
 import com.lemon.erp.modules.ecom.mapper.EcomSyncLogMapper;
 import com.lemon.erp.modules.ecom.model.StoreAuthStatus;
 import com.lemon.erp.modules.ecom.model.SyncType;
@@ -61,6 +65,8 @@ public class EcomSyncService {
     private final ConnectorRegistry registry;
     private final OAuthState oauthState;
     private final EcomSyncLogMapper logMapper;
+    private final EcomOrderMapper orderMapper;
+    private final EcomPackageService packageService;
     private final EcomChannelMapper channelMapper;
     private final TransactionTemplate transactionTemplate;
 
@@ -258,8 +264,7 @@ public class EcomSyncService {
         if (ctx.credentials().isEmpty()) {
             return failed(store, start, trigger, Messages.get("ecom.error.storeCredentialsMissing", store.getName()));
         }
-        LocalDateTime from = since != null ? since
-                : store.getLastSyncTime() != null ? store.getLastSyncTime().minusHours(OVERLAP_HOURS) : start.minusDays(FIRST_SYNC_DAYS);
+        LocalDateTime from = since != null ? since : incrementalFrom(store, connector.info(), start);
         List<OrderDraft> drafts;
         try {
             drafts = connector.fetchOrders(ctx, from);
@@ -292,6 +297,17 @@ public class EcomSyncService {
         storeService.markSyncMessage(store.getId(), null);
         writeLog(store.getId(), SyncType.ORDERS, trigger, start, true, drafts.size(), created[0], updated[0], null);
         return new SyncResult(store.getId(), store.getName(), drafts.size(), created[0], updated[0], null);
+    }
+
+    /**
+     * 增量同步的起点：上次同步时间往前重叠 {@link #OVERLAP_HOURS} 小时，再加连接器声明的回看小时数
+     * （{@link ConnectorInfo#lookbackHours()}，平台只能按创建时间过滤时补抓状态变化）；第一次同步取最近 {@link #FIRST_SYNC_DAYS} 天
+     */
+    public static LocalDateTime incrementalFrom(EcomStore store, ConnectorInfo info, LocalDateTime now) {
+        if (store.getLastSyncTime() == null) {
+            return now.minusDays(FIRST_SYNC_DAYS);
+        }
+        return store.getLastSyncTime().minusHours(OVERLAP_HOURS + Math.max(0, info.lookbackHours()));
     }
 
     private SyncResult failed(EcomStore store, LocalDateTime start, String trigger, String message) {
@@ -331,16 +347,72 @@ public class EcomSyncService {
             return;
         }
         LocalDateTime start = LocalDateTime.now();
+        ShipmentResult result;
         try {
-            connector.confirmShipment(ctx, order, order.getItems());
-            writeLog(store.getId(), SyncType.SHIP_CONFIRM, trigger, start, true, 1, 0, 1, order.getPlatformOrderNo());
+            result = connector.confirmShipment(ctx, order, order.getItems());
         } catch (RuntimeException ex) {
             writeLog(store.getId(), SyncType.SHIP_CONFIRM, trigger, start, false, 1, 0, 0, order.getPlatformOrderNo() + ": " + ex.getMessage());
             if (strict) {
                 throw ex;
             }
             log.warn("Shipment confirmation failed for order {} of store {}: {}", order.getPlatformOrderNo(), store.getCode(), ex.getMessage());
+            return;
         }
+        if (result == null) {
+            result = ShipmentResult.confirmed();
+        }
+        boolean written = false;
+        if (result.hasTracking() && !result.trackingNo().equals(order.getTrackingNo())) {
+            try {
+                written = writeBackTracking(order, result);
+            } catch (RuntimeException ex) {
+                log.warn("Writing platform tracking number back failed for order {} of store {}: {}", order.getPlatformOrderNo(), store.getCode(),
+                        ex.getMessage());
+            }
+        }
+        writeLog(store.getId(), SyncType.SHIP_CONFIRM, trigger, start, true, 1, 0, result.status() == ShipmentResultStatus.SKIPPED ? 0 : 1,
+                shipmentMessage(order, result, written));
+    }
+
+    /**
+     * 平台返回的运单号（平台物流托管时由平台分配）写入订单，以及该订单还没有运单号的包裹（一个事务）
+     *
+     * @return 是否写入了订单
+     */
+    private boolean writeBackTracking(EcomOrder order, ShipmentResult result) {
+        String tracking = cut(result.trackingNo(), 64);
+        String carrier = cut(result.carrier(), 64);
+        Boolean done = transactionTemplate.execute(status -> {
+            orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate().set(EcomOrder::getTrackingNo, tracking)
+                    .set(carrier != null, EcomOrder::getCarrier, carrier)
+                    .eq(EcomOrder::getId, order.getId()));
+            packageService.fillPlatformTracking(order.getId(), carrier, tracking);
+            return true;
+        });
+        return Boolean.TRUE.equals(done);
+    }
+
+    /** 回传发货日志：平台订单号，平台托管 / 跳过时加说明，平台返回运单号时附上 */
+    private static String shipmentMessage(EcomOrder order, ShipmentResult r, boolean written) {
+        String no = order.getPlatformOrderNo();
+        String msg = switch (r.status()) {
+            case PLATFORM_MANAGED -> Messages.get(Messages.DEFAULT_LOCALE, "ecom.text.hub.shipPlatformManaged", no,
+                    r.trackingNo() == null ? "-" : r.trackingNo());
+            case SKIPPED -> Messages.get(Messages.DEFAULT_LOCALE, "ecom.text.hub.shipSkipped", no, r.message() == null ? "-" : r.message());
+            default -> r.trackingNo() == null ? no : Messages.get(Messages.DEFAULT_LOCALE, "ecom.text.hub.shipConfirmedTracking", no, r.trackingNo());
+        };
+        if (written) {
+            msg = msg + Messages.get(Messages.DEFAULT_LOCALE, "ecom.text.hub.trackingWrittenBack");
+        }
+        return msg;
+    }
+
+    private static String cut(String v, int max) {
+        if (v == null || v.isBlank()) {
+            return null;
+        }
+        String t = v.trim();
+        return t.length() <= max ? t : t.substring(0, max);
     }
 
     /** 手工重新回传发货 */

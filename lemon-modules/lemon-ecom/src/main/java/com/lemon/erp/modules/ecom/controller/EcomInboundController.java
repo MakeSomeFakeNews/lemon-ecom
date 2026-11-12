@@ -97,6 +97,16 @@ public class EcomInboundController {
         return R.ok();
     }
 
+    /** 装箱（整体替换）：各箱尺寸、重量与箱内平台 SKU 件数 */
+    @PutMapping("/{id}/boxes")
+    @PreAuthorize("@ss.hasPerm('ecom:inbound:box')")
+    @OperLog(title = "头程货件", type = OperType.UPDATE) // i18n-ignore 操作日志标题存库
+    public R<Void> saveBoxes(@PathVariable Long id, @org.springframework.validation.annotation.Validated @RequestBody
+                             com.lemon.erp.modules.ecom.dto.InboundBoxRequest req) {
+        inboundService.saveBoxes(id, req);
+        return R.ok();
+    }
+
     @PostMapping("/{id}/cancel")
     @PreAuthorize("@ss.hasPerm('ecom:inbound:edit')")
     @OperLog(title = "头程货件", type = OperType.UPDATE) // i18n-ignore 操作日志标题存库

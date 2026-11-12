@@ -661,6 +661,12 @@ export const LedgerRowType = Object.freeze({
   TOTAL: 'TOTAL', // 本期合计
 })
 
+/** com.lemon.erp.modules.ecom.model.ListingComposeType（字典 ecom_compose_type） */
+export const ListingComposeType = Object.freeze({
+  SINGLE: 'SINGLE', // 单品
+  BUNDLE: 'BUNDLE', // 组合
+})
+
 /** com.lemon.erp.modules.ecom.model.ListingStatus（字典 ecom_listing_status） */
 export const ListingStatus = Object.freeze({
   ACTIVE: 'ACTIVE', // 在售
@@ -799,6 +805,7 @@ export const OrderSource = Object.freeze({
   DEALER: 'DEALER', // 经销商订货
   IMPORT: 'IMPORT', // 外部导入
   DIRECT: 'DIRECT', // 直接开单
+  PURCHASE_PLAN: 'PURCHASE_PLAN', // 电商采购计划
 })
 
 /** com.lemon.erp.modules.scm.model.OrderStatus（字典 scm_order_status） */
@@ -809,6 +816,14 @@ export const OrderStatus = Object.freeze({
   PARTIAL: 'PARTIAL', // 部分入库 / 出库
   COMPLETED: 'COMPLETED', // 已完成
   CLOSED: 'CLOSED', // 已关闭
+})
+
+/** com.lemon.erp.modules.ecom.model.PairingMatchType */
+export const PairingMatchType = Object.freeze({
+  EXACT: 'EXACT', // 平台 SKU 与物料编码相同
+  STRIPPED: 'STRIPPED', // 去掉前后缀后与物料编码相同
+  TITLE: 'TITLE', // 标题与物料名称相似
+  ATTRIBUTE: 'ATTRIBUTE', // 变体属性与 SKU 规格相同
 })
 
 /** com.lemon.erp.modules.fin.model.PartnerLedgerType */
@@ -881,6 +896,14 @@ export const PurchaseFreightCost = Object.freeze({
   EXPENSE: 'EXPENSE', // 计入当期费用
 })
 
+/** com.lemon.erp.modules.ecom.model.PurchasePlanStatus（字典 ecom_purchase_plan_status） */
+export const PurchasePlanStatus = Object.freeze({
+  DRAFT: 'DRAFT', // 草稿
+  APPROVED: 'APPROVED', // 已审核
+  ORDERED: 'ORDERED', // 已下单
+  CLOSED: 'CLOSED', // 已关闭
+})
+
 /** com.lemon.erp.modules.scm.model.QuickPrice */
 export const QuickPrice = Object.freeze({
   REF_COST: 'REF_COST', // 参考进货价
@@ -939,6 +962,12 @@ export const ReplenishLevel = Object.freeze({
   OK: 'OK', // 库存充足
   WARN: 'WARN', // 预警
   URGENT: 'URGENT', // 紧急
+})
+
+/** com.lemon.erp.modules.ecom.model.ReplenishScope */
+export const ReplenishScope = Object.freeze({
+  LISTING: 'LISTING', // 在线商品
+  MATERIAL: 'MATERIAL', // 物料
 })
 
 /** com.lemon.erp.modules.wms.model.ReservationSource */
@@ -1034,6 +1063,21 @@ export const SettlementStatus = Object.freeze({
   CONFIRMED: 'CONFIRMED', // 已确认
 })
 
+/** com.lemon.erp.modules.ecom.model.ShipmentPlanStatus（字典 ecom_shipment_plan_status） */
+export const ShipmentPlanStatus = Object.freeze({
+  DRAFT: 'DRAFT', // 草稿
+  CONFIRMED: 'CONFIRMED', // 已确认
+  GENERATED: 'GENERATED', // 已生成货件
+  CANCELLED: 'CANCELLED', // 已取消
+})
+
+/** com.lemon.erp.modules.ecom.connector.ShipmentResultStatus */
+export const ShipmentResultStatus = Object.freeze({
+  CONFIRMED: 'CONFIRMED', // 已把承运商、运单号回传平台
+  PLATFORM_MANAGED: 'PLATFORM_MANAGED', // 平台物流托管
+  SKIPPED: 'SKIPPED', // 跳过
+})
+
 /** com.lemon.erp.modules.fin.model.StatementStatus（字典 fin_statement_status） */
 export const StatementStatus = Object.freeze({
   DRAFT: 'DRAFT',
@@ -1084,6 +1128,12 @@ export const StoreAuthStatus = Object.freeze({
   NONE: 'NONE', // 未授权
   AUTHORIZED: 'AUTHORIZED', // 已授权
   REAUTH: 'REAUTH', // 需重新授权
+})
+
+/** com.lemon.erp.modules.ecom.model.StyleMatchRule */
+export const StyleMatchRule = Object.freeze({
+  ATTRIBUTE: 'ATTRIBUTE', // 按变体属性
+  SKU: 'SKU', // 按 SKU 编码
 })
 
 /** com.lemon.erp.modules.scm.model.SupplierConfirm（字典 scm_supplier_confirm） */

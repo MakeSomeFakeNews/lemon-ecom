@@ -39,8 +39,19 @@ import java.util.TreeMap;
  * 没有 sku_code 的 SKU 以「商品 ID:SKU ID」（如 1005001234:200000182:193）作为 sellerSku，这类 SKU 不能回传库存
  * （库存接口按 sku_code 定位），请在速卖通后台补填商品编码。回传库存时 InventoryUpdate.platformItemId 必须是商品 ID（先拉取在线商品）。
  * <p>
+ * 在线商品的附加 ID（extra）skuId 为速卖通 SKU ID（属性组合，如 14:193）。回传库存的商品 ID 取 parentItemId，其次 platformItemId。
+ * <p>
+ * 时间：订单时间（gmt_create、gmt_pay_time）与查询条件 modified_date_start 按 {@link #ORDER_ZONE}（美国太平洋时间）理解并换算到服务器时区；
+ * 系统参数 timestamp 为北京时间（TOP 协议要求）。
+ * <p>
  * 说明：按开放平台公开文档实现（MD5 签名：secret + 按键排序的参数名值串 + secret，结果大写），尚未用真实店铺联调；
- * 速卖通已在推广新版开放平台（api-sg.aliexpress.com，HMAC-SHA256 签名），老应用仍可使用 TOP 网关，如需迁移另行适配
+ * 速卖通已在推广新版开放平台（api-sg.aliexpress.com，HMAC-SHA256 签名），老应用仍可使用 TOP 网关，如需迁移另行适配。需要真实账号联调确认：
+ * <ul>
+ *   <li>订单时间与查询条件的时区（按美国太平洋时间实现）</li>
+ *   <li>订单状态全集（未列出的按待发货处理），已关闭订单（FINISH + 关闭原因）是否需要区分为已取消</li>
+ *   <li>aliexpress.solution.order.fulfill 的 service_name 取值（速卖通物流服务编码，ERP 承运商名称可能不匹配）</li>
+ *   <li>商品列表 product_status_type 的取值与 total_page 字段</li>
+ * </ul>
  */
 @Component
 public class AliExpressConnector implements ChannelConnector {
@@ -48,6 +59,10 @@ public class AliExpressConnector implements ChannelConnector {
     static final String PLATFORM = "AliExpress";
     private static final String GATEWAY = "https://gw.api.taobao.com/router/rest";
     private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    /** 订单时间与订单查询条件的时区 */
+    static final ZoneId ORDER_ZONE = ZoneId.of("America/Los_Angeles");
+    /** TOP 协议系统参数 timestamp 的时区 */
+    private static final ZoneId GATEWAY_ZONE = ZoneId.of("Asia/Shanghai");
     private static final int PAGE_SIZE = 50;
     private static final int MAX_PAGES = 20;
     private static final int MAX_LISTING_PAGES = 100;
@@ -82,9 +97,13 @@ public class AliExpressConnector implements ChannelConnector {
         String gateway = ctx.baseUrl(INFO);
         List<OrderDraft> drafts = new ArrayList<>();
         int page = 1;
-        while (page <= MAX_PAGES) {
+        while (true) {
+            if (page > MAX_PAGES) {
+                ConnectorJson.warnPageLimit(PLATFORM, "orders", MAX_PAGES);
+                break;
+            }
             String query = HttpJson.MAPPER.writeValueAsString(Map.of("page_size", PAGE_SIZE, "current_page", page,
-                    "modified_date_start", since.atZone(ZoneId.systemDefault()).withZoneSameInstant(ZoneId.of("Asia/Shanghai")).format(TS)));
+                    "modified_date_start", ConnectorJson.toZone(since, ORDER_ZONE).format(TS)));
             JsonNode resp = call(gateway, c, "aliexpress.solution.order.get", Map.of("param_aeop_order_query", query));
             JsonNode result = resp.path("aliexpress_solution_order_get_response").path("result");
             JsonNode list = result.path("target_list").path("order_dto");
@@ -100,7 +119,7 @@ public class AliExpressConnector implements ChannelConnector {
                 drafts.add(d);
             }
             int total = result.path("total_count").asInt(0);
-            if (page * PAGE_SIZE >= total) {
+            if (list.size() < PAGE_SIZE || (total > 0 && page * PAGE_SIZE >= total)) {
                 break;
             }
             page++;
@@ -118,7 +137,6 @@ public class AliExpressConnector implements ChannelConnector {
         d.setFulfillment(FulfillmentType.SELLER);
         d.setCurrency(HttpJson.text(o.path("order_amount"), "currency_code"));
         d.setBuyerName(HttpJson.text(o, "buyer_signer_fullname"));
-        d.setShipBy(time(HttpJson.text(o, "timeout_left_time")));
         for (JsonNode p : o.path("product_list").path("order_product_dto")) {
             OrderDraft.Line l = new OrderDraft.Line();
             l.setPlatformLineId(HttpJson.text(p, "child_id"));
@@ -126,7 +144,7 @@ public class AliExpressConnector implements ChannelConnector {
             l.setPlatformItemId(HttpJson.text(p, "product_id"));
             l.setTitle(HttpJson.text(p, "product_name"));
             BigDecimal qty = HttpJson.decimal(p, "product_count");
-            l.setQty(qty == null ? BigDecimal.ONE : qty);
+            l.setQty(qty == null || qty.signum() <= 0 ? BigDecimal.ONE : qty);
             l.setPrice(HttpJson.decimal(p, "product_unit_price", "amount"));
             l.setAmount(HttpJson.decimal(p, "total_product_amount", "amount"));
             l.setShipping(HttpJson.decimal(p, "logistics_amount", "amount"));
@@ -141,16 +159,19 @@ public class AliExpressConnector implements ChannelConnector {
             return;
         }
         d.setShipName(HttpJson.text(addr, "contact_person"));
-        d.setShipPhone(join(HttpJson.text(addr, "phone_country"), HttpJson.text(addr, "mobile_no")));
+        d.setShipPhone(ConnectorJson.join(HttpJson.text(addr, "phone_country"), HttpJson.text(addr, "mobile_no")));
         d.setShipCountry(HttpJson.text(addr, "country"));
         d.setShipState(HttpJson.text(addr, "province"));
         d.setShipCity(HttpJson.text(addr, "city"));
         d.setShipPostcode(HttpJson.text(addr, "zip"));
-        d.setShipAddress(join(HttpJson.text(addr, "detail_address"), HttpJson.text(addr, "address2")));
+        d.setShipAddress(ConnectorJson.join(HttpJson.text(addr, "detail_address"), HttpJson.text(addr, "address2")));
     }
 
     @Override
-    public void confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
+    public ShipmentResult confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
+        if (order.getCarrier() == null || order.getCarrier().isBlank() || order.getTrackingNo() == null || order.getTrackingNo().isBlank()) {
+            throw new BizException("ecom.error.connectorCallFailed", PLATFORM, "carrier and tracking number are required");
+        }
         StoreCredentials c = ctx.credentials();
         Map<String, String> params = new TreeMap<>();
         params.put("service_name", order.getCarrier());
@@ -163,6 +184,7 @@ public class AliExpressConnector implements ChannelConnector {
         if (!result.path("result_success").asBoolean(false)) {
             throw new BizException("ecom.error.connectorCallFailed", PLATFORM, HttpJson.abbreviate(result.toString()));
         }
+        return ShipmentResult.confirmed(order.getTrackingNo(), order.getCarrier());
     }
 
     // ---------------------------------------------------------------- 在线商品与库存
@@ -228,7 +250,7 @@ public class AliExpressConnector implements ChannelConnector {
             }
             drafts.add(new ListingDraft(sellerSku, productId, null, title, variant(sku), price,
                     currency != null ? currency : productCurrency != null ? productCurrency : storeCurrency, qty,
-                    FulfillmentType.SELLER.name(), status.name(), image, url));
+                    FulfillmentType.SELLER.name(), status.name(), image, url, Map.of("skuId", String.valueOf(HttpJson.text(sku, "id")))));
         }
         if (drafts.isEmpty() && productId != null) {
             drafts.add(new ListingDraft(productId, productId, null, title, null, HttpJson.decimal(summary, "product_min_price"),
@@ -267,13 +289,14 @@ public class AliExpressConnector implements ChannelConnector {
         }
         Map<String, List<Map<String, Object>>> byProduct = new LinkedHashMap<>();
         for (InventoryUpdate u : updates) {
-            if (u.platformItemId() == null || u.platformItemId().isBlank()) {
+            String productId = ConnectorJson.firstNonBlank(u.parentItemId(), u.platformItemId());
+            if (productId == null) {
                 throw new BizException("ecom.error.connectorItemIdMissing", u.sellerSku());
             }
             Map<String, Object> sku = new LinkedHashMap<>();
             sku.put("sku_code", u.sellerSku());
-            sku.put("inventory", u.qty() == null ? 0 : Math.max(0, u.qty().setScale(0, java.math.RoundingMode.DOWN).intValue()));
-            byProduct.computeIfAbsent(u.platformItemId().trim(), k -> new ArrayList<>()).add(sku);
+            sku.put("inventory", u.intQty());
+            byProduct.computeIfAbsent(productId, k -> new ArrayList<>()).add(sku);
         }
         List<Map<String, Object>> products = new ArrayList<>();
         byProduct.forEach((productId, skus) -> {
@@ -299,11 +322,16 @@ public class AliExpressConnector implements ChannelConnector {
 
     /** 调用 TOP 接口：系统参数 + 业务参数，MD5 签名，错误响应转为业务异常 */
     private static JsonNode call(String gateway, StoreCredentials c, String method, Map<String, String> business) {
-        TreeMap<String, String> params = new TreeMap<>(business);
+        TreeMap<String, String> params = new TreeMap<>();
+        business.forEach((k, v) -> {
+            if (v != null) {
+                params.put(k, v);
+            }
+        });
         params.put("method", method);
         params.put("app_key", c.require("appKey"));
         params.put("session", c.require("accessToken"));
-        params.put("timestamp", LocalDateTime.now(ZoneId.of("Asia/Shanghai")).format(TS));
+        params.put("timestamp", LocalDateTime.now(GATEWAY_ZONE).format(TS));
         params.put("format", "json");
         params.put("v", "2.0");
         params.put("sign_method", "md5");
@@ -331,29 +359,14 @@ public class AliExpressConnector implements ChannelConnector {
             case "WAIT_SELLER_SEND_GOODS", "SELLER_PART_SEND_GOODS" -> EcomOrderStatus.UNSHIPPED;
             case "WAIT_BUYER_ACCEPT_GOODS", "FUND_PROCESSING", "FINISH" -> EcomOrderStatus.SHIPPED;
             case "IN_ISSUE", "IN_FROZEN" -> EcomOrderStatus.REFUNDED;
-            default -> EcomOrderStatus.CANCELLED;
+            case "IN_CANCEL", "BUYER_CANCEL", "SELLER_CANCEL", "CANCEL" -> EcomOrderStatus.CANCELLED;
+            // 未列出的状态按待发货处理（不能把未知状态当作取消而关闭订单）
+            default -> EcomOrderStatus.UNSHIPPED;
         };
     }
 
-    private static LocalDateTime time(String s) {
-        if (s == null) {
-            return null;
-        }
-        try {
-            return LocalDateTime.parse(s, TS);
-        } catch (RuntimeException e) {
-            return null;
-        }
-    }
-
-    private static String join(String... parts) {
-        StringBuilder sb = new StringBuilder();
-        for (String p : parts) {
-            if (p != null && !p.isBlank()) {
-                if (!sb.isEmpty()) sb.append(' ');
-                sb.append(p.trim());
-            }
-        }
-        return sb.isEmpty() ? null : sb.toString();
+    /** 订单时间（{@link #ORDER_ZONE}）→ 服务器时区 */
+    static LocalDateTime time(String s) {
+        return ConnectorJson.localTime(s, TS, ORDER_ZONE);
     }
 }

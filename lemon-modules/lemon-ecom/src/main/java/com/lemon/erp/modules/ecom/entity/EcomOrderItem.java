@@ -34,6 +34,12 @@ public class EcomOrderItem extends BaseEntity {
     private BigDecimal materialQty;
     /** 成本（本位币） */
     private BigDecimal cost;
+    /** 是否组合商品 1是：物料见 parts（materialId / materialQty 为空） */
+    private Integer bundle;
+
+    /** 组合商品展开的物料（ecom_order_item_part） */
+    @TableField(exist = false)
+    private java.util.List<EcomOrderItemPart> parts;
 
     @TableField(exist = false)
     private String materialCode;

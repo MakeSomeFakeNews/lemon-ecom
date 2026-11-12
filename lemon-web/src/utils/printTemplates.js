@@ -131,6 +131,21 @@ export const PRINT_TYPES = [
     signs: [n.prepared, n.picker]
   },
   {
+    key: 'ecom.packingList',
+    module: n.modEcom,
+    name: n.packingList,
+    fields: [n.shipmentId, n.store, n.shipFrom, n.shipTo, n.boxCount, n.totalQty, n.grossWeight],
+    columns: [n.boxNo, n.boxSize, num(n.grossWeight), n.sellerSku, n.fnsku, n.productTitle, num(n.quantity)],
+    signs: [n.packer, n.prepared]
+  },
+  {
+    key: 'ecom.cartonLabel',
+    module: n.modEcom,
+    name: n.cartonLabel,
+    fields: [n.shipmentId, n.boxNo, n.shipFrom, n.shipTo, n.boxSize, n.grossWeight],
+    columns: [n.sellerSku, n.fnsku, num(n.quantity)]
+  },
+  {
     key: 'fin.partnerStatement',
     module: n.modFin,
     name: n.partnerStatement,

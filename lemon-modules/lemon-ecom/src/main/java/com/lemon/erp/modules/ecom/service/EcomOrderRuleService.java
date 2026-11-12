@@ -261,7 +261,11 @@ public class EcomOrderRuleService {
         }
         if (r.getMaterialIds() != null) {
             Set<String> ids = set(r.getMaterialIds(), false);
-            if (items.stream().map(EcomOrderItem::getMaterialId).filter(Objects::nonNull).noneMatch(id -> ids.contains(String.valueOf(id)))) {
+            // 组合商品按展开的组件物料匹配
+            if (items.stream().flatMap(it -> it.getParts() != null && !it.getParts().isEmpty()
+                            ? it.getParts().stream().map(com.lemon.erp.modules.ecom.entity.EcomOrderItemPart::getMaterialId)
+                            : java.util.stream.Stream.of(it.getMaterialId()))
+                    .filter(Objects::nonNull).noneMatch(id -> ids.contains(String.valueOf(id)))) {
                 return false;
             }
         }

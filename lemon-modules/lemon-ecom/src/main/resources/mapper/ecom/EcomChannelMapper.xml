@@ -3,9 +3,10 @@
 <mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomChannelMapper">
 
     <select id="selectPushCandidates" resultType="com.lemon.erp.modules.ecom.entity.EcomListing">
-        SELECT l.id, l.store_id, l.seller_sku, l.platform_item_id, l.material_id, l.pack_qty, l.last_pushed_qty
+        SELECT l.id, l.store_id, l.seller_sku, l.platform_item_id, l.parent_item_id, l.platform_extra, l.material_id, l.pack_qty, l.compose_type, l.last_pushed_qty
         FROM ecom_listing l
-        WHERE l.store_id = #{storeId} AND l.fulfillment = 'SELLER' AND l.status = 'ACTIVE' AND l.material_id IS NOT NULL
+        WHERE l.store_id = #{storeId} AND l.fulfillment = 'SELLER' AND l.status = 'ACTIVE'
+          AND (l.material_id IS NOT NULL OR (l.compose_type = 'BUNDLE' AND EXISTS (SELECT 1 FROM ecom_bundle_item b WHERE b.listing_id = l.id)))
         ORDER BY l.id
     </select>
 

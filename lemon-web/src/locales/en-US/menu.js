@@ -1,6 +1,25 @@
 // 菜单名称英文翻译：键为 sys_menu.id（与 sql/init.sql 一致），中文直接使用数据库中的名称
 export default {
   17: 'E-commerce', // 电商
+  // 商品体系（店铺与商品 981 下的 SKU 配对，库存与物流 983 下的发货计划，头程货件 425 的装箱按钮）
+  450: 'SKU Pairing', // SKU 配对
+  451: 'Shipment Plans', // 发货计划
+  4500: 'Confirm / Unpair SKUs', // 确认 / 解除配对
+  4501: 'Import Pairings', // 导入配对
+  4510: 'Add Plan', // 计划新增
+  4511: 'Edit Plan', // 计划修改
+  4512: 'Delete Plan', // 计划删除
+  4513: 'Confirm / Cancel Plan', // 计划确认 / 取消
+  4514: 'Generate Shipments', // 生成货件
+  4520: 'Pack Boxes', // 货件装箱
+  // 补货建议 → 采购计划（库存与物流 983 下的页面，补货建议 427 的按钮）
+  460: 'Purchase Plans', // 采购计划
+  4600: 'Add Purchase Plan', // 采购计划新增
+  4601: 'Edit Purchase Plan', // 采购计划修改
+  4602: 'Delete Purchase Plan', // 采购计划删除
+  4603: 'Approve Purchase Plan', // 采购计划审核
+  4604: 'Generate Purchase Orders', // 生成采购订单
+  4605: 'Replenishment Settings', // 补货设置
   440: 'Channels', // 渠道接入
   4400: 'Authorize Store', // 店铺授权
   4401: 'Sync Listings', // 同步商品

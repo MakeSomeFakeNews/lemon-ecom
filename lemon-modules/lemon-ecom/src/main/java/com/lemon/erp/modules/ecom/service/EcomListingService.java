@@ -5,10 +5,13 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.lemon.erp.common.exception.BizException;
 import com.lemon.erp.common.result.PageResult;
 import com.lemon.erp.common.util.Decimals;
+import com.lemon.erp.modules.ecom.dto.ListingPair;
+import com.lemon.erp.modules.ecom.entity.EcomBundleItem;
 import com.lemon.erp.modules.ecom.entity.EcomListing;
 import com.lemon.erp.modules.ecom.entity.EcomStore;
 import com.lemon.erp.modules.ecom.mapper.EcomListingMapper;
 import com.lemon.erp.modules.ecom.model.FulfillmentType;
+import com.lemon.erp.modules.ecom.model.ListingComposeType;
 import com.lemon.erp.modules.ecom.model.ListingStatus;
 import com.lemon.erp.modules.wms.entity.WmsMaterial;
 import com.lemon.erp.modules.wms.service.WmsMaterialService;
@@ -35,12 +38,31 @@ public class EcomListingService {
     private final EcomListingMapper listingMapper;
     private final EcomStoreService storeService;
     private final WmsMaterialService materialService;
+    private final EcomBundleService bundleService;
 
     public PageResult<EcomListing> page(long current, long size, Long storeId, String keyword, ListingStatus status, FulfillmentType fulfillment,
                                         Boolean mapped, Long materialId) {
+        return page(current, size, storeId, keyword, status, fulfillment, mapped, materialId, null, null);
+    }
+
+    /**
+     * @param composeType  只看单品 / 组合
+     * @param parentItemId 只看某个父商品的变体（SPU 视图展开）
+     */
+    public PageResult<EcomListing> page(long current, long size, Long storeId, String keyword, ListingStatus status, FulfillmentType fulfillment,
+                                        Boolean mapped, Long materialId, ListingComposeType composeType, String parentItemId) {
         Page<EcomListing> page = Page.of(current, size);
-        listingMapper.selectPageList(page, storeId, keyword, status, fulfillment, mapped, materialId);
+        listingMapper.selectPageList(page, storeId, keyword, status, fulfillment, mapped, materialId, composeType, parentItemId);
+        attachBundles(page.getRecords());
         return PageResult.of(page);
+    }
+
+    /** 组合商品带上组成（列表、详情显示） */
+    public void attachBundles(List<EcomListing> list) {
+        List<Long> ids = list.stream().filter(l -> l.getComposeType() == ListingComposeType.BUNDLE).map(EcomListing::getId).toList();
+        Map<Long, List<EcomBundleItem>> items = bundleService.itemsOf(ids);
+        list.stream().filter(l -> l.getComposeType() == ListingComposeType.BUNDLE)
+                .forEach(l -> l.setBundleItems(items.getOrDefault(l.getId(), List.of())));
     }
 
     public EcomListing detail(Long id) {
@@ -48,6 +70,7 @@ public class EcomListingService {
         if (l == null) {
             throw new BizException("ecom.error.listingNotFound");
         }
+        attachBundles(List.of(l));
         return l;
     }
 
@@ -57,6 +80,14 @@ public class EcomListingService {
             throw new BizException("ecom.error.listingNotFound");
         }
         return l;
+    }
+
+    /** 按 ID 批量取在线商品：ID → 在线商品 */
+    public Map<Long, EcomListing> mapByIds(Collection<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Map.of();
+        }
+        return listingMapper.selectByIds(ids).stream().collect(Collectors.toMap(EcomListing::getId, Function.identity()));
     }
 
     /** 店铺中若干平台 SKU 的在线商品：SKU → 在线商品（SKU 大小写按原样匹配） */
@@ -71,11 +102,15 @@ public class EcomListingService {
     @Transactional
     public Long create(EcomListing l) {
         l.setId(null);
+        if (l.getComposeType() == ListingComposeType.BUNDLE && l.getBundleItems() == null) {
+            throw new BizException("ecom.error.catalog.bundleEmpty");
+        }
         normalize(l);
         if (findByStoreSku(l.getStoreId(), l.getSellerSku()) != null) {
             throw new BizException("ecom.error.listingSkuExists", l.getSellerSku());
         }
         listingMapper.insert(l);
+        saveBundle(l);
         return l.getId();
     }
 
@@ -93,20 +128,56 @@ public class EcomListingService {
         if (l.getMaterialId() == null && old.getMaterialId() != null) {
             listingMapper.update(Wrappers.<EcomListing>lambdaUpdate().set(EcomListing::getMaterialId, null).eq(EcomListing::getId, id));
         }
+        if (l.getFnsku() == null && old.getFnsku() != null) {
+            listingMapper.update(Wrappers.<EcomListing>lambdaUpdate().set(EcomListing::getFnsku, null).eq(EcomListing::getId, id));
+        }
+        // 导入更新（没有带组成）时保留原组合的组成
+        if (l.getComposeType() != ListingComposeType.BUNDLE || l.getBundleItems() != null) {
+            saveBundle(l);
+        }
     }
 
-    /** 只修改物料映射（订单异常处理时使用） */
+    /** 组合商品保存组成，单品清空组成 */
+    private void saveBundle(EcomListing l) {
+        bundleService.replace(l.getId(), l.getComposeType() == ListingComposeType.BUNDLE ? l.getBundleItems() : null);
+    }
+
+    /** 只修改物料映射（订单异常处理、SKU 配对时使用）：映射为单品，原来是组合的清空组成 */
     @Transactional
     public void map(Long id, Long materialId, BigDecimal packQty) {
         get(id);
         checkMaterial(materialId);
         listingMapper.update(Wrappers.<EcomListing>lambdaUpdate().set(EcomListing::getMaterialId, materialId)
                 .set(EcomListing::getPackQty, packQty == null || packQty.signum() <= 0 ? BigDecimal.ONE : Decimals.qty(packQty))
+                .set(EcomListing::getComposeType, ListingComposeType.SINGLE)
                 .eq(EcomListing::getId, id));
+        bundleService.replace(id, null);
     }
 
+    /** 批量配对（推荐一键确认、按款式批量映射） */
+    @Transactional
+    public int mapAll(List<ListingPair> pairs) {
+        for (ListingPair p : pairs) {
+            map(p.listingId(), p.materialId(), p.packQty());
+        }
+        return pairs.size();
+    }
+
+    /** 解除配对：单品清空映射，组合清空组成并改为单品 */
+    @Transactional
+    public void unpair(List<Long> ids) {
+        if (ids.isEmpty()) {
+            return;
+        }
+        listingMapper.update(Wrappers.<EcomListing>lambdaUpdate().set(EcomListing::getMaterialId, null).set(EcomListing::getPackQty, BigDecimal.ONE)
+                .set(EcomListing::getComposeType, ListingComposeType.SINGLE).in(EcomListing::getId, ids));
+        bundleService.deleteByListings(ids);
+    }
+
+    @Transactional
     public void delete(List<Long> ids) {
         listingMapper.deleteByIds(ids);
+        bundleService.deleteByListings(ids);
     }
 
     /**
@@ -132,6 +203,11 @@ public class EcomListingService {
             create(row);
             return;
         }
+        if (row.getComposeType() == null) {
+            // 导入只能映射单品：填了物料编码的改为单品，否则保持原组成方式（组合的组成不变）
+            row.setComposeType(row.getMaterialId() != null ? ListingComposeType.SINGLE : existing.getComposeType());
+        }
+        if (row.getFnsku() == null) row.setFnsku(existing.getFnsku());
         if (row.getMaterialId() == null) {
             row.setMaterialId(existing.getMaterialId());
             if (row.getPackQty() == null) row.setPackQty(existing.getPackQty());
@@ -154,6 +230,21 @@ public class EcomListingService {
         if (!StringUtils.hasText(l.getCurrency())) l.setCurrency(store.getCurrency());
         l.setPackQty(l.getPackQty() == null || l.getPackQty().signum() <= 0 ? BigDecimal.ONE : Decimals.qty(l.getPackQty()));
         if (l.getPlatformQty() != null) l.setPlatformQty(Decimals.qty(l.getPlatformQty()));
+        if (StringUtils.hasText(l.getFnsku())) {
+            l.setFnsku(l.getFnsku().trim().toUpperCase());
+        } else {
+            l.setFnsku(null);
+        }
+        if (l.getComposeType() == null) l.setComposeType(ListingComposeType.SINGLE);
+        if (l.getComposeType() == ListingComposeType.BUNDLE) {
+            // 组合：物料在组成中，没有带组成（导入更新）时保留原组成
+            l.setMaterialId(null);
+            l.setPackQty(BigDecimal.ONE);
+            if (l.getBundleItems() != null) {
+                l.setBundleItems(bundleService.normalize(l.getBundleItems()));
+            }
+            return;
+        }
         if (l.getMaterialId() != null) {
             checkMaterial(l.getMaterialId());
         }

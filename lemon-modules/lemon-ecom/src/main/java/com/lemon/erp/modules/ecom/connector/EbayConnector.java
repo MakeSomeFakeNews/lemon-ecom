@@ -14,9 +14,7 @@ import tools.jackson.databind.JsonNode;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
-import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -62,7 +60,14 @@ import java.util.Map;
  * 拉取商品：GET /sell/inventory/v1/inventory_item，每页 100 条按 offset 分页（最多 50 页），platformItemId 为 SKU
  * （inventory_item 不含刊登 ID 与价格，价格在 offer 中，未逐个查询）。
  * <p>
- * 说明：按 eBay 公开文档实现，尚未用真实卖家账号联调
+ * 说明：按 eBay 公开文档实现，尚未用真实卖家账号联调。需要真实账号联调确认：
+ * <ul>
+ *   <li>RuName 的 accept URL 配置为本系统回调地址后，回调参数（code、state）是否原样带回</li>
+ *   <li>getOrders 的 lastmodifieddate 过滤与 offset 上限；FULFILLED_BY_EBAY 订单的识别</li>
+ *   <li>shipping_fulfillment 的 shippingCarrierCode 取值（需使用 eBay 承运商枚举，ERP 承运商名称可能不匹配）</li>
+ *   <li>Trading API / 网页刊登的老商品不在 Inventory API 中：拉取商品、回传库存都覆盖不到</li>
+ *   <li>ebayCollectAndRemitTaxes 计入订单税额是否符合财务口径（该税由 eBay 代收代缴）</li>
+ * </ul>
  */
 @Component
 public class EbayConnector implements ChannelConnector {
@@ -86,11 +91,13 @@ public class EbayConnector implements ChannelConnector {
             CredentialField.secret("clientSecret", "ecom.label.cred.ebayClientSecret"),
             CredentialField.text("ruName", "ecom.label.cred.ebayRuName", true),
             CredentialField.token("accessToken", "ecom.label.cred.accessToken"),
-            CredentialField.token("refreshToken", "ecom.label.cred.refreshToken")),
+            CredentialField.token("refreshToken", "ecom.label.cred.refreshToken"),
+            CredentialField.cached("accessTokenExpiresAt", false),
+            CredentialField.cached("refreshTokenExpiresAt", false)),
             "https://api.ebay.com", "https://api.sandbox.ebay.com",
             EnumSet.of(ConnectorCapability.ORDERS, ConnectorCapability.SHIP_CONFIRM, ConnectorCapability.INVENTORY_PUSH,
                     ConnectorCapability.LISTINGS),
-            "https://developer.ebay.com/develop/apis/restful-apis/sell-apis");
+            "https://developer.ebay.com/develop/apis/restful-apis/sell-apis").withRedirectNote("ecom.text.connector.redirect.ebay");
 
     @Override
     public ConnectorInfo info() {
@@ -117,7 +124,8 @@ public class EbayConnector implements ChannelConnector {
         StoreCredentials c = ctx.credentials();
         String code = params.get("code");
         if (code == null || code.isBlank()) {
-            throw new BizException("ecom.error.connectorAuthFailed", PLATFORM, HttpJson.abbreviate(params.toString()));
+            throw new BizException("ecom.error.connectorAuthFailed", PLATFORM, "code missing" + (params.get("error") == null ? "" : ": "
+                    + HttpJson.abbreviate(params.get("error"))));
         }
         String form = "grant_type=authorization_code&code=" + ConnectorSigns.enc(code) + "&redirect_uri=" + ConnectorSigns.enc(c.require("ruName"));
         JsonNode resp = token(ctx, form);
@@ -150,11 +158,7 @@ public class EbayConnector implements ChannelConnector {
     }
 
     private static long expiresAt(StoreCredentials c) {
-        try {
-            return c.get("accessTokenExpiresAt") == null ? 0 : Long.parseLong(c.get("accessTokenExpiresAt"));
-        } catch (NumberFormatException e) {
-            return 0;
-        }
+        return ConnectorJson.parseLong(c.get("accessTokenExpiresAt"), 0);
     }
 
     /** 令牌接口：Basic base64(clientId:clientSecret)，表单参数 */
@@ -184,7 +188,11 @@ public class EbayConnector implements ChannelConnector {
         String filter = ConnectorSigns.enc("lastmodifieddate:[" + from + "..]");
         List<OrderDraft> drafts = new ArrayList<>();
         int offset = 0;
-        for (int page = 0; page < MAX_PAGES; page++) {
+        for (int page = 0; ; page++) {
+            if (page >= MAX_PAGES) {
+                ConnectorJson.warnPageLimit(PLATFORM, "orders", MAX_PAGES);
+                break;
+            }
             JsonNode resp = HttpJson.get(base + "/sell/fulfillment/v1/order?filter=" + filter + "&limit=" + ORDER_PAGE_SIZE + "&offset=" + offset,
                     headers, PLATFORM);
             JsonNode orders = resp.path("orders");
@@ -232,7 +240,7 @@ public class EbayConnector implements ChannelConnector {
             d.setShipState(HttpJson.text(addr, "stateOrProvince"));
             d.setShipCity(HttpJson.text(addr, "city"));
             d.setShipPostcode(HttpJson.text(addr, "postalCode"));
-            d.setShipAddress(join(HttpJson.text(addr, "addressLine1"), HttpJson.text(addr, "addressLine2")));
+            d.setShipAddress(ConnectorJson.join(HttpJson.text(addr, "addressLine1"), HttpJson.text(addr, "addressLine2")));
             if (d.getBuyerEmail() == null) {
                 d.setBuyerEmail(HttpJson.text(shipTo, "email"));
             }
@@ -299,14 +307,20 @@ public class EbayConnector implements ChannelConnector {
     // ---------------------------------------------------------------- 发货
 
     @Override
-    public void confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
+    public ShipmentResult confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
+        if (order.getFulfillment() == FulfillmentType.PLATFORM) {
+            return ShipmentResult.skipped("FULFILLED_BY_EBAY");
+        }
+        if (order.getTrackingNo() == null || order.getTrackingNo().isBlank()) {
+            throw new BizException("ecom.error.connectorCallFailed", PLATFORM, "tracking number missing");
+        }
         Map<String, String> headers = headers(ctx);
         List<Map<String, Object>> lines = new ArrayList<>();
         for (EcomOrderItem it : items) {
             if (it.getPlatformLineId() == null) {
                 throw new BizException("ecom.error.connectorLineIdMissing", order.getPlatformOrderNo());
             }
-            lines.add(Map.of("lineItemId", it.getPlatformLineId(), "quantity", it.getQty() == null ? 1 : it.getQty().intValue()));
+            lines.add(Map.of("lineItemId", it.getPlatformLineId(), "quantity", it.getQty() == null ? 1 : Math.max(1, it.getQty().intValue())));
         }
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("lineItems", lines);
@@ -316,6 +330,7 @@ public class EbayConnector implements ChannelConnector {
         body.put("trackingNumber", order.getTrackingNo());
         HttpJson.postJson(ctx.baseUrl(INFO) + "/sell/fulfillment/v1/order/" + ConnectorSigns.enc(order.getPlatformOrderNo()) + "/shipping_fulfillment",
                 headers, body, PLATFORM);
+        return ShipmentResult.confirmed(order.getTrackingNo(), order.getCarrier());
     }
 
     // ---------------------------------------------------------------- 库存与商品
@@ -327,8 +342,7 @@ public class EbayConnector implements ChannelConnector {
         for (int i = 0; i < updates.size(); i += INVENTORY_BATCH) {
             List<Map<String, Object>> requests = new ArrayList<>();
             for (InventoryUpdate u : updates.subList(i, Math.min(updates.size(), i + INVENTORY_BATCH))) {
-                int qty = u.qty() == null ? 0 : Math.max(0, u.qty().setScale(0, RoundingMode.DOWN).intValue());
-                requests.add(Map.of("sku", u.sellerSku(), "shipToLocationAvailability", Map.of("quantity", qty)));
+                requests.add(Map.of("sku", u.sellerSku(), "shipToLocationAvailability", Map.of("quantity", u.intQty())));
             }
             JsonNode resp = HttpJson.postJson(url, headers, Map.of("requests", requests), PLATFORM);
             List<String> failed = new ArrayList<>();
@@ -350,7 +364,11 @@ public class EbayConnector implements ChannelConnector {
         String base = ctx.baseUrl(INFO);
         List<ListingDraft> listings = new ArrayList<>();
         int offset = 0;
-        for (int page = 0; page < MAX_PAGES; page++) {
+        for (int page = 0; ; page++) {
+            if (page >= MAX_PAGES) {
+                ConnectorJson.warnPageLimit(PLATFORM, "inventory items", MAX_PAGES);
+                break;
+            }
             JsonNode resp = HttpJson.get(base + "/sell/inventory/v1/inventory_item?limit=" + LISTING_PAGE_SIZE + "&offset=" + offset, headers, PLATFORM);
             JsonNode items = resp.path("inventoryItems");
             for (JsonNode it : items) {
@@ -372,28 +390,6 @@ public class EbayConnector implements ChannelConnector {
     // ---------------------------------------------------------------- 工具
 
     private static LocalDateTime time(String iso) {
-        if (iso == null) {
-            return null;
-        }
-        try {
-            return OffsetDateTime.parse(iso).atZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime();
-        } catch (RuntimeException e) {
-            try {
-                return LocalDateTime.ofInstant(Instant.parse(iso), ZoneId.systemDefault());
-            } catch (RuntimeException ignored) {
-                return null;
-            }
-        }
-    }
-
-    private static String join(String... parts) {
-        StringBuilder sb = new StringBuilder();
-        for (String p : parts) {
-            if (p != null && !p.isBlank()) {
-                if (!sb.isEmpty()) sb.append(' ');
-                sb.append(p.trim());
-            }
-        }
-        return sb.isEmpty() ? null : sb.toString();
+        return ConnectorJson.isoTime(iso);
     }
 }

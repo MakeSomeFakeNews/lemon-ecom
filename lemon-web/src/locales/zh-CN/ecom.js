@@ -221,6 +221,10 @@ export default {
       MANUAL: '手工'
     },
     form: {
+      perStoreBaseUrl: '接口地址',
+      perStoreBaseUrlTip: '每个店铺的接口地址按授权信息中的店铺域名生成，不需要填写自定义地址',
+      redirectNote: '回调地址',
+      orderWindowNote: '订单同步',
       authSection: '渠道接口',
       authType: '授权方式',
       authTypeName: {

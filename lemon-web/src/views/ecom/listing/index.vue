@@ -17,6 +17,9 @@
         <a-form-item :label="$t('ecom.common.material')" name="materialId">
           <MaterialSelect v-model:value="query.materialId" :placeholder="$t('ecom.listing.materialPh')" />
         </a-form-item>
+        <a-form-item v-if="view === 'sku'" :label="$t('ecomCatalog.listing.composeType')" name="composeType">
+          <a-select v-model:value="query.composeType" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_compose_type)" />
+        </a-form-item>
         <a-form-item name="unmappedOnly">
           <a-checkbox v-model:checked="query.unmappedOnly" @change="search">{{ $t('ecom.listing.unmappedOnly') }}</a-checkbox>
         </a-form-item>
@@ -24,23 +27,34 @@
     </a-card>
 
     <a-card :bordered="false" class="page-card table-card">
-      <TableToolbar :exporter="exportAll" v-model:size="size" v-model:checked="checked" v-model:show-search="showSearch" :columns="columns" @refresh="load">
+      <TableToolbar :exporter="exportAll" v-model:size="size" v-model:checked="checked" v-model:show-search="showSearch" :columns="columns" @refresh="reload">
+        <a-segmented v-model:value="view" :options="viewOptions" @change="reload" />
         <a-button v-perm="'ecom:listing:add'" type="primary" @click="formRef.openCreate({ storeId: query.storeId ?? undefined })">
           <template #icon><PlusOutlined /></template>{{ $t('ecom.listing.add') }}
         </a-button>
         <a-button v-perm="'ecom:listing:import'" @click="importOpen = true">
           <template #icon><ImportOutlined /></template>{{ $t('common.action.import') }}
         </a-button>
+        <a-button v-perm="'ecom:listing:edit'" @click="styleRef.open({ storeId: query.storeId ?? undefined })">
+          <template #icon><ApartmentOutlined /></template>{{ $t('ecomCatalog.style.title') }}
+        </a-button>
+        <a-button v-if="view === 'sku'" :disabled="!selectedKeys.length" @click="openFnsku">
+          <template #icon><BarcodeOutlined /></template>{{ $t('ecomCatalog.fnsku.print') }}
+        </a-button>
       </TableToolbar>
 
+      <SpuView v-if="view === 'spu'" ref="spuRef" :size="size" @edit="(r) => formRef.openEdit(r)"
+               @map-style="(g) => styleRef.open({ storeId: g.storeId, parentItemId: g.parentItemId })" />
       <a-table
+        v-else
+        :row-selection="rowSelection"
         row-key="id"
         :size="size"
         :columns="visibleColumns"
         :data-source="list"
         :loading="loading"
         :pagination="pagination"
-        :row-class-name="(r) => (r.materialId ? '' : 'row-unmapped')"
+        :row-class-name="(r) => (paired(r) ? '' : 'row-unmapped')"
         :scroll="{ x: scrollX, y: '100%' }"
         @change="onTableChange"
       >
@@ -64,7 +78,11 @@
             <DictTag type="ecom_listing_status" :value="record.status" />
           </template>
           <template v-else-if="column.key === 'material'">
-            <template v-if="record.materialId">
+            <template v-if="record.composeType === ListingComposeType.BUNDLE && record.bundleItems?.length">
+              <a-tag color="purple" :bordered="false">{{ $t('ecomCatalog.listing.bundle') }}</a-tag>
+              <div class="sub-text">{{ bundleText(record) }}</div>
+            </template>
+            <template v-else-if="record.materialId">
               <div>{{ record.materialCode }}</div>
               <div class="sub-text">{{ record.materialName }}{{ record.materialSpec ? `（${record.materialSpec}）` : '' }}</div>
             </template>
@@ -73,7 +91,7 @@
               <a v-if="userStore.hasPerm('ecom:listing:edit')" @click="mapRef.open(record)">{{ $t('ecom.listing.mapMaterial') }}</a>
             </template>
           </template>
-          <template v-else-if="column.key === 'packQty'">{{ qty(record.packQty) }}</template>
+          <template v-else-if="column.key === 'packQty'">{{ record.composeType === ListingComposeType.BUNDLE ? '-' : qty(record.packQty) }}</template>
           <template v-else-if="column.key === 'action'">
             <TableActions :actions="rowActions(record)" />
           </template>
@@ -81,8 +99,10 @@
       </a-table>
     </a-card>
 
-    <ListingForm ref="formRef" @success="load" />
-    <ListingMapModal ref="mapRef" @success="load" />
+    <ListingForm ref="formRef" @success="reload" />
+    <ListingMapModal ref="mapRef" @success="reload" />
+    <StyleMapModal ref="styleRef" @success="reload" />
+    <FnskuLabelModal v-model:open="fnskuOpen" :items="fnskuItems" />
     <ImportModal
       v-model:open="importOpen"
       :title="$t('ecom.listing.listing')"
@@ -95,9 +115,9 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { nextTick, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ImportOutlined, LinkOutlined, PlusOutlined, WarningOutlined } from '@ant-design/icons-vue'
+import { ApartmentOutlined, BarcodeOutlined, ImportOutlined, LinkOutlined, PlusOutlined, WarningOutlined } from '@ant-design/icons-vue'
 import DictTag from '@/components/DictTag.vue'
 import ImportModal from '@/components/ImportModal.vue'
 import SearchForm from '@/components/SearchForm.vue'
@@ -108,6 +128,11 @@ import StoreSelect from '@/components/ecom/StoreSelect.vue'
 import MaterialSelect from '@/components/wms/MaterialSelect.vue'
 import ListingForm from './ListingForm.vue'
 import ListingMapModal from './ListingMapModal.vue'
+import SpuView from './SpuView.vue'
+import StyleMapModal from './StyleMapModal.vue'
+import FnskuLabelModal from '@/components/ecom/FnskuLabelModal.vue'
+import { bundleText } from './listing'
+import { ListingComposeType } from '@/constants/enums'
 import { deleteListing, importListing, pageListing } from '@/api/ecom/listing'
 import { useAction } from '@/composables/useAction'
 import { useColumns } from '@/composables/useColumns'
@@ -119,12 +144,15 @@ import { price, qty } from '@/utils/number'
 
 const { t } = useI18n()
 const userStore = useUserStore()
-const dict = useDict('ecom_platform', 'ecom_fulfillment', 'ecom_listing_status')
+const dict = useDict('ecom_platform', 'ecom_fulfillment', 'ecom_listing_status', 'ecom_compose_type')
+/** 已配对：单品映射了物料，或组合有组成 */
+const paired = (r) => (r.composeType === ListingComposeType.BUNDLE ? !!r.bundleItems?.length : !!r.materialId)
 
 const columns = [
   { title: t('ecom.common.store'), key: 'store', dataIndex: 'storeName', width: 170 },
   { title: t('ecom.common.sellerSku'), dataIndex: 'sellerSku', width: 160 },
   { title: t('ecom.common.platformItemId'), dataIndex: 'platformItemId', width: 140 },
+  { title: 'FNSKU', dataIndex: 'fnsku', width: 120 },
   { title: t('ecom.listing.title'), key: 'title', dataIndex: 'title', width: 280 },
   { title: t('ecom.listing.price'), key: 'price', dataIndex: 'price', width: 120, align: 'right' },
   { title: t('ecom.listing.fulfillment'), key: 'fulfillment', dataIndex: 'fulfillment', width: 110, dict: 'ecom_fulfillment' },
@@ -145,21 +173,45 @@ const columns = [
 const { checked, visibleColumns, scrollX } = useColumns(columns, 'ecom-listing')
 const showSearch = ref(true)
 
-const emptyQuery = () => ({ storeId: undefined, keyword: undefined, status: undefined, fulfillment: undefined, materialId: undefined, unmappedOnly: false })
+const emptyQuery = () => ({ storeId: undefined, keyword: undefined, status: undefined, fulfillment: undefined, materialId: undefined, composeType: undefined,
+  unmappedOnly: false })
 const query = reactive(emptyQuery())
-const { list, loading, size, pagination, load, search, onTableChange, exportAll } = useTable(pageListing, query, {
+const { list, loading, size, pagination, selectedKeys, rowSelection, load, search: searchSku, onTableChange, exportAll } = useTable(pageListing, query, {
   // 「只看未映射」→ mapped=false
   params: ({ unmappedOnly, ...rest }) => ({ ...rest, mapped: unmappedOnly ? false : undefined })
 })
 onMounted(load)
+
+/** 视图：SKU（每个平台 SKU 一行）/ SPU（按父商品分组，展开看变体） */
+const view = ref('sku')
+const viewOptions = [
+  { value: 'sku', label: t('ecomCatalog.spu.skuView') },
+  { value: 'spu', label: t('ecomCatalog.spu.spuView') }
+]
+const spuRef = ref()
+const spuQuery = () => ({ storeId: query.storeId, keyword: query.keyword, mapped: query.unmappedOnly ? false : undefined })
+function search() {
+  if (view.value === 'spu') nextTick(() => spuRef.value?.load(spuQuery()))
+  else searchSku()
+}
+const reload = () => (view.value === 'spu' ? nextTick(() => spuRef.value?.load(spuQuery())) : load())
 function resetQuery() {
   Object.assign(query, emptyQuery())
   search()
 }
 
+const styleRef = ref()
+// FNSKU 标签：勾选的在线商品各打一张（可在弹窗中改份数）
+const fnskuOpen = ref(false)
+const fnskuItems = ref([])
+function openFnsku() {
+  fnskuItems.value = list.value.filter((r) => selectedKeys.value.includes(r.id)).map((r) => ({ fnsku: r.fnsku, sellerSku: r.sellerSku, title: r.title, qty: 1 }))
+  fnskuOpen.value = true
+}
+
 const formRef = ref()
 const mapRef = ref()
-const remove = useAction(deleteListing, { successKey: 'common.msg.deleteSuccess', reload: () => load() })
+const remove = useAction(deleteListing, { successKey: 'common.msg.deleteSuccess', reload: () => reload() })
 
 const rowActions = (record) => [
   { type: 'edit', perm: 'ecom:listing:edit', onClick: () => formRef.value.openEdit(record) },
@@ -179,6 +231,7 @@ const importColumns = [
   { title: t('ecom.store.currency'), key: 'currency' },
   { title: t('ecom.listing.fulfillment'), key: 'fulfillment', dict: 'ecom_fulfillment' },
   { title: t('common.field.status'), key: 'status', dict: 'ecom_listing_status' },
+  { title: 'FNSKU', key: 'fnsku' },
   { title: t('ecom.listing.materialCode'), key: 'materialCodeInput' },
   { title: t('ecom.common.packQty'), key: 'packQty', type: 'number' }
 ]

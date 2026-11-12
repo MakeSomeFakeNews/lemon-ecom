@@ -15,7 +15,6 @@ import tools.jackson.databind.JsonNode;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
@@ -41,16 +40,25 @@ import java.util.TreeMap;
  * 店铺填写了自定义地址时三者都指向它（{自定义地址}/api/v2/token/get、{自定义地址}/open/authorize），便于用模拟服务器测试。
  * TikTok Shop 没有独立的沙箱域名：在 Partner Center 创建测试店铺（sandbox shop），接口地址与正式相同，因此沙箱地址与正式地址相同。
  * <p>
- * 编码约定：平台商品 ID 为 {@code "productId:skuId"}（在线商品、订单明细、库存回传一致），订单行 ID 为 line_items[].id；
- * TikTok 订单的每个 line item 是一件商品（数量 1）。卖家 SKU 取 seller_sku，为空取 sku_id，仍为空取平台商品 ID。
+ * 编码约定：在线商品 platformItemId 为 sku_id、parentItemId 为 product_id（附加 ID warehouseId 为 SKU 库存所在的第一个仓库）；
+ * 订单明细没有父 ID 字段，平台商品 ID 仍为 {@code "productId:skuId"}；回传库存按 parentItemId + platformItemId，兼容旧编码 {@code "productId:skuId"}。
+ * 订单行 ID 为 line_items[].id；TikTok 订单的每个 line item 是一件商品（数量 1）。卖家 SKU 取 seller_sku，为空取 sku_id，仍为空取平台商品 ID。
  * 金额：单价 / 商品金额取 original_price，折扣取卖家承担的 seller_discount（平台补贴不算卖家折扣），
- * 订单级的运费 payment.shipping_fee 与税 payment.tax 记在第一行。FBT（fulfillment_type = FULFILLMENT_BY_TIKTOK）为平台仓配送。
+ * 订单级的运费 payment.shipping_fee 与税 payment.tax 写入订单级运费 / 税。FBT（fulfillment_type = FULFILLMENT_BY_TIKTOK）为平台仓配送，
+ * 回传发货时跳过。签名包含请求体：请求体先序列化一次，签名与发送用同一个字符串（{@link HttpJson#requestRaw}）。
  * <p>
  * 发货：卖家自选物流 + 运单号，调用 Mark Package As Shipped（POST /fulfillment/202309/orders/{order_id}/packages）。
  * 承运商为物流商 ID（纯数字）时直接使用，否则按订单的 delivery_option_id 查询可用物流商，按名称（不区分大小写）匹配。
  * 该接口只对部分站点开放（US、UK、欧洲、JP 等）；东南亚站点使用平台物流，需要另行实现 Ship Package / 面单。
  * <p>
- * 说明：按 Partner Center 公开文档实现，尚未用真实店铺联调
+ * 说明：按 Partner Center 公开文档实现，尚未用真实店铺联调。需要真实账号联调确认：
+ * <ul>
+ *   <li>签名原文中查询参数的排序与 body 拼接（含 shop_cipher、不含 access_token）与平台计算一致</li>
+ *   <li>token/get 与 token/refresh 返回的 access_token_expire_in 是过期时刻（Unix 秒）而不是有效秒数</li>
+ *   <li>Mark Package As Shipped 在目标站点是否开放；东南亚站点平台物流的 Ship Package / 面单流程未实现</li>
+ *   <li>订单搜索 update_time_ge 的过滤口径，以及 payment.shipping_fee 是否已含平台运费补贴</li>
+ *   <li>多仓店铺回传库存的 warehouse_id 取值（在线商品附加 ID 中的第一个仓库或授权信息 warehouseId）</li>
+ * </ul>
  */
 @Component
 public class TikTokShopConnector implements ChannelConnector {
@@ -71,14 +79,16 @@ public class TikTokShopConnector implements ChannelConnector {
             CredentialField.text("warehouseId", "ecom.label.cred.tiktok.warehouseId", false),
             CredentialField.token("accessToken", "ecom.label.cred.accessToken"),
             CredentialField.token("refreshToken", "ecom.label.cred.refreshToken"),
-            new CredentialField("accessTokenExpireIn", "ecom.label.cred.tiktok.accessTokenExpireIn", false, false, true),
             CredentialField.token("shopCipher", "ecom.label.cred.tiktok.shopCipher"),
-            new CredentialField("shopId", "ecom.label.cred.tiktok.shopId", false, false, true),
-            new CredentialField("sellerName", "ecom.label.cred.tiktok.sellerName", false, false, true)),
+            CredentialField.oauthInfo("shopId", "ecom.label.cred.tiktok.shopId"),
+            CredentialField.oauthInfo("sellerName", "ecom.label.cred.tiktok.sellerName"),
+            CredentialField.cached("accessTokenExpireIn", false),
+            CredentialField.cached("refreshTokenExpireIn", false),
+            CredentialField.cached("shopRegion", false)),
             API_BASE, API_BASE,
             EnumSet.of(ConnectorCapability.ORDERS, ConnectorCapability.SHIP_CONFIRM, ConnectorCapability.INVENTORY_PUSH,
                     ConnectorCapability.LISTINGS),
-            "https://partner.tiktokshop.com/docv2");
+            "https://partner.tiktokshop.com/docv2").withRedirectNote("ecom.text.connector.redirect.tiktok");
 
     @Override
     public ConnectorInfo info() {
@@ -152,7 +162,7 @@ public class TikTokShopConnector implements ChannelConnector {
     @Override
     public void ensureToken(ConnectorContext ctx) {
         StoreCredentials c = ctx.credentials();
-        long expireAt = parseLongOr(c.get("accessTokenExpireIn"));
+        long expireAt = ConnectorJson.parseLong(c.get("accessTokenExpireIn"), 0);
         if (c.get("accessToken") != null && expireAt - REFRESH_AHEAD_SECONDS > Instant.now().getEpochSecond()) {
             return;
         }
@@ -192,7 +202,7 @@ public class TikTokShopConnector implements ChannelConnector {
     @Override
     public List<OrderDraft> fetchOrders(ConnectorContext ctx, LocalDateTime since) {
         ensureToken(ctx);
-        long from = (since == null ? LocalDateTime.now().minusDays(3) : since).atZone(ZoneId.systemDefault()).toEpochSecond();
+        long from = ConnectorJson.toUnixSeconds(since == null ? LocalDateTime.now().minusDays(3) : since);
         Map<String, Object> body = Map.of("update_time_ge", from);
         List<OrderDraft> drafts = new ArrayList<>();
         String pageToken = null;
@@ -212,6 +222,9 @@ public class TikTokShopConnector implements ChannelConnector {
             pageToken = HttpJson.text(data, "next_page_token");
             pages++;
         } while (pageToken != null && !pageToken.isBlank() && pages < MAX_PAGES);
+        if (pageToken != null && !pageToken.isBlank()) {
+            ConnectorJson.warnPageLimit(PLATFORM, "orders", MAX_PAGES);
+        }
         return drafts;
     }
 
@@ -241,7 +254,7 @@ public class TikTokShopConnector implements ChannelConnector {
         }
         d.setShipState(levels.get("L1"));
         d.setShipCity(levels.get("L3") != null ? levels.get("L3") : levels.get("L2"));
-        String lines = join(HttpJson.text(addr, "address_line1"), HttpJson.text(addr, "address_line2"),
+        String lines = ConnectorJson.join(HttpJson.text(addr, "address_line1"), HttpJson.text(addr, "address_line2"),
                 HttpJson.text(addr, "address_line3"), HttpJson.text(addr, "address_line4"));
         d.setShipAddress(lines != null ? lines : HttpJson.text(addr, "full_address"));
         for (JsonNode li : o.path("line_items")) {
@@ -250,11 +263,8 @@ public class TikTokShopConnector implements ChannelConnector {
                 d.setCurrency(HttpJson.text(li, "currency"));
             }
         }
-        if (!d.getLines().isEmpty()) {
-            OrderDraft.Line first = d.getLines().get(0);
-            first.setShipping(HttpJson.decimal(payment, "shipping_fee"));
-            first.setTax(HttpJson.decimal(payment, "tax"));
-        }
+        d.setShippingAmount(HttpJson.decimal(payment, "shipping_fee"));
+        d.setTaxAmount(HttpJson.decimal(payment, "tax"));
         return d;
     }
 
@@ -264,10 +274,10 @@ public class TikTokShopConnector implements ChannelConnector {
         String productId = HttpJson.text(li, "product_id");
         String skuId = HttpJson.text(li, "sku_id");
         l.setPlatformItemId(productId == null ? skuId : skuId == null ? productId : productId + ":" + skuId);
-        l.setSellerSku(firstNonBlank(HttpJson.text(li, "seller_sku"), skuId, l.getPlatformItemId()));
+        l.setSellerSku(ConnectorJson.firstNonBlank(HttpJson.text(li, "seller_sku"), skuId, l.getPlatformItemId()));
         String skuName = HttpJson.text(li, "sku_name");
         String name = HttpJson.text(li, "product_name");
-        l.setTitle(skuName == null || skuName.isBlank() ? name : name + " " + skuName);
+        l.setTitle(ConnectorJson.join(name, skuName));
         l.setQty(BigDecimal.ONE);
         BigDecimal original = HttpJson.decimal(li, "original_price");
         if (original == null) {
@@ -297,7 +307,10 @@ public class TikTokShopConnector implements ChannelConnector {
     // ---------------------------------------------------------------- 发货
 
     @Override
-    public void confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
+    public ShipmentResult confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
+        if (order.getFulfillment() == FulfillmentType.PLATFORM) {
+            return ShipmentResult.skipped("FBT");
+        }
         ensureToken(ctx);
         if (order.getTrackingNo() == null || order.getTrackingNo().isBlank()) {
             throw new BizException("ecom.error.connectorCallFailed", PLATFORM, "tracking number missing");
@@ -322,6 +335,7 @@ public class TikTokShopConnector implements ChannelConnector {
         body.put("tracking_number", order.getTrackingNo());
         body.put("shipping_provider_id", shippingProviderId(ctx, order.getCarrier(), HttpJson.text(detail, "delivery_option_id")));
         shopCall(ctx, "POST", "/fulfillment/202309/orders/" + ConnectorSigns.enc(orderId) + "/packages", new LinkedHashMap<>(), body);
+        return ShipmentResult.confirmed(order.getTrackingNo(), order.getCarrier());
     }
 
     /** 承运商是纯数字时视为物流商 ID，否则在订单配送方式可用的物流商中按名称匹配 */
@@ -347,27 +361,30 @@ public class TikTokShopConnector implements ChannelConnector {
 
     // ---------------------------------------------------------------- 库存
 
-    /** 按商品分组调用 /product/202309/products/{product_id}/inventory/update；平台商品 ID 必须是 "productId:skuId" */
+    /**
+     * 按商品分组调用 /product/202309/products/{product_id}/inventory/update：商品 ID 取 parentItemId、SKU ID 取 platformItemId
+     * （兼容旧编码 "productId:skuId"）；仓库取在线商品附加 ID 的 warehouseId，其次授权信息 warehouseId，都没有时不传（默认仓）
+     */
     @Override
     public void pushInventory(ConnectorContext ctx, List<InventoryUpdate> updates) {
         ensureToken(ctx);
-        String warehouseId = ctx.credentials().get("warehouseId");
+        String defaultWarehouse = ctx.credentials().get("warehouseId");
         Map<String, List<Map<String, Object>>> byProduct = new LinkedHashMap<>();
         for (InventoryUpdate u : updates) {
-            String key = u.platformItemId();
-            int idx = key == null ? -1 : key.indexOf(':');
-            if (idx <= 0) {
+            String[] ids = u.parentAndChild();
+            if (ids == null) {
                 throw new BizException("ecom.error.connectorPlatformItemIdRequired", PLATFORM, u.sellerSku());
             }
+            String warehouseId = u.platformWarehouseId() != null ? u.platformWarehouseId() : defaultWarehouse;
             Map<String, Object> inv = new LinkedHashMap<>();
             if (warehouseId != null) {
                 inv.put("warehouse_id", warehouseId);
             }
-            inv.put("quantity", u.qty() == null ? 0 : Math.max(0, u.qty().intValue()));
+            inv.put("quantity", u.intQty());
             Map<String, Object> sku = new LinkedHashMap<>();
-            sku.put("id", key.substring(idx + 1));
+            sku.put("id", ids[1]);
             sku.put("inventory", List.of(inv));
-            byProduct.computeIfAbsent(key.substring(0, idx), k -> new ArrayList<>()).add(sku);
+            byProduct.computeIfAbsent(ids[0], k -> new ArrayList<>()).add(sku);
         }
         for (Map.Entry<String, List<Map<String, Object>>> e : byProduct.entrySet()) {
             shopCall(ctx, "POST", "/product/202309/products/" + ConnectorSigns.enc(e.getKey()) + "/inventory/update", new LinkedHashMap<>(),
@@ -396,26 +413,31 @@ public class TikTokShopConnector implements ChannelConnector {
                 String title = HttpJson.text(p, "title");
                 for (JsonNode s : p.path("skus")) {
                     String skuId = HttpJson.text(s, "id");
-                    String key = productId + ":" + skuId;
                     JsonNode price = s.path("price");
                     BigDecimal amount = HttpJson.decimal(price, "tax_exclusive_price");
                     if (amount == null) {
                         amount = HttpJson.decimal(price, "sale_price");
                     }
                     BigDecimal qty = null;
+                    String warehouse = null;
                     for (JsonNode inv : s.path("inventory")) {
-                        BigDecimal q1 = HttpJson.decimal(inv, "quantity");
-                        if (q1 != null) {
-                            qty = qty == null ? q1 : qty.add(q1);
+                        qty = ConnectorJson.add(qty, HttpJson.decimal(inv, "quantity"));
+                        if (warehouse == null) {
+                            warehouse = HttpJson.text(inv, "warehouse_id");
                         }
                     }
-                    drafts.add(new ListingDraft(firstNonBlank(HttpJson.text(s, "seller_sku"), skuId), key, productId, title, null,
-                            amount, HttpJson.text(price, "currency"), qty, null, status, null, null));
+                    Map<String, String> extra = new LinkedHashMap<>();
+                    extra.put(ListingDraft.EXTRA_WAREHOUSE_ID, warehouse);
+                    drafts.add(new ListingDraft(ConnectorJson.firstNonBlank(HttpJson.text(s, "seller_sku"), skuId, productId), skuId, productId, title,
+                            null, amount, HttpJson.text(price, "currency"), qty, null, status, null, null, extra));
                 }
             }
             pageToken = HttpJson.text(data, "next_page_token");
             pages++;
         } while (pageToken != null && !pageToken.isBlank() && pages < MAX_PAGES);
+        if (pageToken != null && !pageToken.isBlank()) {
+            ConnectorJson.warnPageLimit(PLATFORM, "products", MAX_PAGES);
+        }
         return drafts;
     }
 
@@ -449,13 +471,14 @@ public class TikTokShopConnector implements ChannelConnector {
         if (shop) {
             q.put("shop_cipher", c.require("shopCipher"));
         }
+        // 请求体只序列化一次：签名原文与发送的报文逐字一致
         String json = body == null ? null : HttpJson.MAPPER.writeValueAsString(body);
         q.put("sign", sign(c.require("appSecret"), path, q, json));
         String url = ctx.baseUrl(INFO) + path + "?" + ConnectorSigns.query(q);
         Map<String, String> headers = Map.of("x-tts-access-token", token, "Content-Type", "application/json");
-        JsonNode resp = body == null
+        JsonNode resp = json == null && "GET".equals(method)
                 ? HttpJson.get(url, headers, PLATFORM)
-                : HttpJson.request(method, url, Map.of("x-tts-access-token", token), body, PLATFORM);
+                : HttpJson.requestRaw(method, url, headers, json, "application/json", PLATFORM);
         if (resp.path("code").asLong(-1) != 0) {
             throw new BizException("ecom.error.connectorCallFailed", PLATFORM, errorSummary(resp));
         }
@@ -469,38 +492,6 @@ public class TikTokShopConnector implements ChannelConnector {
     // ---------------------------------------------------------------- 工具
 
     static LocalDateTime epochSeconds(JsonNode v) {
-        long s = v == null || v.isMissingNode() || v.isNull() ? 0 : v.asLong(0);
-        return s <= 0 ? null : LocalDateTime.ofInstant(Instant.ofEpochSecond(s), ZoneId.systemDefault());
-    }
-
-    private static long parseLongOr(String s) {
-        if (s == null) {
-            return 0;
-        }
-        try {
-            return Long.parseLong(s.trim());
-        } catch (NumberFormatException e) {
-            return 0;
-        }
-    }
-
-    private static String firstNonBlank(String... values) {
-        for (String v : values) {
-            if (v != null && !v.isBlank()) {
-                return v.trim();
-            }
-        }
-        return null;
-    }
-
-    private static String join(String... parts) {
-        StringBuilder sb = new StringBuilder();
-        for (String p : parts) {
-            if (p != null && !p.isBlank()) {
-                if (!sb.isEmpty()) sb.append(' ');
-                sb.append(p.trim());
-            }
-        }
-        return sb.isEmpty() ? null : sb.toString();
+        return ConnectorJson.unixSeconds(v);
     }
 }

@@ -52,16 +52,35 @@
             <a-select v-model:value="form.status" :options="toOptions(dict.ecom_listing_status)" />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="16">
-          <a-form-item :label="$t('ecom.common.material')" name="materialId" :extra="$t('ecom.listing.mapExtra')">
-            <MaterialSelect v-model:value="form.materialId" :label="form.materialLabel" />
+        <a-col :xs="24" :sm="12">
+          <a-form-item :label="$t('ecomCatalog.listing.composeType')" name="composeType" :extra="$t('ecomCatalog.listing.composeTypeExtra')">
+            <a-radio-group v-model:value="form.composeType" :options="toOptions(dict.ecom_compose_type)" option-type="button" />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="8">
-          <a-form-item :label="$t('ecom.common.packQty')" name="packQty" :extra="$t('ecom.listing.packQtyExtra')">
-            <a-input-number v-model:value="form.packQty" :min="0.0001" :precision="4" class="full" />
+        <a-col :xs="24" :sm="12">
+          <a-form-item label="FNSKU" name="fnsku" :extra="$t('ecomCatalog.listing.fnskuExtra')">
+            <a-input v-model:value="form.fnsku" :maxlength="32" />
           </a-form-item>
         </a-col>
+        <template v-if="form.composeType === ListingComposeType.BUNDLE">
+          <a-col :span="24">
+            <a-form-item :label="$t('ecomCatalog.bundle.items')" name="bundleItems" :rules="bundleRules">
+              <BundleItemsEditor :items="form.bundleItems" />
+            </a-form-item>
+          </a-col>
+        </template>
+        <template v-else>
+          <a-col :xs="24" :sm="16">
+            <a-form-item :label="$t('ecom.common.material')" name="materialId" :extra="$t('ecom.listing.mapExtra')">
+              <MaterialSelect v-model:value="form.materialId" :label="form.materialLabel" />
+            </a-form-item>
+          </a-col>
+          <a-col :xs="24" :sm="8">
+            <a-form-item :label="$t('ecom.common.packQty')" name="packQty" :extra="$t('ecom.listing.packQtyExtra')">
+              <a-input-number v-model:value="form.packQty" :min="0.0001" :precision="4" class="full" />
+            </a-form-item>
+          </a-col>
+        </template>
         <a-col :xs="24" :sm="12">
           <a-form-item :label="$t('ecom.listing.imageUrl')" name="imageUrl">
             <a-input v-model:value="form.imageUrl" :maxlength="255" placeholder="https://" />
@@ -92,13 +111,15 @@ import { currencyOptions, useCurrencies } from '@/components/fin/currency'
 import { useDict } from '@/composables/useDict'
 import { useFormDrawer } from '@/composables/useFormDrawer'
 import { toOptions } from '@/utils/dict'
-import { FulfillmentType, ListingStatus } from '@/constants/enums'
+import { FulfillmentType, ListingComposeType, ListingStatus } from '@/constants/enums'
+import { lineKey, rowKey } from '@/composables/useLineItems'
+import BundleItemsEditor from './BundleItemsEditor.vue'
 import { materialLabel } from './listing'
 
 /** 在线商品新增 / 编辑抽屉：openCreate() / openEdit(record) 打开，保存后触发 success */
 const emit = defineEmits(['success'])
 const { t } = useI18n()
-const dict = useDict('ecom_fulfillment', 'ecom_listing_status')
+const dict = useDict('ecom_fulfillment', 'ecom_listing_status', 'ecom_compose_type')
 const currencies = useCurrencies()
 
 const rules = {
@@ -107,7 +128,22 @@ const rules = {
 }
 
 const FIELDS = ['storeId', 'sellerSku', 'platformItemId', 'parentItemId', 'title', 'variant', 'price', 'currency', 'fulfillment', 'status',
-  'materialId', 'packQty', 'imageUrl', 'url', 'remark']
+  'materialId', 'packQty', 'imageUrl', 'url', 'remark', 'composeType', 'fnsku']
+
+/** 组合商品至少一个组件，物料必选、用量大于 0、不重复 */
+const bundleRules = [
+  {
+    validator: () => {
+      const items = form.value.bundleItems || []
+      if (!items.length) return Promise.reject(t('ecomCatalog.bundle.empty'))
+      if (items.some((i) => i.materialId == null)) return Promise.reject(t('ecomCatalog.bundle.selectMaterial'))
+      if (items.some((i) => !(Number(i.qty) > 0))) return Promise.reject(t('ecomCatalog.bundle.inputQty'))
+      if (new Set(items.map((i) => i.materialId)).size !== items.length) return Promise.reject(t('ecomCatalog.bundle.duplicate'))
+      return Promise.resolve()
+    }
+  }
+]
+const newBundleRow = () => ({ key: rowKey(), materialId: undefined, materialLabel: '', unit: '', qty: 1 })
 const drawer = useFormDrawer({
   emptyForm: () => ({
     id: undefined,
@@ -115,16 +151,40 @@ const drawer = useFormDrawer({
     fulfillment: FulfillmentType.SELLER,
     status: ListingStatus.ACTIVE,
     packQty: 1,
+    composeType: ListingComposeType.SINGLE,
+    bundleItems: [newBundleRow()],
     storeName: undefined,
     materialLabel: undefined
   }),
   fetch: async (record) => {
     const d = await getListing(record.id)
-    return { ...d, price: d.price != null ? Number(d.price) : undefined, packQty: d.packQty != null ? Number(d.packQty) : 1, materialLabel: materialLabel(d) }
+    const bundleItems = (d.bundleItems || []).map((b) => ({
+      key: lineKey(b),
+      materialId: b.materialId,
+      materialLabel: `${b.materialCode || ''} ${b.materialName || ''}${b.materialSpec ? `（${b.materialSpec}）` : ''}`.trim(),
+      unit: b.unit,
+      qty: Number(b.qty)
+    }))
+    return {
+      ...d,
+      price: d.price != null ? Number(d.price) : undefined,
+      packQty: d.packQty != null ? Number(d.packQty) : 1,
+      composeType: d.composeType || ListingComposeType.SINGLE,
+      bundleItems: bundleItems.length ? bundleItems : [newBundleRow()],
+      materialLabel: materialLabel(d)
+    }
   },
   create: addListing,
   update: updateListing,
-  toPayload: (f) => Object.fromEntries(FIELDS.map((k) => [k, f[k] === '' || f[k] === undefined ? null : f[k]])),
+  toPayload: (f) => {
+    const p = Object.fromEntries(FIELDS.map((k) => [k, f[k] === '' || f[k] === undefined ? null : f[k]]))
+    if (f.composeType === ListingComposeType.BUNDLE) {
+      p.materialId = null
+      p.packQty = 1
+      p.bundleItems = f.bundleItems.map((b) => ({ materialId: b.materialId, qty: b.qty }))
+    }
+    return p
+  },
   onSuccess: () => emit('success')
 })
 const { formRef, form } = drawer

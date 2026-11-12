@@ -12,11 +12,11 @@
 
     <insert id="insertBatch">
         INSERT INTO ecom_order_item (order_id, platform_line_id, seller_sku, platform_item_id, title, qty, price, amount, shipping, tax, discount,
-                                     material_id, material_qty, cost, create_time, update_time)
+                                     material_id, material_qty, cost, bundle, create_time, update_time)
         VALUES
         <foreach collection="items" item="i" separator=",">
             (#{i.orderId}, #{i.platformLineId}, #{i.sellerSku}, #{i.platformItemId}, #{i.title}, #{i.qty}, #{i.price}, #{i.amount}, #{i.shipping},
-             #{i.tax}, #{i.discount}, #{i.materialId}, #{i.materialQty}, #{i.cost}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+             #{i.tax}, #{i.discount}, #{i.materialId}, #{i.materialQty}, #{i.cost}, COALESCE(#{i.bundle}, 0), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         </foreach>
     </insert>
 

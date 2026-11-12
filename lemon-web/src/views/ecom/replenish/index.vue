@@ -2,21 +2,32 @@
   <div class="table-page ecom-replenish">
     <a-card v-show="showSearch" :bordered="false" class="page-card">
       <SearchForm :model="query" @search="load" @reset="resetQuery">
-        <a-form-item :label="$t('ecom.common.store')" name="storeId">
+        <a-form-item v-if="isPlatform" :label="$t('ecom.common.store')" name="storeId">
           <StoreSelect v-model:value="query.storeId" :placeholder="$t('ecom.common.allStores')" />
         </a-form-item>
         <a-form-item :label="$t('common.field.keyword')" name="keyword">
-          <a-input v-model:value="query.keyword" :placeholder="$t('ecom.replenish.keywordPh')" allow-clear />
+          <a-input
+            v-model:value="query.keyword"
+            :placeholder="isPlatform ? $t('ecomPurchase.replenish.keywordPh') : $t('ecomPurchase.replenish.materialKeywordPh')"
+            allow-clear
+          />
         </a-form-item>
         <a-form-item :label="$t('ecom.replenish.level')" name="level">
-          <a-select v-model:value="query.level" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_replenish_level)" @change="pagination.current = 1" />
+          <a-select v-model:value="query.level" :placeholder="$t('common.placeholder.all')" allow-clear :options="toOptions(dict.ecom_replenish_level)" />
+        </a-form-item>
+        <a-form-item :label="$t('ecomPurchase.replenish.weights')" name="weights" :tooltip="$t('ecomPurchase.replenish.weightsExtra')">
+          <WeightSelect v-model:value="query.weights" />
         </a-form-item>
       </SearchForm>
     </a-card>
 
     <a-card :bordered="false" class="page-card table-card">
-      <!-- 紧急 / 预警 / 充足数量：点击按紧急程度筛选 -->
       <div class="stats">
+        <a-radio-group v-model:value="tab" button-style="solid" @change="onTab">
+          <a-radio-button value="platform">{{ $t('ecomPurchase.replenish.tabPlatform') }}</a-radio-button>
+          <a-radio-button value="purchase">{{ $t('ecomPurchase.replenish.tabPurchase') }}</a-radio-button>
+        </a-radio-group>
+        <!-- 紧急 / 预警 / 充足数量：点击按紧急程度筛选 -->
         <div
           v-for="s in STATS"
           :key="s.level"
@@ -33,80 +44,85 @@
             <div class="stat-value">{{ num(counts[s.level]) }}</div>
           </div>
         </div>
-        <span class="sub-text stats-tip">{{ $t('ecom.replenish.tip') }}</span>
+        <span class="sub-text stats-tip">{{ isPlatform ? $t('ecomPurchase.replenish.tipPlatform') : $t('ecomPurchase.replenish.tipPurchase') }}</span>
       </div>
 
-      <TableToolbar :exporter="exportRows" v-model:size="size" v-model:checked="checked" v-model:show-search="showSearch" :columns="columns" @refresh="load" />
-
-      <a-table
-        row-key="listingId"
-        :size="size"
-        :columns="visibleColumns"
-        :data-source="rows"
+      <PlatformTable
+        v-if="isPlatform"
+        ref="platformTable"
+        :rows="rows"
         :loading="loading"
-        :pagination="pagination"
-        :row-class-name="(r) => (r.level === ReplenishLevel.URGENT ? 'row-urgent' : '')"
-        :scroll="{ x: scrollX, y: '100%' }"
-        @change="(p) => Object.assign(pagination, { current: p.current, pageSize: p.pageSize })"
+        :selectable="canShipment"
+        @refresh="load"
+        @setting="openListingSetting"
+        @transit="(r) => transitModal.open({ materialId: r.materialId, storeId: r.storeId, name: `${r.storeName} · ${r.sellerSku}` })"
       >
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'sku'">
-            <div>{{ record.sellerSku }}</div>
-            <div v-if="record.platformItemId" class="sub-text">{{ record.platformItemId }}</div>
-          </template>
-          <template v-else-if="column.key === 'title'">
-            <div class="cell-ellipsis" :title="record.title">{{ record.title || '-' }}</div>
-          </template>
-          <template v-else-if="column.key === 'material'">
-            <template v-if="record.materialId">
-              <div>{{ record.materialCode }}</div>
-              <div class="sub-text">{{ record.materialName }}</div>
-            </template>
-            <a-tag v-else color="warning" :bordered="false">{{ $t('ecom.common.unmapped') }}</a-tag>
-          </template>
-          <template v-else-if="QTY_KEYS.includes(column.key)">{{ qty(record[column.key]) }}</template>
-          <template v-else-if="column.key === 'dailySales'">{{ qty(record.dailySales, 2) }}</template>
-          <template v-else-if="column.key === 'coverDays'">
-            <span v-if="record.coverDays != null">{{ qty(record.coverDays, 1) }}</span>
-            <span v-else class="sub-text">{{ $t('ecom.replenish.noSales') }}</span>
-          </template>
-          <template v-else-if="column.key === 'stockoutDate'">
-            <span v-if="record.stockoutDate" :class="{ urgent: record.level === ReplenishLevel.URGENT }">{{ record.stockoutDate }}</span>
-            <span v-else class="sub-text">-</span>
-          </template>
-          <template v-else-if="column.key === 'leadDays'">{{ leadText(record) }}</template>
-          <template v-else-if="column.key === 'suggestQty'">
-            <b v-if="Number(record.suggestQty) > 0">{{ qty(record.suggestQty) }}</b>
-            <span v-else class="sub-text">0</span>
-          </template>
-          <template v-else-if="column.key === 'level'">
-            <DictTag type="ecom_replenish_level" :value="record.level" />
-          </template>
+        <template #toolbar="{ selected }">
+          <a-button v-if="SHIPMENT_PLAN_ENABLED" v-perm="'ecom:shipmentPlan:add'" type="primary" @click="toShipment(selected)">
+            <template #icon><SendOutlined /></template>{{ $t('ecomPurchase.replenish.toShipment') }}
+          </a-button>
         </template>
-      </a-table>
+      </PlatformTable>
+      <PurchaseTable
+        v-else
+        ref="purchaseTable"
+        :rows="rows"
+        :loading="loading"
+        :selectable="canPlan"
+        @refresh="load"
+        @setting="openMaterialSetting"
+        @transit="(r) => transitModal.open({ materialId: r.materialId, name: `${r.materialCode} ${r.materialName}` })"
+      >
+        <template #toolbar="{ selected }">
+          <a-button v-perm="'ecom:purchasePlan:add'" type="primary" @click="toPlan(selected)">
+            <template #icon><ShoppingCartOutlined /></template>{{ $t('ecomPurchase.replenish.toPlan') }}
+            <span v-if="selected.length">&nbsp;({{ selected.length }})</span>
+          </a-button>
+        </template>
+      </PurchaseTable>
     </a-card>
+
+    <SettingDrawer ref="settingDrawer" @success="load" />
+    <TransitModal ref="transitModal" />
+    <GeneratePlanModal ref="planModal" @created="onPlanCreated" />
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { AlertOutlined, CheckCircleOutlined, WarningOutlined } from '@ant-design/icons-vue'
-import DictTag from '@/components/DictTag.vue'
+import { message } from 'ant-design-vue'
+import { AlertOutlined, CheckCircleOutlined, SendOutlined, ShoppingCartOutlined, WarningOutlined } from '@ant-design/icons-vue'
 import SearchForm from '@/components/SearchForm.vue'
-import TableToolbar from '@/components/TableToolbar.vue'
 import StoreSelect from '@/components/ecom/StoreSelect.vue'
-import { replenishRows } from '@/api/ecom/replenish'
-import { useColumns } from '@/composables/useColumns'
+import { purchaseSuggestions, replenishRows, shipmentPlanFromReplenish } from '@/api/ecom/replenish'
 import { useDict } from '@/composables/useDict'
+import { useUserStore } from '@/store/user'
 import { findDict, toOptions } from '@/utils/dict'
-import { writeExcel } from '@/utils/excel'
-import { num, qty } from '@/utils/number'
-import { ReplenishLevel } from '@/constants/enums'
+import { num } from '@/utils/number'
+import { ReplenishLevel, ReplenishScope } from '@/constants/enums'
+import PlatformTable from './PlatformTable.vue'
+import PurchaseTable from './PurchaseTable.vue'
+import WeightSelect from './WeightSelect.vue'
+import SettingDrawer from './SettingDrawer.vue'
+import TransitModal from './TransitModal.vue'
+import GeneratePlanModal from './GeneratePlanModal.vue'
+import { WEIGHT_PRESETS, validWeights, weightParams } from './replenish'
+
+/**
+ * 补货建议：平台仓补货（店铺 × 在线商品）与本地仓采购（物料，汇总全部店铺）两段建议，日均可按 7 / 14 / 30 / 60 天加权；
+ * 行上可打开补货设置（在线商品级 / 物料级）、查看在途构成；本地仓采购勾选生成采购计划。
+ * 平台仓补货勾选「生成发货计划」调用发货计划模块的 POST /ecom/shipment-plan/from-replenish（权限 ecom:shipmentPlan:add）
+ */
+const SHIPMENT_PLAN_ENABLED = true
 
 const { t } = useI18n()
+const router = useRouter()
+const userStore = useUserStore()
 const dict = useDict('ecom_replenish_level')
+const canPlan = computed(() => userStore.hasPerm('ecom:purchasePlan:add'))
+const canShipment = computed(() => SHIPMENT_PLAN_ENABLED && userStore.hasPerm('ecom:shipmentPlan:add'))
 
 /** 顶部统计：紧急、预警、充足 */
 const STATS = [
@@ -116,60 +132,28 @@ const STATS = [
 ]
 const levelLabel = (level) => findDict(dict.ecom_replenish_level, level)?.label || level
 
-/** 件数列（按平台 SKU 件数） */
-const QTY_KEYS = ['packQty', 'sales30', 'platformQty', 'inTransitQty', 'localQty']
-const leadText = (r) => t('ecom.replenish.leadText', { lead: r.leadDays ?? '-', safety: r.safetyDays ?? '-' })
-
-const columns = [
-  { title: t('ecom.common.store'), dataIndex: 'storeName', width: 170 },
-  { title: t('ecom.common.sellerSku'), key: 'sku', dataIndex: 'sellerSku', width: 160 },
-  { title: t('ecom.listing.title'), key: 'title', dataIndex: 'title', width: 240 },
-  {
-    title: t('ecom.common.material'),
-    key: 'material',
-    width: 200,
-    exportColumns: [
-      { title: t('ecom.listing.materialCode'), dataIndex: 'materialCode' },
-      { title: t('ecom.listing.materialName'), dataIndex: 'materialName' }
-    ]
-  },
-  { title: t('ecom.common.packQty'), key: 'packQty', dataIndex: 'packQty', width: 90, align: 'right' },
-  { title: t('ecom.replenish.sales30'), key: 'sales30', dataIndex: 'sales30', width: 120, align: 'right' },
-  { title: t('ecom.replenish.dailySales'), key: 'dailySales', dataIndex: 'dailySales', width: 100, align: 'right' },
-  { title: t('ecom.replenish.platformQty'), key: 'platformQty', dataIndex: 'platformQty', width: 110, align: 'right' },
-  { title: t('ecom.replenish.inTransitQty'), key: 'inTransitQty', dataIndex: 'inTransitQty', width: 90, align: 'right' },
-  { title: t('ecom.replenish.localQty'), key: 'localQty', dataIndex: 'localQty', width: 100, align: 'right' },
-  { title: t('ecom.replenish.coverDays'), key: 'coverDays', dataIndex: 'coverDays', width: 100, align: 'right' },
-  { title: t('ecom.replenish.stockoutDate'), key: 'stockoutDate', dataIndex: 'stockoutDate', width: 130 },
-  { title: t('ecom.replenish.leadSafety'), key: 'leadDays', width: 150, exportValue: (r) => leadText(r) },
-  { title: t('ecom.replenish.suggestQty'), key: 'suggestQty', dataIndex: 'suggestQty', width: 120, align: 'right' },
-  { title: t('ecom.replenish.level'), key: 'level', dataIndex: 'level', width: 100, dict: 'ecom_replenish_level' }
-]
-const { checked, visibleColumns, scrollX } = useColumns(columns, 'ecom-replenish')
 const showSearch = ref(true)
-const size = ref('middle')
-
-const emptyQuery = () => ({ storeId: undefined, keyword: undefined, level: undefined })
+const tab = ref('platform')
+const isPlatform = computed(() => tab.value === 'platform')
+const emptyQuery = () => ({ storeId: undefined, keyword: undefined, level: undefined, weights: { ...WEIGHT_PRESETS[0].weights } })
 const query = reactive(emptyQuery())
 // 从看板「紧急补货」跳转过来时带上紧急程度
 const route = useRoute()
 if (route.query.level) query.level = String(route.query.level)
+
 const all = ref([])
 const loading = ref(false)
-const pagination = reactive({
-  current: 1,
-  pageSize: 50,
-  showSizeChanger: true,
-  pageSizeOptions: ['20', '50', '100', '200'],
-  showTotal: (total) => t('common.table.total', { total })
-})
 
-/** 按店铺、关键字取全部行，紧急程度在前端筛选，统计数量始终是全部行的 */
+/** 取全部行，紧急程度在前端筛选，统计数量始终是全部行的 */
 async function load() {
+  if (!validWeights(query.weights)) {
+    message.warning(t('ecomPurchase.replenish.weightInvalid'))
+    return
+  }
   loading.value = true
   try {
-    all.value = (await replenishRows({ storeId: query.storeId || undefined, keyword: query.keyword || undefined })) || []
-    pagination.current = 1
+    const params = { keyword: query.keyword || undefined, ...weightParams(query.weights) }
+    all.value = (isPlatform.value ? await replenishRows({ ...params, storeId: query.storeId || undefined }) : await purchaseSuggestions(params)) || []
   } finally {
     loading.value = false
   }
@@ -179,6 +163,10 @@ function resetQuery() {
   Object.assign(query, emptyQuery())
   load()
 }
+function onTab() {
+  all.value = []
+  load()
+}
 
 const counts = computed(() => {
   const c = { [ReplenishLevel.URGENT]: 0, [ReplenishLevel.WARN]: 0, [ReplenishLevel.OK]: 0 }
@@ -186,26 +174,59 @@ const counts = computed(() => {
   return c
 })
 const rows = computed(() => (query.level ? all.value.filter((r) => r.level === query.level) : all.value))
+const toggleLevel = (level) => (query.level = query.level === level ? undefined : level)
 
-function toggleLevel(level) {
-  query.level = query.level === level ? undefined : level
-  pagination.current = 1
+// ---------------------------------------------------------------- 补货设置、在途、生成计划
+
+const settingDrawer = ref()
+const transitModal = ref()
+const planModal = ref()
+const purchaseTable = ref()
+const platformTable = ref()
+
+function openListingSetting(r) {
+  settingDrawer.value.open({
+    scope: ReplenishScope.LISTING,
+    listingId: r.listingId,
+    name: `${r.storeName} · ${r.sellerSku}`,
+    storeLeadDays: r.storeLeadDays,
+    storeSafetyDays: r.storeSafetyDays
+  })
+}
+function openMaterialSetting(r) {
+  settingDrawer.value.open({ scope: ReplenishScope.MATERIAL, materialId: r.materialId, name: `${r.materialCode} ${r.materialName}` })
 }
 
-/** 列表不分页，直接按当前筛选结果导出 */
-async function exportRows(cols) {
-  const fields = cols.filter((c) => c.key !== 'action').flatMap((c) => (c.exportColumns ? c.exportColumns.map((e) => ({ width: c.width, ...e })) : [c]))
-  const valueOf = (c, r) => {
-    if (c.exportValue) return c.exportValue(r)
-    let v = r[c.dataIndex || c.key]
-    if (c.dict) v = findDict(dict[c.dict], v)?.label ?? v
-    return v === null || v === undefined ? '' : v
+function toPlan(selected) {
+  if (!selected.length) {
+    message.warning(t('ecomPurchase.replenish.selectFirst'))
+    return
   }
-  await writeExcel(
-    t('ecom.replenish.exportName'),
-    fields.map((c) => ({ title: c.title, width: c.width ? Math.round(c.width / 7) : 16 })),
-    rows.value.map((r) => fields.map((c) => valueOf(c, r)))
-  )
+  planModal.value.open(selected, query.weights)
+}
+function onPlanCreated(id) {
+  purchaseTable.value?.clearSelection()
+  router.push({ path: '/ecom/purchase-plan', query: { id } })
+}
+
+/** 生成发货计划：只能是同一店铺的商品，数量取平台仓建议补货 */
+async function toShipment(selected) {
+  const list = selected.filter((r) => Number(r.suggestQty) > 0)
+  if (!list.length) {
+    message.warning(t('ecomPurchase.replenish.selectFirst'))
+    return
+  }
+  if (new Set(list.map((r) => r.storeId)).size > 1) {
+    message.warning(t('ecomPurchase.replenish.shipmentStoreOne'))
+    return
+  }
+  await shipmentPlanFromReplenish({
+    storeId: list[0].storeId,
+    toWarehouseId: list[0].platformWarehouseId,
+    items: list.map((r) => ({ listingId: r.listingId, qty: Number(r.suggestQty) }))
+  })
+  message.success(t('ecomPurchase.replenish.shipmentCreated'))
+  platformTable.value?.clearSelection()
 }
 </script>
 
@@ -213,15 +234,6 @@ async function exportRows(cols) {
 .sub-text {
   color: var(--app-text-3);
   font-size: 12px;
-}
-.cell-ellipsis {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.urgent {
-  color: #ff4d4f;
-  font-weight: 500;
 }
 .stats {
   display: flex;
@@ -234,8 +246,8 @@ async function exportRows(cols) {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-width: 150px;
-  padding: 8px 14px;
+  min-width: 130px;
+  padding: 6px 14px;
   border: 1px solid var(--app-border, #f0f0f0);
   border-left-width: 4px;
   border-radius: 6px;
@@ -255,7 +267,7 @@ async function exportRows(cols) {
   font-size: 12px;
 }
 .stat-value {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
   line-height: 1.2;
 }
@@ -279,7 +291,7 @@ async function exportRows(cols) {
 }
 .stats-tip {
   flex: 1;
-  min-width: 200px;
+  min-width: 240px;
 }
 </style>
 

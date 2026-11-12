@@ -23,6 +23,7 @@ import com.lemon.erp.modules.ecom.dto.TrackingRequest;
 import com.lemon.erp.modules.ecom.entity.EcomLogisticsChannel;
 import com.lemon.erp.modules.ecom.entity.EcomOrder;
 import com.lemon.erp.modules.ecom.entity.EcomOrderItem;
+import com.lemon.erp.modules.ecom.entity.EcomOrderItemPart;
 import com.lemon.erp.modules.ecom.entity.EcomPackage;
 import com.lemon.erp.modules.ecom.entity.EcomPackageItem;
 import com.lemon.erp.modules.ecom.entity.EcomStore;
@@ -203,10 +204,10 @@ public class EcomPackageService {
     public String allocateRemainder(EcomOrder o, Long warehouseId) {
         Map<Long, BigDecimal> alloc = allocated(o.getId());
         List<EcomPackageItem> lines = new ArrayList<>();
-        for (EcomOrderItem it : orderItemMapper.selectByOrderId(o.getId())) {
+        for (EcomOrderItem it : outboundSupport.attachParts(orderItemMapper.selectByOrderId(o.getId()))) {
             BigDecimal rest = it.getQty().subtract(Decimals.nz(alloc.get(it.getId())));
             if (rest.signum() > 0) {
-                lines.add(line(o.getId(), it, rest));
+                lines.addAll(line(o.getId(), it, rest));
             }
         }
         if (lines.isEmpty()) {
@@ -222,19 +223,38 @@ public class EcomPackageService {
         return null;
     }
 
-    /** 包裹明细的一行（物料数量按件数折算） */
-    private static EcomPackageItem line(Long orderId, EcomOrderItem it, BigDecimal qty) {
-        if (it.getMaterialId() == null || it.getMaterialQty() == null) {
+    /**
+     * 包裹明细（物料数量按件数折算）：单品一行；组合商品每个组件一行（件数相同，只有第一行计入订单行的已分配件数）。
+     * 订单行需已带上 parts
+     */
+    private static List<EcomPackageItem> line(Long orderId, EcomOrderItem it, BigDecimal qty) {
+        if (!EcomOutboundSupport.mapped(it)) {
             throw new BizException("ecom.error.orderSkuUnmapped", it.getSellerSku());
         }
-        EcomPackageItem pi = new EcomPackageItem();
-        pi.setOrderId(orderId);
-        pi.setOrderItemId(it.getId());
-        pi.setMaterialId(it.getMaterialId());
-        pi.setQty(Decimals.qty(qty));
-        pi.setMaterialQty(qty.compareTo(it.getQty()) == 0 ? it.getMaterialQty()
-                : Decimals.qty(it.getMaterialQty().multiply(qty).divide(it.getQty(), 6, RoundingMode.HALF_UP)));
-        return pi;
+        if (!EcomOutboundSupport.isBundle(it)) {
+            EcomPackageItem pi = new EcomPackageItem();
+            pi.setOrderId(orderId);
+            pi.setOrderItemId(it.getId());
+            pi.setMaterialId(it.getMaterialId());
+            pi.setQty(Decimals.qty(qty));
+            pi.setMaterialQty(qty.compareTo(it.getQty()) == 0 ? it.getMaterialQty()
+                    : Decimals.qty(it.getMaterialQty().multiply(qty).divide(it.getQty(), 6, RoundingMode.HALF_UP)));
+            pi.setPartMain(1);
+            return List.of(pi);
+        }
+        List<EcomPackageItem> out = new ArrayList<>();
+        for (EcomOrderItemPart part : it.getParts()) {
+            EcomPackageItem pi = new EcomPackageItem();
+            pi.setOrderId(orderId);
+            pi.setOrderItemId(it.getId());
+            pi.setMaterialId(part.getMaterialId());
+            pi.setQty(Decimals.qty(qty));
+            pi.setMaterialQty(qty.compareTo(it.getQty()) == 0 ? part.getMaterialQty() : Decimals.qty(part.getUnitQty().multiply(qty)));
+            pi.setPartId(part.getId());
+            pi.setPartMain(out.isEmpty() ? 1 : 0);
+            out.add(pi);
+        }
+        return out;
     }
 
     private static Map<Long, BigDecimal> need(List<EcomPackageItem> lines) {
@@ -243,12 +263,15 @@ public class EcomPackageService {
         return need;
     }
 
-    /** 订单各物料的显示名称（编码 名称） */
+    /** 订单各物料的显示名称（编码 名称，含组合商品的组件） */
     private Map<Long, String> names(Long orderId) {
         Map<Long, String> names = new HashMap<>();
-        for (EcomOrderItem it : orderItemMapper.selectByOrderId(orderId)) {
+        for (EcomOrderItem it : outboundSupport.attachParts(orderItemMapper.selectByOrderId(orderId))) {
             if (it.getMaterialId() != null) {
                 names.putIfAbsent(it.getMaterialId(), (Objects.toString(it.getMaterialCode(), "") + " " + Objects.toString(it.getMaterialName(), "")).trim());
+            }
+            for (EcomOrderItemPart p : it.getParts()) {
+                names.putIfAbsent(p.getMaterialId(), (Objects.toString(p.getMaterialCode(), "") + " " + Objects.toString(p.getMaterialName(), "")).trim());
             }
         }
         return names;
@@ -277,6 +300,8 @@ public class EcomPackageService {
             pi.setMaterialId(l.getMaterialId());
             pi.setQty(l.getQty());
             pi.setMaterialQty(l.getMaterialQty());
+            pi.setPartId(l.getPartId());
+            pi.setPartMain(l.getPartMain() == null ? 1 : l.getPartMain());
             items.add(pi);
         }
         packageItemMapper.insertBatch(items);
@@ -438,7 +463,7 @@ public class EcomPackageService {
             released.add(p.getId());
         }
         Map<Long, BigDecimal> alloc = allocated(o.getId());
-        Map<Long, EcomOrderItem> items = orderItemMapper.selectByOrderId(o.getId()).stream()
+        Map<Long, EcomOrderItem> items = outboundSupport.attachParts(orderItemMapper.selectByOrderId(o.getId())).stream()
                 .collect(Collectors.toMap(EcomOrderItem::getId, i -> i, (a, b) -> a, LinkedHashMap::new));
         Map<Long, BigDecimal> remaining = new HashMap<>();
         items.values().forEach(i -> remaining.put(i.getId(), i.getQty().subtract(Decimals.nz(alloc.get(i.getId())))));
@@ -457,7 +482,7 @@ public class EcomPackageService {
                     throw new BizException("ecom.error.ops.splitQtyExceeds", it.getSellerSku(), rest.stripTrailingZeros().toPlainString());
                 }
                 remaining.put(itemId, rest.subtract(qty));
-                lines.add(line(o.getId(), it, qty));
+                lines.addAll(line(o.getId(), it, qty));
             });
             groups.add(lines);
         }
@@ -595,6 +620,31 @@ public class EcomPackageService {
         orders.forEach(o -> recomputeOrder(o.getId()));
     }
 
+    /**
+     * 平台分配的运单号回写到订单的包裹（渠道接入回传发货后，平台物流托管的订单由平台生成运单号）：
+     * 只写未取消、还没有运单号的包裹，承运商为空时一并写入；不改变包裹状态
+     *
+     * @return 写入的包裹数
+     */
+    @Transactional
+    public int fillPlatformTracking(Long orderId, String carrier, String trackingNo) {
+        if (orderId == null || !StringUtils.hasText(trackingNo)) {
+            return 0;
+        }
+        int n = 0;
+        for (EcomPackage p : packageMapper.selectByOrderId(orderId)) {
+            if (p.getStatus() == EcomPackageStatus.CANCELLED || StringUtils.hasText(p.getTrackingNo())) {
+                continue;
+            }
+            packageMapper.update(Wrappers.<EcomPackage>lambdaUpdate().set(EcomPackage::getTrackingNo, trackingNo.trim())
+                    .set(!StringUtils.hasText(p.getCarrierName()) && StringUtils.hasText(carrier), EcomPackage::getCarrierName,
+                            carrier == null ? null : carrier.trim())
+                    .eq(EcomPackage::getId, p.getId()));
+            n++;
+        }
+        return n;
+    }
+
     /** 修改包裹：渠道只能在打单前改，重量、运费、备注在发货前都可以改 */
     @Transactional
     public void update(Long id, PackageUpdateRequest req) {
@@ -624,6 +674,8 @@ public class EcomPackageService {
         EcomOrder o = orders.get(0);
         CarrierShipment.Receiver r = new CarrierShipment.Receiver(o.getShipName(), o.getShipPhone(), o.getBuyerEmail(), o.getShipCountry(),
                 o.getShipState(), o.getShipCity(), o.getShipPostcode(), o.getShipAddress());
+        // 组合商品按平台 SKU 申报（只取每个订单行的第一个组件行）
+        items = items.stream().filter(i -> i.getPartMain() == null || i.getPartMain() == 1).toList();
         int totalQty = items.stream().mapToInt(i -> Math.max(1, i.getQty().setScale(0, RoundingMode.CEILING).intValue())).sum();
         BigDecimal unitWeight = totalQty <= 0 ? weight : weight.divide(BigDecimal.valueOf(totalQty), 3, RoundingMode.HALF_UP).max(MIN_UNIT_WEIGHT);
         List<CarrierShipment.Item> lines = new ArrayList<>();
@@ -844,14 +896,19 @@ public class EcomPackageService {
                 allotted = allotted.add(share);
             }
             List<EcomPackageItem> mine = byOrder.getOrDefault(o.getId(), List.of());
-            Map<Long, EcomOrderItem> orderItems = orderItemMapper.selectByOrderId(o.getId()).stream().collect(Collectors.toMap(EcomOrderItem::getId, i -> i));
+            Map<Long, EcomOrderItem> orderItems = outboundSupport.attachParts(orderItemMapper.selectByOrderId(o.getId())).stream()
+                    .collect(Collectors.toMap(EcomOrderItem::getId, i -> i));
             List<EcomOutboundSupport.Line> lines = new ArrayList<>();
             for (EcomPackageItem pi : mine) {
                 EcomOrderItem it = orderItems.get(pi.getOrderItemId());
-                if (it == null || it.getMaterialId() == null || it.getMaterialQty() == null) {
+                if (it == null || !EcomOutboundSupport.mapped(it)) {
                     throw new BizException("ecom.error.orderSkuUnmapped", it == null ? "-" : it.getSellerSku());
                 }
-                lines.add(new EcomOutboundSupport.Line(it, pi.getQty(), pi.getMaterialQty()));
+                // 组合商品的组件行按包裹中记录的组件出库
+                EcomOrderItemPart part = pi.getPartId() == null ? null
+                        : it.getParts().stream().filter(x -> x.getId().equals(pi.getPartId())).findFirst()
+                        .orElseThrow(() -> new BizException("ecom.error.orderSkuUnmapped", it.getSellerSku()));
+                lines.add(new EcomOutboundSupport.Line(it, pi.getQty(), pi.getMaterialQty(), part));
             }
             EcomOutboundSupport.Result r = outboundSupport.outbound(o, store, p.getWarehouseId(), time.toLocalDate(), lines,
                     Messages.get("ecom.text.ops.packageOutboundRemark", store.getName(), o.getPlatformOrderNo(), p.getPackageNo()));
@@ -863,6 +920,9 @@ public class EcomPackageService {
                 EcomOrderItem it = orderItems.get(pi.getOrderItemId());
                 it.setCost(Decimals.money(Decimals.nz(it.getCost()).add(c)));
                 orderItemMapper.update(Wrappers.<EcomOrderItem>lambdaUpdate().set(EcomOrderItem::getCost, it.getCost()).eq(EcomOrderItem::getId, it.getId()));
+                if (pi.getPartId() != null) {
+                    outboundSupport.addPartCost(pi.getPartId(), c);
+                }
             }
             orderMapper.update(Wrappers.<EcomOrder>lambdaUpdate()
                     .set(EcomOrder::getCostAmount, Decimals.money(Decimals.nz(o.getCostAmount()).add(r.totalCost())))

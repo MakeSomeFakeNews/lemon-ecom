@@ -7,6 +7,8 @@ import com.lemon.erp.common.util.Decimals;
 import com.lemon.erp.modules.ecom.connector.ChannelConnector;
 import com.lemon.erp.modules.ecom.connector.ConnectorCapability;
 import com.lemon.erp.modules.ecom.connector.ConnectorContext;
+import com.lemon.erp.modules.ecom.connector.ConnectorJson;
+import com.lemon.erp.modules.ecom.connector.HttpJson;
 import com.lemon.erp.modules.ecom.connector.ConnectorRegistry;
 import com.lemon.erp.modules.ecom.connector.InventoryUpdate;
 import com.lemon.erp.modules.ecom.connector.ListingDraft;
@@ -29,6 +31,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
+import tools.jackson.core.type.TypeReference;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -38,6 +41,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 /**
@@ -63,6 +67,7 @@ public class EcomListingSyncService {
     private final WmsWarehouseService warehouseService;
     private final StockReservationService reservationService;
     private final TransactionTemplate transactionTemplate;
+    private final EcomBundleService bundleService;
 
     // ---------------------------------------------------------------- 拉取在线商品
 
@@ -131,7 +136,7 @@ public class EcomListingSyncService {
         for (int i = 0; i < skus.size(); i += QUERY_BATCH) {
             List<String> chunk = skus.subList(i, Math.min(skus.size(), i + QUERY_BATCH));
             listingMapper.selectList(Wrappers.<EcomListing>lambdaQuery()
-                            .select(EcomListing::getId, EcomListing::getSellerSku)
+                            .select(EcomListing::getId, EcomListing::getSellerSku, EcomListing::getPlatformExtra)
                             .eq(EcomListing::getStoreId, store.getId()).in(EcomListing::getSellerSku, chunk))
                     .forEach(l -> existing.put(l.getSellerSku(), l));
         }
@@ -164,6 +169,8 @@ public class EcomListingSyncService {
             } else {
                 EcomListing l = new EcomListing();
                 apply(l, d);
+                // 平台附加 ID 与已保存的合并（同名键覆盖），平台这次没有返回时保留原值
+                l.setPlatformExtra(d.extra().isEmpty() ? null : extraJson(mergeExtra(parseExtra(old.getPlatformExtra()), d.extra())));
                 listingMapper.update(Wrappers.<EcomListing>lambdaUpdate()
                         .set(l.getPlatformItemId() != null, EcomListing::getPlatformItemId, l.getPlatformItemId())
                         .set(l.getParentItemId() != null, EcomListing::getParentItemId, l.getParentItemId())
@@ -176,6 +183,7 @@ public class EcomListingSyncService {
                         .set(l.getStatus() != null, EcomListing::getStatus, l.getStatus())
                         .set(l.getImageUrl() != null, EcomListing::getImageUrl, l.getImageUrl())
                         .set(l.getUrl() != null, EcomListing::getUrl, l.getUrl())
+                        .set(l.getPlatformExtra() != null, EcomListing::getPlatformExtra, l.getPlatformExtra())
                         .set(EcomListing::getUpdateTime, now)
                         .eq(EcomListing::getId, old.getId()));
                 updated++;
@@ -197,6 +205,32 @@ public class EcomListingSyncService {
         l.setStatus(parse(ListingStatus.class, d.status()));
         l.setImageUrl(cut(d.imageUrl(), 255));
         l.setUrl(cut(d.url(), 255));
+        l.setPlatformExtra(d.extra().isEmpty() ? null : extraJson(d.extra()));
+    }
+
+    /** 在线商品的平台附加 ID（platform_extra，JSON 对象），为空或格式不对时为空 Map */
+    static Map<String, String> parseExtra(String json) {
+        if (!StringUtils.hasText(json)) {
+            return Map.of();
+        }
+        try {
+            Map<String, String> map = HttpJson.MAPPER.readValue(json, new TypeReference<Map<String, String>>() {
+            });
+            return ConnectorJson.compact(map);
+        } catch (RuntimeException e) {
+            return Map.of();
+        }
+    }
+
+    static String extraJson(Map<String, String> extra) {
+        Map<String, String> m = ConnectorJson.compact(extra);
+        return m.isEmpty() ? null : HttpJson.MAPPER.writeValueAsString(new TreeMap<>(m));
+    }
+
+    private static Map<String, String> mergeExtra(Map<String, String> saved, Map<String, String> fresh) {
+        Map<String, String> m = new LinkedHashMap<>(saved);
+        m.putAll(fresh);
+        return m;
     }
 
     private static <E extends Enum<E>> E parse(Class<E> type, String value) {
@@ -274,7 +308,7 @@ public class EcomListingSyncService {
         for (int i = 0; i < changed.size(); i += PUSH_BATCH) {
             List<EcomListing> batch = changed.subList(i, Math.min(changed.size(), i + PUSH_BATCH));
             List<InventoryUpdate> updates = batch.stream()
-                    .map(l -> new InventoryUpdate(l.getSellerSku(), l.getPlatformItemId(), l.getPlatformQty())).toList();
+                    .map(EcomListingSyncService::inventoryUpdate).toList();
             try {
                 connector.pushInventory(ctx, updates);
             } catch (RuntimeException e) {
@@ -313,13 +347,39 @@ public class EcomListingSyncService {
         if (wh.getType() != null && WarehouseType.UNAVAILABLE.contains(wh.getType())) {
             throw new BizException("ecom.error.hub.warehouseUnavailable", wh.getName());
         }
-        Set<Long> materialIds = list.stream().map(EcomListing::getMaterialId).collect(Collectors.toSet());
-        Map<Long, BigDecimal> free = reservationService.free(store.getWarehouseId(), materialIds);
+        // 单品为 物料 × 多件装，组合为各组件 × 用量
+        Map<Long, List<com.lemon.erp.modules.ecom.dto.BundleComponent>> comps = bundleService.componentsOf(list.stream().map(EcomListing::getId).toList());
+        Set<Long> materialIds = comps.values().stream().flatMap(List::stream).map(com.lemon.erp.modules.ecom.dto.BundleComponent::materialId)
+                .collect(Collectors.toSet());
+        Map<Long, BigDecimal> free = materialIds.isEmpty() ? Map.of() : reservationService.free(store.getWarehouseId(), materialIds);
         BigDecimal buffer = Decimals.nz(store.getInventoryBuffer());
+        List<EcomListing> out = new ArrayList<>();
         for (EcomListing l : list) {
-            l.setPlatformQty(sellableQty(free.get(l.getMaterialId()), l.getPackQty(), buffer));
+            List<com.lemon.erp.modules.ecom.dto.BundleComponent> c = comps.get(l.getId());
+            if (c == null || c.isEmpty()) {
+                continue;
+            }
+            l.setPlatformQty(sellableQty(free, c, buffer));
+            out.add(l);
         }
-        return list;
+        return out;
+    }
+
+    /** 组合（或单品）的可售数 = min(⌊各组件空闲库存 ÷ 用量⌋) − 保留，不小于 0 */
+    public static BigDecimal sellableQty(Map<Long, BigDecimal> free, List<com.lemon.erp.modules.ecom.dto.BundleComponent> components, BigDecimal buffer) {
+        BigDecimal min = null;
+        for (com.lemon.erp.modules.ecom.dto.BundleComponent c : components) {
+            BigDecimal q = sellableQty(free.get(c.materialId()), c.qty(), BigDecimal.ZERO);
+            min = min == null ? q : min.min(q);
+        }
+        return Decimals.nz(min).subtract(Decimals.nz(buffer)).setScale(0, RoundingMode.DOWN).max(BigDecimal.ZERO);
+    }
+
+    /** 回传给连接器的一条：平台 SKU、商品 ID、父商品 ID、平台仓库（附加 ID 中的 warehouseId）、可售数与附加 ID */
+    static InventoryUpdate inventoryUpdate(EcomListing l) {
+        Map<String, String> extra = parseExtra(l.getPlatformExtra());
+        return new InventoryUpdate(l.getSellerSku(), l.getPlatformItemId(), l.getParentItemId(), extra.get(ListingDraft.EXTRA_WAREHOUSE_ID),
+                l.getPlatformQty(), extra);
     }
 
     /** 可售数 = ⌊max(空闲库存, 0) ÷ 多件装⌋ − 保留，不小于 0，向下取整 */

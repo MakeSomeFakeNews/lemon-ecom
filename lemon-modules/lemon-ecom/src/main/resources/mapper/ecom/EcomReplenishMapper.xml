@@ -2,27 +2,35 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.lemon.erp.modules.ecom.mapper.EcomReplenishMapper">
 
-    <!-- 件数均按多件装数量折算为平台 SKU 件数；销量只统计未取消的订单 -->
+    <!-- 件数均按多件装数量折算为平台 SKU 件数；销量只统计未取消的订单，按最近 7 / 14 / 30 / 60 天分别汇总。
+         组合商品没有映射物料（material_id 为空），库存、在途为 0，由服务按组件折算；没有组成的在线商品由服务剔除 -->
     <select id="selectRows" resultType="com.lemon.erp.modules.ecom.dto.ReplenishRow">
         SELECT l.store_id, s.name AS store_name, s.platform, l.id AS listing_id, l.seller_sku, l.platform_item_id, l.title,
                l.material_id, m.code AS material_code, m.name AS material_name, COALESCE(l.pack_qty, 1) AS pack_qty,
-               s.lead_days, s.safety_days,
-               COALESCE(sales.qty, 0) AS sales30,
+               s.warehouse_id, s.platform_warehouse_id,
+               s.lead_days AS store_lead_days, s.safety_days AS store_safety_days,
+               COALESCE(sales.qty7, 0) AS sales7, COALESCE(sales.qty14, 0) AS sales14,
+               COALESCE(sales.qty30, 0) AS sales30, COALESCE(sales.qty60, 0) AS sales60,
                COALESCE(pst.qty, 0) / COALESCE(l.pack_qty, 1) AS platform_qty,
                COALESCE(lst.qty, 0) / COALESCE(l.pack_qty, 1) AS local_qty,
-               COALESCE(tr.qty, 0) / COALESCE(l.pack_qty, 1) AS in_transit_qty
+               COALESCE(tr.qty, 0) / COALESCE(l.pack_qty, 1) AS in_transit_qty,
+               tr.eta AS in_transit_eta
         FROM ecom_listing l
         JOIN ecom_store s ON s.id = l.store_id
-        JOIN wms_material m ON m.id = l.material_id
-        LEFT JOIN (SELECT o.store_id, oi.seller_sku, SUM(oi.qty) AS qty
+        LEFT JOIN wms_material m ON m.id = l.material_id
+        LEFT JOIN (SELECT o.store_id, oi.seller_sku,
+                          SUM(CASE WHEN o.order_time &gt;= #{since7} THEN oi.qty ELSE 0 END) AS qty7,
+                          SUM(CASE WHEN o.order_time &gt;= #{since14} THEN oi.qty ELSE 0 END) AS qty14,
+                          SUM(CASE WHEN o.order_time &gt;= #{since30} THEN oi.qty ELSE 0 END) AS qty30,
+                          SUM(oi.qty) AS qty60
                    FROM ecom_order_item oi JOIN ecom_order o ON o.id = oi.order_id
-                   WHERE o.status &lt;&gt; 'CANCELLED' AND o.order_time &gt;= #{since}
+                   WHERE o.status &lt;&gt; 'CANCELLED' AND o.order_time &gt;= #{since60}
                    GROUP BY o.store_id, oi.seller_sku) sales ON sales.store_id = l.store_id AND sales.seller_sku = l.seller_sku
         LEFT JOIN (SELECT st.material_id, st.warehouse_id, SUM(st.qty) AS qty FROM wms_stock st GROUP BY st.material_id, st.warehouse_id) pst
                ON pst.material_id = l.material_id AND pst.warehouse_id = s.platform_warehouse_id
         LEFT JOIN (SELECT st.material_id, st.warehouse_id, SUM(st.qty) AS qty FROM wms_stock st GROUP BY st.material_id, st.warehouse_id) lst
                ON lst.material_id = l.material_id AND lst.warehouse_id = s.warehouse_id
-        LEFT JOIN (SELECT i.store_id, it.material_id, SUM(it.qty - COALESCE(it.received_qty, 0)) AS qty
+        LEFT JOIN (SELECT i.store_id, it.material_id, SUM(it.qty - COALESCE(it.received_qty, 0)) AS qty, MIN(i.eta_date) AS eta
                    FROM ecom_inbound_item it JOIN ecom_inbound i ON i.id = it.inbound_id
                    WHERE i.status = 'SHIPPED' GROUP BY i.store_id, it.material_id) tr ON tr.store_id = l.store_id AND tr.material_id = l.material_id
         WHERE l.status = 'ACTIVE' AND s.status = 1
@@ -32,6 +40,81 @@
                  OR m.code LIKE CONCAT('%', #{keyword}, '%') OR m.name LIKE CONCAT('%', #{keyword}, '%'))
         </if>
         ORDER BY l.store_id, l.seller_sku
+    </select>
+
+    <!-- 物料在指定仓库的库存（组合商品按组件折算平台仓 / 本地仓库存） -->
+    <select id="selectStock" resultType="map">
+        SELECT st.material_id AS "materialId", st.warehouse_id AS "warehouseId", SUM(st.qty) AS "qty"
+        FROM wms_stock st
+        WHERE st.material_id IN <foreach collection="materialIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+          AND st.warehouse_id IN <foreach collection="warehouseIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+        GROUP BY st.material_id, st.warehouse_id
+    </select>
+
+    <!-- 各店铺的头程在途（物料数量）与最早预计到达日期（组合商品按组件折算） -->
+    <select id="selectStoreInboundTransit" resultType="map">
+        SELECT i.store_id AS "storeId", it.material_id AS "materialId", SUM(it.qty - COALESCE(it.received_qty, 0)) AS "qty", MIN(i.eta_date) AS "eta"
+        FROM ecom_inbound_item it
+        JOIN ecom_inbound i ON i.id = it.inbound_id
+        WHERE i.status = 'SHIPPED'
+          AND it.material_id IN <foreach collection="materialIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+        GROUP BY i.store_id, it.material_id
+    </select>
+
+    <!-- 本地仓库存：启用店铺的默认发货仓（同一仓库只计一次），不含任何店铺的平台仓 -->
+    <select id="selectLocalStock" resultType="map">
+        SELECT st.material_id AS "materialId", SUM(st.qty) AS "qty"
+        FROM wms_stock st
+        WHERE st.material_id IN <foreach collection="materialIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+          AND st.warehouse_id IN (SELECT s.warehouse_id FROM ecom_store s WHERE s.status = 1)
+          AND st.warehouse_id NOT IN (SELECT p.platform_warehouse_id FROM ecom_store p WHERE p.platform_warehouse_id IS NOT NULL)
+        GROUP BY st.material_id
+    </select>
+
+    <!-- 采购在途：已审核、部分入库的采购订单的未入库数量（订购 − 已入库 + 需补收的退货），最早的交货日期（只读引用供应链的表） -->
+    <select id="selectPurchaseTransit" resultType="map">
+        SELECT i.material_id AS "materialId",
+               SUM(GREATEST(i.qty - i.done_qty + COALESCE(i.replenish_qty, 0), 0)) AS "qty",
+               MIN(CASE WHEN i.qty - i.done_qty + COALESCE(i.replenish_qty, 0) &gt; 0 THEN COALESCE(i.delivery_date, o.delivery_date) END) AS "eta"
+        FROM scm_order o
+        JOIN scm_order_item i ON i.order_id = o.id
+        WHERE o.kind = 'PURCHASE' AND o.status IN ('APPROVED', 'PARTIAL')
+          AND i.material_id IN <foreach collection="materialIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+        GROUP BY i.material_id
+    </select>
+
+    <!-- 头程在途（全部店铺）：已发运未签收的货件数量（物料数量）、最早的预计到达日期 -->
+    <select id="selectInboundTransit" resultType="map">
+        SELECT it.material_id AS "materialId", SUM(it.qty - COALESCE(it.received_qty, 0)) AS "qty", MIN(i.eta_date) AS "eta"
+        FROM ecom_inbound_item it
+        JOIN ecom_inbound i ON i.id = it.inbound_id
+        WHERE i.status = 'SHIPPED'
+          AND it.material_id IN <foreach collection="materialIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+        GROUP BY it.material_id
+    </select>
+
+    <!-- 采购在途的构成 -->
+    <select id="selectPurchaseTransitDetail" resultType="com.lemon.erp.modules.ecom.dto.ReplenishTransit$Purchase">
+        SELECT o.id AS order_id, o.order_no, sp.name AS supplier_name, o.order_date, COALESCE(i.delivery_date, o.delivery_date) AS delivery_date,
+               o.status, i.qty, i.done_qty, GREATEST(i.qty - i.done_qty + COALESCE(i.replenish_qty, 0), 0) AS open_qty
+        FROM scm_order o
+        JOIN scm_order_item i ON i.order_id = o.id
+        LEFT JOIN scm_supplier sp ON sp.id = o.partner_id
+        WHERE o.kind = 'PURCHASE' AND o.status IN ('APPROVED', 'PARTIAL') AND i.material_id = #{materialId}
+          AND i.qty - i.done_qty + COALESCE(i.replenish_qty, 0) &gt; 0
+        ORDER BY COALESCE(i.delivery_date, o.delivery_date), o.id
+    </select>
+
+    <!-- 头程在途的构成，可只看某个店铺 -->
+    <select id="selectInboundTransitDetail" resultType="com.lemon.erp.modules.ecom.dto.ReplenishTransit$Shipment">
+        SELECT i.id AS inbound_id, i.doc_no, s.name AS store_name, i.shipment_id, it.seller_sku, i.ship_date, i.eta_date,
+               it.qty, it.received_qty, it.qty - COALESCE(it.received_qty, 0) AS open_qty
+        FROM ecom_inbound_item it
+        JOIN ecom_inbound i ON i.id = it.inbound_id
+        JOIN ecom_store s ON s.id = i.store_id
+        WHERE i.status = 'SHIPPED' AND it.material_id = #{materialId}
+        <if test="storeId != null">AND i.store_id = #{storeId}</if>
+        ORDER BY i.eta_date, i.id
     </select>
 
 </mapper>

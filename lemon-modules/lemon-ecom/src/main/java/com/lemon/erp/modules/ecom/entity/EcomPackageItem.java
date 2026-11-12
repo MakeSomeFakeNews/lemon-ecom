@@ -22,8 +22,12 @@ public class EcomPackageItem extends BaseEntity {
     private Long materialId;
     /** 件数（平台 SKU） */
     private BigDecimal qty;
-    /** 物料数量 = 件数 × 多件装 */
+    /** 物料数量 = 件数 × 多件装（组合商品为 件数 × 组件用量） */
     private BigDecimal materialQty;
+    /** 组合商品的组件（ecom_order_item_part），单品为空；组合商品的一个订单行按组件拆成多行，件数相同 */
+    private Long partId;
+    /** 是否计入订单行的已分配件数 1是（单品都是；组合商品只有第一个组件行） */
+    private Integer partMain;
     /** 出库成本（本位币） */
     private BigDecimal cost;
     /** 发货时生成的销售出库单 */

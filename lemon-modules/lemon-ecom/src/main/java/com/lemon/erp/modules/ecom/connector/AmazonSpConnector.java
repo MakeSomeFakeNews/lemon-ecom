@@ -15,9 +15,6 @@ import tools.jackson.databind.JsonNode;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -44,8 +41,17 @@ import java.util.Map;
  * fulfillment 按 fulfillmentAvailability 的渠道（DEFAULT 自发货，AMAZON_* 平台仓），status：summaries.status 含 BUYABLE 为在售，
  * 其他为下架，没有 summaries 为信息不完整。
  * <p>
+ * 时间：LastUpdatedAfter、shipDate 按服务器时区换算为 UTC。FBA（AFN）订单回传发货时跳过。
+ * 限流返回的 429 由 {@link HttpJson} 自动退避重试（亚马逊不带 Retry-After，按 1、2、4 秒）。
+ * <p>
  * 说明：接口按亚马逊公开文档实现，尚未用真实卖家账号联调；getOrders 限速约每分钟 1 次（突发 20），定时同步间隔不要过短；
- * patchListingsItem 限速每秒 5 次，库存回传逐个 SKU 调用，部分失败时其余 SKU 照常提交，最后汇总报错
+ * patchListingsItem 限速每秒 5 次，库存回传逐个 SKU 调用，部分失败时其余 SKU 照常提交，最后汇总报错。需要真实账号联调确认：
+ * <ul>
+ *   <li>不使用 RDT（受限数据令牌）时 ShippingAddress / BuyerInfo 是否返回（多数情况下需要 RDT 才有收件人信息）</li>
+ *   <li>patchListingsItem 用通用 productType = PRODUCT 是否被接受</li>
+ *   <li>getOrders 每次最多 {@value #MAX_ORDER_PAGES} 页（约 2000 单），大卖家需要缩短同步间隔；getOrderItems 每单一次调用的限速</li>
+ *   <li>confirmShipment 的 carrierCode 取值（亚马逊承运商代码表），以及 packageReferenceId 多包裹的处理</li>
+ * </ul>
  */
 @Component
 public class AmazonSpConnector implements ChannelConnector {
@@ -67,12 +73,14 @@ public class AmazonSpConnector implements ChannelConnector {
             CredentialField.text("clientId", "ecom.label.cred.clientId", true),
             CredentialField.secret("clientSecret", "ecom.label.cred.clientSecret"),
             CredentialField.secret("refreshToken", "ecom.label.cred.refreshToken"),
-            CredentialField.text("sellingPartnerId", "ecom.label.cred.amazonSellingPartnerId", false)),
+            CredentialField.text("sellingPartnerId", "ecom.label.cred.amazonSellingPartnerId", false),
+            CredentialField.cached("accessToken", true),
+            CredentialField.cached("accessTokenExpiresAt", false),
+            CredentialField.cached("accessTokenOwner", false)),
             ENDPOINTS.get("NA"), SANDBOX_ENDPOINTS.get("NA"),
             java.util.EnumSet.of(ConnectorCapability.ORDERS, ConnectorCapability.SHIP_CONFIRM, ConnectorCapability.INVENTORY_PUSH,
                     ConnectorCapability.LISTINGS),
-            "https://developer-docs.amazon.com/sp-api/");
-    private static final DateTimeFormatter ISO = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
+            "https://developer-docs.amazon.com/sp-api/").withOrderWindowNote("ecom.text.connector.window.amazon");
     private static final String LISTINGS_PATH = "/listings/2021-08-01/items/";
     private static final int LISTING_PAGE_SIZE = 20;
     private static final int MAX_LISTING_PAGES = 250;
@@ -104,7 +112,7 @@ public class AmazonSpConnector implements ChannelConnector {
         String endpoint = endpoint(ctx);
         Map<String, String> headers = headers(ctx);
         String marketplace = c.require("marketplaceId");
-        String after = since.atOffset(ZoneOffset.UTC).format(ISO);
+        String after = ConnectorJson.toUtcIso(since);
         List<OrderDraft> drafts = new ArrayList<>();
         String nextToken = null;
         int pages = 0;
@@ -126,6 +134,9 @@ public class AmazonSpConnector implements ChannelConnector {
             nextToken = HttpJson.text(payload, "NextToken");
             pages++;
         } while (nextToken != null && pages < MAX_ORDER_PAGES);
+        if (nextToken != null) {
+            ConnectorJson.warnPageLimit(PLATFORM, "orders", MAX_ORDER_PAGES);
+        }
         return drafts;
     }
 
@@ -160,7 +171,7 @@ public class AmazonSpConnector implements ChannelConnector {
         d.setShipState(HttpJson.text(addr, "StateOrRegion"));
         d.setShipCity(HttpJson.text(addr, "City"));
         d.setShipPostcode(HttpJson.text(addr, "PostalCode"));
-        d.setShipAddress(join(HttpJson.text(addr, "AddressLine1"), HttpJson.text(addr, "AddressLine2"), HttpJson.text(addr, "AddressLine3")));
+        d.setShipAddress(ConnectorJson.join(HttpJson.text(addr, "AddressLine1"), HttpJson.text(addr, "AddressLine2"), HttpJson.text(addr, "AddressLine3")));
         d.setBuyerName(HttpJson.text(o.path("BuyerInfo"), "BuyerName"));
         d.setBuyerEmail(HttpJson.text(o.path("BuyerInfo"), "BuyerEmail"));
         return d;
@@ -173,22 +184,25 @@ public class AmazonSpConnector implements ChannelConnector {
         l.setPlatformItemId(HttpJson.text(item, "ASIN"));
         l.setTitle(HttpJson.text(item, "Title"));
         java.math.BigDecimal qty = HttpJson.decimal(item, "QuantityOrdered");
-        l.setQty(qty == null ? java.math.BigDecimal.ONE : qty);
+        l.setQty(qty == null || qty.signum() <= 0 ? java.math.BigDecimal.ONE : qty);
         java.math.BigDecimal amount = HttpJson.decimal(item, "ItemPrice", "Amount");
         l.setAmount(amount);
         l.setPrice(amount == null || l.getQty().signum() == 0 ? java.math.BigDecimal.ZERO : amount.divide(l.getQty(), 4, java.math.RoundingMode.HALF_UP));
         l.setShipping(HttpJson.decimal(item, "ShippingPrice", "Amount"));
         java.math.BigDecimal tax = HttpJson.decimal(item, "ItemTax", "Amount");
         java.math.BigDecimal shipTax = HttpJson.decimal(item, "ShippingTax", "Amount");
-        l.setTax(tax == null ? shipTax : shipTax == null ? tax : tax.add(shipTax));
+        l.setTax(ConnectorJson.add(tax, shipTax));
         java.math.BigDecimal promo = HttpJson.decimal(item, "PromotionDiscount", "Amount");
         java.math.BigDecimal shipPromo = HttpJson.decimal(item, "ShippingDiscount", "Amount");
-        l.setDiscount(promo == null ? shipPromo : shipPromo == null ? promo : promo.add(shipPromo));
+        l.setDiscount(ConnectorJson.add(promo, shipPromo));
         return l;
     }
 
     @Override
-    public void confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
+    public ShipmentResult confirmShipment(ConnectorContext ctx, EcomOrder order, List<EcomOrderItem> items) {
+        if (order.getFulfillment() == FulfillmentType.PLATFORM) {
+            return ShipmentResult.skipped("AFN");
+        }
         StoreCredentials c = ctx.credentials();
         String endpoint = endpoint(ctx);
         Map<String, String> headers = headers(ctx);
@@ -197,18 +211,19 @@ public class AmazonSpConnector implements ChannelConnector {
             if (it.getPlatformLineId() == null) {
                 throw new BizException("ecom.error.connectorLineIdMissing", order.getPlatformOrderNo());
             }
-            lines.add(Map.of("orderItemId", it.getPlatformLineId(), "quantity", it.getQty().intValue()));
+            lines.add(Map.of("orderItemId", it.getPlatformLineId(), "quantity", it.getQty() == null ? 1 : Math.max(1, it.getQty().intValue())));
         }
         Map<String, Object> pkg = new LinkedHashMap<>();
         pkg.put("packageReferenceId", "1");
         pkg.put("carrierCode", order.getCarrier());
         pkg.put("trackingNumber", order.getTrackingNo());
-        pkg.put("shipDate", (order.getShipTime() == null ? LocalDateTime.now() : order.getShipTime()).atOffset(ZoneOffset.UTC).format(ISO));
+        pkg.put("shipDate", ConnectorJson.toUtcIso(order.getShipTime() == null ? LocalDateTime.now() : order.getShipTime()));
         pkg.put("orderItems", lines);
         Map<String, Object> body = new HashMap<>();
         body.put("marketplaceId", c.require("marketplaceId"));
         body.put("packageDetail", pkg);
         HttpJson.postJson(endpoint + "/orders/v0/orders/" + path(order.getPlatformOrderNo()) + "/shipmentConfirmation", headers, body, PLATFORM);
+        return ShipmentResult.confirmed(order.getTrackingNo(), order.getCarrier());
     }
 
     // ---------------------------------------------------------------- 库存与在线商品
@@ -224,7 +239,7 @@ public class AmazonSpConnector implements ChannelConnector {
         String marketplace = ctx.credentials().require("marketplaceId");
         List<String> failures = new ArrayList<>();
         for (InventoryUpdate u : updates) {
-            int qty = u.qty() == null ? 0 : Math.max(0, u.qty().setScale(0, java.math.RoundingMode.DOWN).intValue());
+            int qty = u.intQty();
             Map<String, Object> availability = new LinkedHashMap<>();
             availability.put("fulfillment_channel_code", "DEFAULT");
             availability.put("quantity", qty);
@@ -386,11 +401,7 @@ public class AmazonSpConnector implements ChannelConnector {
     }
 
     private static long parseLong(String s) {
-        try {
-            return Long.parseLong(s);
-        } catch (NumberFormatException e) {
-            return 0;
-        }
+        return ConnectorJson.parseLong(s, 0);
     }
 
     private static String endpoint(ConnectorContext ctx) {
@@ -419,25 +430,7 @@ public class AmazonSpConnector implements ChannelConnector {
     }
 
     private static LocalDateTime time(String iso) {
-        if (iso == null) {
-            return null;
-        }
-        try {
-            return OffsetDateTime.parse(iso).atZoneSameInstant(java.time.ZoneId.systemDefault()).toLocalDateTime();
-        } catch (RuntimeException e) {
-            return null;
-        }
-    }
-
-    private static String join(String... parts) {
-        StringBuilder sb = new StringBuilder();
-        for (String p : parts) {
-            if (p != null && !p.isBlank()) {
-                if (!sb.isEmpty()) sb.append(' ');
-                sb.append(p.trim());
-            }
-        }
-        return sb.isEmpty() ? null : sb.toString();
+        return ConnectorJson.isoTime(iso);
     }
 
     private static String enc(String s) {
