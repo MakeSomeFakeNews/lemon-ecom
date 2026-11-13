@@ -5,9 +5,9 @@
 <h1 align="center">柠檬跨境ERP · Lemon Ecom ERP</h1>
 
 <p align="center">
-  <b>面向跨境电商卖家的开源 ERP</b><br />
-  亚马逊、速卖通、虾皮、Lazada、TikTok Shop、Temu、eBay、Shopify、沃尔玛、Ozon、美客多多平台多店铺，<br />
-  订单、刊登定价、FBA 与海外仓、头程物流、广告、平台结算与利润，和采购、仓库、财务放在一套系统里
+  <b>一套系统，管好全球店铺。开源、免费、可私有化部署的跨境电商 ERP</b><br />
+  亚马逊、速卖通、虾皮、Lazada、TikTok Shop、Temu、eBay、Shopify、沃尔玛、Ozon、美客多多平台多店铺统一管理，<br />
+  选品采购、刊登定价、订单发货、FBA 与海外仓、广告、售后、结算回款到利润核算全流程打通
 </p>
 
 <p align="center">
@@ -37,16 +37,59 @@
 
 ## 项目简介
 
-柠檬跨境ERP（Lemon Ecom ERP）是一套面向**跨境电商卖家**的开源 ERP，前后端分离，开箱即用。它按卖家的实际流程设计：店铺 → 在线商品 → 平台订单 → 打单发货 → 售后 → 结算回款 → 利润分析，每一步都和库存、成本、应收、凭证联动，而不是在进销存上贴一层「电商订单」页面。
+**柠檬跨境ERP（Lemon Ecom ERP）是一套开源、可私有化部署的跨境电商 ERP。** 从选品开发、1688 采购、头程发货、刊登定价，到多平台订单处理、FBA 与海外仓、广告、售后、平台结算和利润核算，跨境卖家每天要做的事在一套系统里完成。与常见的按店铺数、订单量收费的 SaaS ERP 不同，柠檬跨境ERP 全部源码开放，不限店铺、账号和订单量，数据保存在你自己的服务器上。
 
-- **多平台多店铺**：11 个电商平台的连接器统一授权、拉取订单、回传发货、回传库存、同步在线商品、刊登与改价；没有接口的店铺用 Excel 导入订单、结算、广告和库存报告，后续流程完全一致
-- **订单到发货一条线**：审单规则自动指定发货仓、物流渠道、标签或挂起风险订单；合并 / 拆分包裹、批量取号打面单、扫描发货，部分发货按包裹回传平台；地址校验、买家黑名单、物流轨迹与超时预警
-- **FBA 与海外仓**：平台仓、海外仓都是系统仓库，头程货件就是在途调拨，运费关税分摊为单件头程成本；FBA 库存健康、移除订单、索赔与费用核查；谷仓、万邑通、4PX 海外仓的入库、一件代发、退件、调拨与费用
-- **利润算得清**：结算报告回写实际佣金和配送费，仓储费等不挂订单的费用按销量 / 销售额分摊到 SKU，拆出 VAT，广告按店铺 / SKU 扣减；订单口径与结算口径的多维利润报表，全部折算本位币
-- **业财一体**：平台订单出库即销售出库，库存减少、成本结转、应收生成；平台结算生成收款单核销店铺应收，回款到账对账并处理汇兑差额；凭证、账簿、三大报表一套打通
-- **运营工具**：刊登中心、价格模板、自动调价与竞品价格，Amazon Ads（SP / SB / SD）广告规则与分时调价，ASIN 监控、促销、运营目标与绩效，销量预测与补货建议，产品开发与 1688 采购
-- **可做 SaaS**：内置多租户、租户套餐和行业模板（跨境电商卖家、国内电商卖家、商贸批发），软件服务商可以用它为多家卖家提供在线服务
-- **AI 能力**：接入 DeepSeek、通义千问、智谱 GLM、Kimi、豆包等大模型，AI 问数（「上个月哪个店铺利润最高」「哪些 SKU 需要紧急补货」）、买家消息与评价的草拟回复和翻译、智能录入与经营报告
+<table>
+  <tr>
+    <td align="center" width="16%"><b>11</b><br />电商平台连接器</td>
+    <td align="center" width="16%"><b>3 + 3</b><br />海外仓 / 物流商对接</td>
+    <td align="center" width="16%"><b>业财一体</b><br />订单到凭证自动生成</td>
+    <td align="center" width="16%"><b>19 × 12</b><br />自动化触发事件 × 动作</td>
+    <td align="center" width="16%"><b>5</b><br />国产大模型可选</td>
+    <td align="center" width="16%"><b>0 元</b><br />不限店铺与订单量</td>
+  </tr>
+</table>
+
+### 卖家的难题，我们这样解决
+
+| 你遇到的问题 | 柠檬跨境ERP 的做法 |
+| --- | --- |
+| 店铺开了十几个，每天在各平台后台来回切换处理订单？ | 11 个平台统一授权、自动拉单、回传发货和库存；审单规则自动分仓、选物流、打标签、挂起风险订单，批量取号打面单、扫描发货 |
+| 每月看着流水在涨，算下来却不知道赚没赚钱？ | 结算报告回写真实佣金和配送费，仓储费、广告费、头程、VAT 分摊到订单和 SKU；订单口径与结算口径两套利润报表，全部折算本位币 |
+| FBA 一断货排名就掉，一压货仓储费就涨？ | 按加权日均销量与在途库存算补货建议，FBA 库存健康展示超龄、冗余库存和预估仓储费并给出处理建议；头程货件即在途调拨，到货自动入平台仓 |
+| 广告越投越多，ACoS 一直降不下来？ | Amazon Ads 数据按活动 / 搜索词 / SKU 拆到 TACOS，广告规则自动调竞价、否词，分时策略按时段调价 |
+| 财务月底对账要对一周，平台回款和应收对不上？ | 订单出库即生成成本和应收，结算报告生成收款单核销应收，PingPong、连连、Payoneer 到账流水自动匹配并处理汇兑差额 |
+| 运营人多了，权限和业绩说不清？ | 运营只看负责和被授权的店铺，按店铺的数据权限覆盖订单、商品、广告、利润；运营目标与绩效按人按店考核 |
+| 重复工作太多，人一直在盯后台？ | 自动化规则中心内置「1 星差评自动建售后工单」「可售天数低于 15 天自动生成采购计划」「预估亏损订单自动挂起」「ACOS 过高暂停活动」「被跟卖立即通知负责人」等模板；AI 运营日报每天推送到钉钉 / 企业微信 / 飞书 |
+
+### 覆盖跨境卖家的全流程
+
+```mermaid
+flowchart LR
+  A[产品开发] --> B[1688 / 供应商采购] --> C[本地仓入库] --> D[头程发货]
+  D --> E[FBA / 海外仓]
+  A --> F[刊登定价] --> G[多平台订单]
+  E --> G
+  C --> G
+  G --> H[打单发货] --> I[售后客服]
+  G --> J[平台结算] --> K[回款对账] --> L[利润与凭证]
+  M[广告] --> L
+```
+
+### 为什么选择柠檬跨境ERP
+
+- **真正开源，没有收费版**：仓库里就是全部功能，没有授权码和功能阉割，不按店铺、账号、订单量收费；GPL-3.0 协议，可以免费商用
+- **数据在自己手里**：私有化部署在自己的服务器或云主机上，店铺授权、订单、利润等经营数据不经过任何第三方
+- **业财一体，不只是订单工具**：底层是一套完整 ERP，平台订单、采购、调拨都生成真实的库存流水、成本和会计凭证，利润和财务报表口径一致，不需要再导出到另一套财务软件
+- **AI 与自动化**：AI 问数直接问「上个月哪个店铺利润最高」「哪些 SKU 要紧急补货」；AI 写 Listing 并检查违禁词，草拟买家消息和评价回复；自动化规则把重复操作交给系统
+- **可以拿来做 SaaS**：内置多租户、租户套餐和行业模板，服务商可以直接为多家卖家提供在线服务
+- **方便二次开发**：Spring Boot 4 + Vue 3，模块单向依赖，新增平台只需实现一个连接器接口；自带完整演示数据、用户手册和开发文档
+
+### 适合谁用
+
+- **中小跨境卖家**：用一台服务器部署，免费管理全部店铺和订单，省下每月的 ERP 订阅费
+- **品牌卖家与工贸一体企业**：需要业财一体、审批流、精细化利润和按店铺的权限管理
+- **软件服务商与开发者**：以本项目为基础，为客户做部署实施、定制开发或 SaaS 运营
 
 > 如果这个项目对你有帮助，请点一下右上角的 **Star**，这是对我们最大的鼓励！
 
@@ -230,7 +273,7 @@ lemon-ecom
 
 ## English
 
-**Lemon Ecom ERP** is an open-source ERP for cross-border e-commerce sellers, built with **Spring Boot 4 + Vue 3 + Ant Design Vue 4**. It manages multiple stores on Amazon, AliExpress, Shopee, Lazada, TikTok Shop, Temu, eBay, Shopify, Walmart, Ozon and Mercado Libre, and connects orders, listings, FBA and overseas warehouses, first-mile shipping, advertising, settlements and profit with purchasing, inventory and accounting in one system.
+**Run all your global stores in one system.** Lemon Ecom ERP is an open-source, self-hosted ERP for cross-border e-commerce sellers, built with **Spring Boot 4 + Vue 3 + Ant Design Vue 4**. It manages multiple stores on Amazon, AliExpress, Shopee, Lazada, TikTok Shop, Temu, eBay, Shopify, Walmart, Ozon and Mercado Libre, and covers the whole seller workflow: product development, 1688 sourcing, first-mile shipping, listing and repricing, order fulfillment, FBA and overseas warehouses, advertising, after-sales, settlements, payouts and profit, all on top of real inventory, cost and accounting. Unlike subscription ERPs priced by store or order volume, it is fully open source with no paid edition and no limits on stores, users or orders, and your data stays on your own server.
 
 - **Multi-platform stores**: 11 channel connectors for authorization (OAuth or keys), order sync, shipment confirmation (per-package partial shipment where supported), inventory push, listing sync, publishing and repricing; stores without an API can import orders, settlements, ad reports and inventory reports from Excel
 - **Order fulfillment**: order rules assign warehouses, shipping channels and tags or hold risky orders; merge / split packages, batch labels and pick lists, scan-to-ship, address validation, buyer blacklist, tracking with delay alerts; returns, after-sales tickets, buyer messages and reviews
